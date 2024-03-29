@@ -21,20 +21,82 @@
 extern "C"
 {
 #endif				/* __cplusplus */
+enum qca807x_phy_addr_offset {
+	QCA807X_PHY_COMBO_ADDR = 4,
+	QCA807X_PHY_SERDES_ADDR = 5,
+};
+
+/*mii registers*/
+#define QCA807X_PHY_MEDIUM_SELECT_STATUS		0x1a
+#define QCA807X_PHY_SERDES_RESET_REG		0x0
+
+/*mii registers field*/
+#define QCA807X_PHY_INTERFACE_MASK		0xf
+#define QCA807X_PHY_INTERFACE_PSGMII		0
+#define QCA807X_PHY_INTERFACE_PSGMII_1000BX		1
+#define QCA807X_PHY_INTERFACE_PSGMII_100BX		2
+#define QCA807X_PHY_INTERFACE_PSGMII_COMBO		3
+#define QCA807X_PHY_INTERFACE_QSGMII_SGMII		4
+#define QCA807X_PHY_AUTO_COPPER		0x20
+#define QCA807X_PHY_AUTO_1000BX		0x10
+#define QCA807X_PHY_AUTO_100FX		0x8
+#define QCA807X_PHY_SERDES_RESET		0
+#define QCA807X_PHY_SERDES_RELEASE		0x5f
+
 /*mmd registers*/
 #define QCA807X_PHY_MMD3_ADDR_8023AZ_TIMER_CTRL		0x804e
 #define QCA807X_PHY_MMD3_ADDR_CLD_CTRL5		0x8005
 #define QCA807X_PHY_MMD3_ADDR_CLD_CTRL3		0x8003
+#define QCA807X_PHY_MMD7_LED_100_N_MAP_CTRL		0x8074
+#define QCA807X_PHY_MMD7_LED_1000_N_MAP_CTRL		0x8076
+#define QCA807X_PHY_MMD7_LED_100_N_FORCE_CTRL		0x8075
+#define QCA807X_PHY_MMD7_LED_1000_N_FORCE_CTRL		0x8077
+#define QCA807X_PHY_MMD7_FIBER_MODE_AUTO_DETECTION		0x807e
 
 /*mmd registers field*/
 #define QCA807X_PHY_MMD3_DAC_AT_BIAS_EN		0x4000
 #define QCA807X_PHY_MMD3_VD_HALF_BIAS_EN		0x4000
 #define QCA807X_PHY_MMD3_AFE_TX_FULL_AMPLITUDE_EN		0x8000
+#define QCA807X_PHY_MMD7_AUTO_DETECTION_EN		1
+#define QCA807X_PHY_MMD7_AUTO_DETECTION_1000BX		0x8
 
 int qca807x_phy_powersave_set(struct nss_phy_device *nss_phy_device,
 	bool enable);
 int qca807x_phy_powersave_get(struct nss_phy_device *nss_phy_device,
 	bool *enable);
+int qca807x_phy_function_reset(struct nss_phy_device *nss_phydev,
+	enum nss_phy_reset reset_type);
+int qca807x_phy_interface_set(struct nss_phy_device *nss_phydev,
+	nss_phy_interface_t interface);
+int qca807x_phy_interface_get(struct nss_phy_device *nss_phydev,
+	nss_phy_interface_t *interface);
+int qca807x_phy_eee_adv_set(struct nss_phy_device *nss_phydev, u32 adv);
+int qca807x_phy_eee_adv_get(struct nss_phy_device *nss_phydev, u32 *adv);
+int qca807x_phy_eee_partner_adv_get(struct nss_phy_device *nss_phydev,
+	u32 *adv);
+int qca807x_phy_eee_cap_get(struct nss_phy_device *nss_phydev, u32 *cap);
+int qca807x_phy_eee_status_get(struct nss_phy_device *nss_phydev,
+	u32 *status);
+int qca807x_phy_8023az_set(struct nss_phy_device *nss_phydev, bool enable);
+int qca807x_phy_8023az_get(struct nss_phy_device *nss_phydev, bool *enable);
+int qca807x_phy_local_loopback_set(struct nss_phy_device *nss_phydev,
+	bool enable);
+int qca807x_phy_local_loopback_get(struct nss_phy_device *nss_phydev,
+	bool *enable);
+int qca807x_phy_combo_prefer_medium_set(struct nss_phy_device *nss_phydev,
+	enum nss_phy_medium phy_medium);
+int qca807x_phy_combo_prefer_medium_get(struct nss_phy_device *nss_phydev,
+	enum nss_phy_medium *phy_medium);
+int qca807x_phy_combo_medium_status_get(struct nss_phy_device *nss_phydev,
+	enum nss_phy_medium *phy_medium);
+int qca807x_phy_combo_fiber_mode_set(struct nss_phy_device *nss_phydev,
+	enum nss_phy_fiber_mode fiber_mode);
+int qca807x_phy_combo_fiber_mode_get(struct nss_phy_device *nss_phydev,
+	enum nss_phy_fiber_mode *fiber_mode);
+int qca807x_phy_led_ctrl_source_set(struct nss_phy_device *nss_phydev,
+	u32 source_id, struct nss_phy_led_pattern_ctrl *pattern);
+int qca807x_phy_led_ctrl_source_get(struct nss_phy_device *nss_phydev,
+	u32 source_id, struct nss_phy_led_pattern_ctrl *pattern);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

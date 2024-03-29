@@ -18,6 +18,61 @@
 #include "qca807x_phy.h"
 #include "nss_phy_common.h"
 
+static enum nss_phy_medium
+qca807x_phy_active_medium_get(struct nss_phy_device *nss_phydev)
+{
+	u16 phy_data = 0, phy_mode = 0, ret = 0;
+	enum nss_phy_medium phy_medium = 0;
+
+	ret = nss_phy_read(nss_phydev, NSS_PHY_CHIP_CONFIGURATION);
+	if (ret < 0)
+		return ret;
+
+	phy_mode = ret & QCA807X_PHY_INTERFACE_MASK;
+	switch (phy_mode) {
+	case QCA807X_PHY_INTERFACE_PSGMII_COMBO:
+		phy_data = nss_phy_read(nss_phydev,
+			QCA807X_PHY_MEDIUM_SELECT_STATUS);
+		if ((phy_data & QCA807X_PHY_AUTO_COPPER))
+			phy_medium = MEDIUM_COPPER;
+		else if ((phy_data & QCA807X_PHY_AUTO_1000BX) ||
+			(phy_data & QCA807X_PHY_AUTO_100FX))
+			phy_medium = MEDIUM_FIBER;
+		else
+			nss_phy_common_combo_prefer_medium_get(nss_phydev,
+				&phy_medium);
+		break;
+	case QCA807X_PHY_INTERFACE_PSGMII:
+	case QCA807X_PHY_INTERFACE_QSGMII_SGMII:
+			phy_medium = MEDIUM_COPPER;
+		break;
+	default:
+			phy_medium = MEDIUM_COPPER;
+		break;
+	}
+
+	return phy_medium;
+}
+
+static bool qca807x_phy_is_combo(struct nss_phy_device *nss_phydev)
+{
+	int addr = 0, addr_shared = 0;
+
+	addr = nss_phy_addr_get(nss_phydev);
+	addr_shared = nss_phy_share_addr_get(nss_phydev);
+
+	return (addr == addr_shared + QCA807X_PHY_COMBO_ADDR);
+}
+
+static bool qca807x_phy_is_copper(struct nss_phy_device *nss_phydev)
+{
+	if (qca807x_phy_is_combo(nss_phydev) &&
+		qca807x_phy_active_medium_get(nss_phydev) != MEDIUM_COPPER)
+		return false;
+
+	return true;
+}
+
 int qca807x_phy_powersave_set(struct nss_phy_device *nss_phydev,
 	bool enable)
 {
@@ -46,7 +101,7 @@ int qca807x_phy_powersave_set(struct nss_phy_device *nss_phydev,
 	if (ret < 0)
 		return ret;
 
-	return nss_phy_software_reset(nss_phydev);
+	return nss_phy_common_soft_reset(nss_phydev);
 }
 
 int qca807x_phy_powersave_get(struct nss_phy_device *nss_phydev,
@@ -66,4 +121,455 @@ int qca807x_phy_powersave_get(struct nss_phy_device *nss_phydev,
 
 	return 0;
 
+}
+
+int qca807x_phy_function_reset(struct nss_phy_device *nss_phydev,
+	enum nss_phy_reset reset_type)
+{
+	int ret = 0;
+
+	switch (reset_type) {
+	case SERDES_RESET:
+		ret = nss_phy_write_package(nss_phydev, QCA807X_PHY_SERDES_ADDR,
+			QCA807X_PHY_SERDES_RESET_REG, QCA807X_PHY_SERDES_RESET);
+		if (ret < 0)
+			return ret;
+		nss_phy_mdelay(100);
+		ret = nss_phy_write_package(nss_phydev, QCA807X_PHY_SERDES_ADDR,
+			QCA807X_PHY_SERDES_RESET_REG,
+			QCA807X_PHY_SERDES_RELEASE);
+		if (ret < 0)
+			return ret;
+		break;
+	case SOFT_RESET:
+		ret = nss_phy_common_function_reset(nss_phydev, SOFT_RESET);
+		if (ret < 0)
+			return ret;
+		break;
+	default:
+		return NSS_PHY_EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
+int qca807x_phy_interface_set(struct nss_phy_device *nss_phydev,
+	nss_phy_interface_t interface)
+{
+	int ret = 0;
+	u16 phy_mode = 0, fiber_auto_detect = 0;
+
+	switch (interface) {
+	case NSS_PHY_INTERFACE_MODE_PSGMII:
+		phy_mode = QCA807X_PHY_INTERFACE_PSGMII;
+		break;
+	case NSS_PHY_INTERFACE_MODE_1000BASEX:
+	case NSS_PHY_INTERFACE_MODE_100BASEX:
+		phy_mode = QCA807X_PHY_INTERFACE_PSGMII_COMBO;
+		fiber_auto_detect =
+			QCA807X_PHY_MMD7_AUTO_DETECTION_EN;
+		break;
+	case NSS_PHY_INTERFACE_MODE_SGMII:
+	case NSS_PHY_INTERFACE_MODE_QSGMII:
+		phy_mode = QCA807X_PHY_INTERFACE_QSGMII_SGMII;
+		break;
+	default:
+		return -NSS_PHY_EOPNOTSUPP;
+	}
+	ret = nss_phy_modify_package(nss_phydev,
+		QCA807X_PHY_COMBO_ADDR,
+		NSS_PHY_CHIP_CONFIGURATION,
+		QCA807X_PHY_INTERFACE_MASK,
+		phy_mode);
+	if (ret < 0)
+		return ret;
+
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		QCA807X_PHY_MMD7_FIBER_MODE_AUTO_DETECTION,
+		QCA807X_PHY_MMD7_AUTO_DETECTION_EN,
+		fiber_auto_detect);
+	if (ret < 0)
+		return ret;
+
+	ret = qca807x_phy_function_reset(nss_phydev, SERDES_RESET);
+
+	return ret;
+}
+
+int qca807x_phy_interface_get(struct nss_phy_device *nss_phydev,
+	nss_phy_interface_t *interface)
+{
+	int ret = 0;
+	u16 phy_data = 0;
+
+	ret = nss_phy_read_package(nss_phydev, QCA807X_PHY_COMBO_ADDR,
+		NSS_PHY_CHIP_CONFIGURATION);
+	if (ret < 0)
+		return ret;
+
+	switch (ret & QCA807X_PHY_INTERFACE_MASK) {
+	case QCA807X_PHY_INTERFACE_PSGMII:
+		*interface = NSS_PHY_INTERFACE_MODE_PSGMII;
+		break;
+	case QCA807X_PHY_INTERFACE_PSGMII_COMBO:
+		if (qca807x_phy_is_combo(nss_phydev)) {
+			phy_data = nss_phy_read_mmd(nss_phydev,
+				NSS_PHY_MMD7_NUM,
+				QCA807X_PHY_MMD7_FIBER_MODE_AUTO_DETECTION);
+			if (phy_data &
+				QCA807X_PHY_MMD7_AUTO_DETECTION_1000BX)
+				*interface = NSS_PHY_INTERFACE_MODE_1000BASEX;
+			else
+				*interface = NSS_PHY_INTERFACE_MODE_100BASEX;
+		} else {
+			*interface = NSS_PHY_INTERFACE_MODE_PSGMII;
+		}
+		break;
+	case QCA807X_PHY_INTERFACE_QSGMII_SGMII:
+		if (qca807x_phy_is_combo(nss_phydev))
+			*interface = NSS_PHY_INTERFACE_MODE_SGMII;
+		else
+			*interface = NSS_PHY_INTERFACE_MODE_QSGMII;
+		break;
+	default:
+		return -NSS_PHY_EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
+static int qca807x_phy_reg_pages_sel(struct nss_phy_device *nss_phydev)
+{
+	enum nss_phy_medium phy_medium = 0;
+	enum nss_phy_reg_pages reg_pages = 0;
+
+	phy_medium = qca807x_phy_active_medium_get(nss_phydev);
+	if (phy_medium == MEDIUM_FIBER)
+		reg_pages = PAGE_FIBER;
+	else if (phy_medium == MEDIUM_COPPER)
+		reg_pages = PAGE_COPPER;
+	else
+		return -NSS_PHY_EOPNOTSUPP;
+
+	return nss_phy_common_reg_pages_sel(nss_phydev, reg_pages);
+}
+
+static int
+qca807x_phy_medium_is_fiber_100fx(struct nss_phy_device *nss_phydev)
+{
+	u16 phy_data = 0;
+
+	phy_data = nss_phy_read(nss_phydev, QCA807X_PHY_MEDIUM_SELECT_STATUS);
+
+	if (phy_data & QCA807X_PHY_AUTO_100FX)
+		return true;
+
+	if ((!(phy_data & QCA807X_PHY_AUTO_COPPER)) &&
+		(!(phy_data & QCA807X_PHY_AUTO_1000BX))) {
+		phy_data = nss_phy_read(nss_phydev, NSS_PHY_CHIP_CONFIGURATION);
+		if ((phy_data & NSS_PHY_PREFER_FIBER) &&
+			(!(phy_data & NSS_PHY_FIBER_MODE_1000BX)))
+			return true;
+	}
+
+	return false;
+}
+
+int qca807x_phy_local_loopback_set(struct nss_phy_device *nss_phydev,
+	bool enable)
+{
+	u16 phy_data = 0;
+	bool is_100fx = false;
+	int ret = 0;
+
+	if (!qca807x_phy_is_copper(nss_phydev)) {
+		ret = nss_phy_common_reg_pages_sel(nss_phydev, PAGE_FIBER);
+		if (ret < 0)
+			return ret;
+		is_100fx = qca807x_phy_medium_is_fiber_100fx(nss_phydev);
+		if (enable) {
+			if (is_100fx)
+				phy_data = NSS_PHY_LOOPBACK_100M;
+			else
+				phy_data = NSS_PHY_LOOPBACK_1000M;
+		} else {
+			phy_data = NSS_PHY_COMMON_CTRL;
+		}
+		ret = nss_phy_write(nss_phydev, NSS_PHY_CONTROL,
+			phy_data);
+		if (ret < 0)
+			return ret;
+	} else {
+		ret = nss_phy_common_reg_pages_sel(nss_phydev,
+			PAGE_COPPER);
+		if (ret < 0)
+			return ret;
+		ret = nss_phy_common_local_loopback_set(nss_phydev,
+			enable);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
+int qca807x_phy_local_loopback_get(struct nss_phy_device *nss_phydev,
+	bool *enable)
+{
+	if (qca807x_phy_is_combo(nss_phydev))
+		qca807x_phy_reg_pages_sel(nss_phydev);
+
+	return nss_phy_common_local_loopback_get(nss_phydev, enable);
+}
+
+int qca807x_phy_combo_prefer_medium_set(struct nss_phy_device *nss_phydev,
+	enum nss_phy_medium phy_medium)
+{
+	if (!qca807x_phy_is_combo(nss_phydev))
+		return -NSS_PHY_EOPNOTSUPP;
+
+	return nss_phy_common_combo_prefer_medium_set(nss_phydev, phy_medium);
+}
+
+int qca807x_phy_combo_prefer_medium_get(struct nss_phy_device *nss_phydev,
+	enum nss_phy_medium *phy_medium)
+{
+	if (!qca807x_phy_is_combo(nss_phydev))
+		return -NSS_PHY_EOPNOTSUPP;
+
+	return nss_phy_common_combo_prefer_medium_get(nss_phydev, phy_medium);
+}
+
+int qca807x_phy_combo_medium_status_get(struct nss_phy_device *nss_phydev,
+	enum nss_phy_medium *phy_medium)
+{
+
+	if (!qca807x_phy_is_combo(nss_phydev))
+		return -NSS_PHY_EOPNOTSUPP;
+
+	*phy_medium = qca807x_phy_active_medium_get(nss_phydev);
+
+	return 0;
+}
+
+int qca807x_phy_combo_fiber_mode_set(struct nss_phy_device *nss_phydev,
+	enum nss_phy_fiber_mode fiber_mode)
+{
+	if (!qca807x_phy_is_combo(nss_phydev))
+		return -NSS_PHY_EOPNOTSUPP;
+
+	return nss_phy_common_combo_fiber_mode_set(nss_phydev, fiber_mode);
+}
+
+int qca807x_phy_combo_fiber_mode_get(struct nss_phy_device *nss_phydev,
+	enum nss_phy_fiber_mode *fiber_mode)
+{
+	if (!qca807x_phy_is_combo(nss_phydev))
+		return -NSS_PHY_EOPNOTSUPP;
+
+	return nss_phy_common_combo_fiber_mode_get(nss_phydev, fiber_mode);
+}
+
+static u32 qca807x_phy_led_source_map_mmd_reg_get
+	(struct nss_phy_device *nss_phydev, u32 source_id)
+{
+	u16 mmd_reg = 0;
+
+	switch (source_id) {
+	case NSS_PHY_LED_SOURCE0:
+		mmd_reg = QCA807X_PHY_MMD7_LED_100_N_MAP_CTRL;
+		break;
+	case NSS_PHY_LED_SOURCE1:
+		mmd_reg = QCA807X_PHY_MMD7_LED_1000_N_MAP_CTRL;
+		break;
+	default:
+		nss_phy_err(nss_phydev, "source %d is not support\n",
+			source_id);
+		break;
+	}
+
+	return mmd_reg;
+}
+
+static u32
+qca807x_phy_led_source_force_mmd_reg_get
+	(struct nss_phy_device *nss_phydev, u32 source_id)
+{
+	u16 mmd_reg = 0;
+
+	switch (source_id) {
+	case NSS_PHY_LED_SOURCE0:
+		mmd_reg = QCA807X_PHY_MMD7_LED_100_N_FORCE_CTRL;
+		break;
+	case NSS_PHY_LED_SOURCE1:
+		mmd_reg = QCA807X_PHY_MMD7_LED_1000_N_FORCE_CTRL;
+		break;
+	default:
+		nss_phy_err(nss_phydev, "source %d is not support\n",
+			source_id);
+		break;
+	}
+
+	return mmd_reg;
+}
+
+static int
+qca807x_phy_led_force_set(struct nss_phy_device *nss_phydev,
+	u32 source_id, bool enable, u32 force_mode)
+{
+	u32 mmd_reg = 0;
+	u16 phy_data = 0;
+
+	if (enable)
+		nss_phy_common_led_force_to_phy(nss_phydev,
+			force_mode, &phy_data);
+
+	mmd_reg = qca807x_phy_led_source_force_mmd_reg_get(nss_phydev,
+		source_id);
+
+	return nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		mmd_reg, NSS_PHY_MMD7_LED_FORCE_EN |
+		NSS_PHY_MMD7_LED_FORCE_MASK, phy_data);
+}
+
+static int
+qca807x_phy_led_force_get(struct nss_phy_device *nss_phydev,
+	u32 source_id, bool *enable, u32 *force_mode)
+{
+	u32 mmd_reg = 0;
+	u16 phy_data = 0;
+	int ret = 0;
+
+	mmd_reg = qca807x_phy_led_source_force_mmd_reg_get(nss_phydev,
+		source_id);
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		mmd_reg);
+	if (phy_data & NSS_PHY_MMD7_LED_FORCE_EN) {
+		*enable = true;
+		ret = nss_phy_common_led_force_from_phy(nss_phydev,
+			force_mode, phy_data);
+		if (ret < 0)
+			return ret;
+	} else {
+		*enable = false;
+	}
+
+	return 0;
+}
+
+int qca807x_phy_led_ctrl_source_set(struct nss_phy_device *nss_phydev,
+	u32 source_id, struct nss_phy_led_pattern_ctrl *pattern)
+{
+	u32 mmd_reg = 0;
+	u16 phy_data = 0;
+	int ret = 0;
+
+	if (source_id > NSS_PHY_LED_SOURCE1)
+		return -NSS_PHY_EOPNOTSUPP;
+
+	ret = nss_phy_common_led_blink_freq_set(nss_phydev, pattern->mode,
+		pattern->freq);
+	if (ret < 0)
+		return ret;
+
+	if (pattern->mode == ACT_PHY_STATUS) {
+		ret = qca807x_phy_led_force_set(nss_phydev, source_id, false,
+			pattern->mode);
+		if (ret < 0)
+			return ret;
+		ret = nss_phy_common_led_to_phy(nss_phydev,
+			pattern->phy_status_bmap, &phy_data);
+		if (ret < 0)
+			return ret;
+		mmd_reg = qca807x_phy_led_source_map_mmd_reg_get(nss_phydev,
+			source_id);
+		ret = nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD7_NUM, mmd_reg,
+			phy_data);
+		if (ret < 0)
+			return ret;
+	} else {
+		ret = qca807x_phy_led_force_set(nss_phydev, source_id, true,
+			pattern->mode);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
+int qca807x_phy_led_ctrl_source_get(struct nss_phy_device *nss_phydev,
+	u32 source_id, struct nss_phy_led_pattern_ctrl *pattern)
+{
+	u32 mmd_reg = 0;
+	u16 phy_data = 0;
+	bool force_enable = false;
+	int ret = 0;
+
+	if (source_id > NSS_PHY_LED_SOURCE1)
+		return -NSS_PHY_EOPNOTSUPP;
+
+	pattern->phy_status_bmap = 0;
+	ret = qca807x_phy_led_force_get(nss_phydev, source_id,
+		&force_enable, &(pattern->mode));
+	if (ret < 0)
+		return ret;
+	if (!force_enable) {
+		pattern->mode = ACT_PHY_STATUS;
+		mmd_reg = qca807x_phy_led_source_map_mmd_reg_get(nss_phydev,
+			source_id);
+		phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+			mmd_reg);
+		ret = nss_phy_common_led_from_phy(nss_phydev,
+			&(pattern->phy_status_bmap), phy_data);
+		if (ret < 0)
+			return ret;
+	}
+	ret = nss_phy_common_led_blink_freq_get(nss_phydev, pattern->mode,
+		&(pattern->freq));
+
+	return ret;
+}
+
+struct nss_phy_ops *qca807x_phy_ops_get(void)
+{
+	static bool ops_init;
+	struct nss_phy_ops *ops = NULL;
+
+	if (ops_init == true)
+		return NULL;
+
+	ops = nss_phy_kzalloc(sizeof(struct nss_phy_ops));
+	if (!ops) {
+		nss_phy_pr_info("qca807x phy ops kzalloc failed!\n");
+		return NULL;
+	}
+	ops->hibernation_set = nss_phy_common_hibernation_set;
+	ops->hibernation_get = nss_phy_common_hibernation_get;
+	ops->powersave_set = qca807x_phy_powersave_set;
+	ops->powersave_get = qca807x_phy_powersave_get;
+	ops->function_reset = qca807x_phy_function_reset;
+	ops->interface_set = qca807x_phy_interface_set;
+	ops->interface_get = qca807x_phy_interface_get;
+	ops->eee_adv_set = nss_phy_common_eee_adv_set;
+	ops->eee_adv_get = nss_phy_common_eee_adv_get;
+	ops->eee_partner_adv_get = nss_phy_common_eee_partner_adv_get;
+	ops->eee_cap_get = nss_phy_common_eee_cap_get;
+	ops->eee_status_get = nss_phy_common_eee_status_get;
+	ops->ieee_8023az_set = nss_phy_common_8023az_set;
+	ops->ieee_8023az_get = nss_phy_common_8023az_get;
+	ops->local_loopback_set = qca807x_phy_local_loopback_set;
+	ops->local_loopback_get = qca807x_phy_local_loopback_get;
+	ops->remote_loopback_set = nss_phy_common_remote_loopback_set;
+	ops->remote_loopback_get = nss_phy_common_remote_loopback_get;
+	ops->combo_prefer_medium_set = qca807x_phy_combo_prefer_medium_set;
+	ops->combo_prefer_medium_get = qca807x_phy_combo_prefer_medium_get;
+	ops->combo_medium_status_get = qca807x_phy_combo_medium_status_get;
+	ops->combo_fiber_mode_set = qca807x_phy_combo_fiber_mode_set;
+	ops->combo_fiber_mode_get = qca807x_phy_combo_fiber_mode_get;
+	ops->led_ctrl_source_set = qca807x_phy_led_ctrl_source_set;
+	ops->led_ctrl_source_get = qca807x_phy_led_ctrl_source_get;
+
+	ops_init = true;
+
+	return ops;
 }

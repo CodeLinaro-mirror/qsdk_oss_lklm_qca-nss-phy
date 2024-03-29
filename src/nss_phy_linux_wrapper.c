@@ -263,3 +263,38 @@ int nss_phy_modify_package(struct nss_phy_device *nss_phydev,
 
 	return ret;
 }
+
+void *nss_phy_kzalloc(unsigned size)
+{
+	return kzalloc(sizeof(struct nss_phy_ops), GFP_KERNEL);
+}
+
+int nss_phydev_speed_get(struct nss_phy_device *nss_phydev)
+{
+	return nss_phydev->phydev->speed;
+}
+
+int nss_phydev_autoneg_update(struct nss_phy_device *nss_phydev, bool enable)
+{
+	nss_phydev->phydev->autoneg = enable;
+
+	return 0;
+}
+
+int nss_phydev_eee_update(struct nss_phy_device *nss_phydev, u32 adv)
+{
+	nss_phydev->phydev->eee_enabled = (adv == 0) ? false:true;
+
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT,
+		nss_phydev->phydev->advertising_eee, adv & EEE_100BASE_T);
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
+		nss_phydev->phydev->advertising_eee, adv & EEE_1000BASE_T);
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT,
+		nss_phydev->phydev->advertising_eee, adv & EEE_2500BASE_T);
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_5000baseT_Full_BIT,
+		nss_phydev->phydev->advertising_eee, adv & EEE_5000BASE_T);
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_10000baseT_Full_BIT,
+		nss_phydev->phydev->advertising_eee, adv & EEE_10000BASE_T);
+
+	return 0;
+}

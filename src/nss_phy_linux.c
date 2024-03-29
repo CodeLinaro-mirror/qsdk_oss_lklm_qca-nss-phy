@@ -16,6 +16,36 @@
 
 #include "nss_phy.h"
 
+#define NSS_PHY_DRV_NUM		6
+static struct nss_phy_ops *g_ops[NSS_PHY_DRV_NUM] = { NULL };
+
+static int nss_phy_ops_add(struct nss_phy_ops *ops)
+{
+	int ops_index = 0;
+
+	for (ops_index = 0; ops_index < NSS_PHY_DRV_NUM; ops_index++) {
+		if (!g_ops[ops_index]) {
+			g_ops[ops_index] = ops;
+			break;
+		}
+	}
+
+	if (ops_index == NSS_PHY_DRV_NUM)
+		return -NSS_PHY_ENOSPC;
+
+	return ops_index;
+}
+
+static void nss_phy_ops_free(void)
+{
+	int ops_index = 0;
+
+	for (ops_index = 0; ops_index < NSS_PHY_DRV_NUM; ops_index++) {
+		kfree(g_ops[ops_index]);
+		g_ops[ops_index] = NULL;
+	}
+}
+
 static int nss_phy_id_get(struct phy_device *phydev, int addr, u32 *phy_id)
 {
 	int reg1 = 0, reg2 = 0;
@@ -31,14 +61,14 @@ static int nss_phy_id_get(struct phy_device *phydev, int addr, u32 *phy_id)
 	}
 
 	if (reg1 < 0 || reg2 < 0)
-		return NSS_PHY_EINVAL;
+		return -NSS_PHY_EINVAL;
 
 	*phy_id = reg1 << 16 | reg2;
 
 	return 0;
 }
 
-int nss_phy_base_addr_get(struct phy_device *phydev)
+static int nss_phy_base_addr_get(struct phy_device *phydev)
 {
 	int ret = 0, times = 4, base_addr = 0;
 	int addr = phydev->mdio.addr;
@@ -63,10 +93,43 @@ int nss_phy_base_addr_get(struct phy_device *phydev)
 	return base_addr;
 }
 
-static int nss_phy_match_phy_device(struct phy_device *phydev)
+static int nss_phy_base_addr_init(struct phy_device *phydev)
+{
+	int base_addr = 0;
+
+	base_addr = nss_phy_base_addr_get(phydev);
+
+	if (!phydev->shared)
+		devm_phy_package_join(&phydev->mdio.dev, phydev,
+			base_addr, 0);
+
+	phydev_info(phydev, "phydev->shared->addr:0x%x\n",
+		phydev->shared->addr);
+
+	return 0;
+}
+
+static int nss_phy_ops_init(struct phy_device *phydev)
 {
 	struct nss_phy_ops *ops = NULL;
 
+	if (nss_phydev_id_compare(phydev, QCA8075_PHY, QCA807X_MASK))
+		ops = qca807x_phy_ops_get();
+
+	if (ops) {
+		if (!(phydev->drv->driver_data))
+			phydev->drv->driver_data = ops;
+		else
+			phydev_warn(phydev, "driver_data have been init\n");
+
+		nss_phy_ops_add(ops);
+	}
+
+	return 0;
+}
+
+static int nss_phy_match_phy_device(struct phy_device *phydev)
+{
 	if (!QCA_PHY_MATCH(nss_phydev_id_get(phydev)))
 		return -NSS_PHY_EOPNOTSUPP;
 
@@ -74,41 +137,26 @@ static int nss_phy_match_phy_device(struct phy_device *phydev)
 		phydev_info(phydev, "nss phy driver is used\n");
 		return true;
 	}
+
 	phydev_info(phydev, "nss phy driver is used as extended driver only\n");
-	ops = nss_phy_ops_get();
-	if (ops) {
-		if (!(phydev->drv->driver_data))
-			phydev->drv->driver_data = ops;
-		else
-			phydev_warn(phydev,
-				"driver_data have been init by other driver\n");
-		/**
-		* if upstream driver did not init the base addr,
-		* will init it here
-		*/
-		if (!phydev->shared) {
-			devm_phy_package_join(&phydev->mdio.dev, phydev,
-				nss_phy_base_addr_get(phydev), 0);
-			phydev_info(phydev, "phydev->shared->addr:0x%x\n",
-				phydev->shared->addr);
-		}
-	} else {
-		phydev_warn(phydev, "nss phy driver ops is null\n");
-	}
+	/*init nss phy ops*/
+	nss_phy_ops_init(phydev);
+	/**
+	* if upstream driver did not init the base addr,
+	* will init it here
+	*/
+	nss_phy_base_addr_init(phydev);
 
 	return false;
 }
 
 static int nss_phy_probe(struct phy_device *phydev)
 {
-	int base_addr = 0;
+	/*init nss phy ops*/
+	nss_phy_ops_init(phydev);
+	/*init base addr*/
+	nss_phy_base_addr_init(phydev);
 
-	if (!phydev->shared) {
-		base_addr = nss_phy_base_addr_get(phydev);
-		devm_phy_package_join(&phydev->mdio.dev, phydev, base_addr, 0);
-		phydev_info(phydev, "phydev->shared->addr:0x%x\n",
-			phydev->shared->addr);
-	}
 	return 0;
 }
 
@@ -157,13 +205,6 @@ struct phy_driver nss_phy_driver = {
 static int __init nss_phy_module_init(void)
 {
 	int ret = 0;
-	struct nss_phy_ops *ops = NULL;
-
-	ops = nss_phy_ops_get();
-	if (!ops)
-		pr_warn("nss phy driver ops is null\n");
-	else
-		nss_phy_driver.driver_data = ops;
 
 	ret = phy_driver_register(&nss_phy_driver, THIS_MODULE);
 	if (!ret)
@@ -174,6 +215,7 @@ static int __init nss_phy_module_init(void)
 
 static void __exit nss_phy_module_exit(void)
 {
+	nss_phy_ops_free();
 	phy_driver_unregister(&nss_phy_driver);
 }
 

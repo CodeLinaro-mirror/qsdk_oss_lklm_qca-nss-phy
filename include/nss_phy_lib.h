@@ -75,7 +75,11 @@ int nss_phy_write_package(struct nss_phy_device *nss_phy_device,
 	int addr_offset, u16 reg, u16 data);
 int nss_phy_modify_package(struct nss_phy_device *nss_phy_device,
 	int addr_offset, u16 reg, u16 mask, u16 set);
+void *nss_phy_kzalloc(unsigned size);
+int nss_phydev_speed_get(struct nss_phy_device *nss_phydev);
+int nss_phydev_eee_update(struct nss_phy_device *nss_phydev, u32 adv);
+int nss_phydev_autoneg_update(struct nss_phy_device *nss_phydev, bool enable);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */
-#endif				/* _NSS_PHY_ACCESS_H_ */
+#endif				/* _NSS_PHY_LIB_H_ */
