@@ -115,6 +115,8 @@ static int nss_phy_ops_init(struct phy_device *phydev)
 
 	if (nss_phydev_id_compare(phydev, QCA8075_PHY, QCA807X_MASK))
 		ops = qca807x_phy_ops_get();
+	else if (nss_phydev_id_compare(phydev, QCA8111_PHY, QCA81XX_MASK))
+		ops = qca81xx_phy_ops_get();
 
 	if (ops) {
 		if (!(phydev->drv->driver_data))
@@ -122,10 +124,10 @@ static int nss_phy_ops_init(struct phy_device *phydev)
 		else
 			phydev_warn(phydev, "driver_data have been init\n");
 
-		nss_phy_ops_add(ops);
+		return nss_phy_ops_add(ops);
 	}
 
-	return 0;
+	return NSS_PHY_EOPNOTSUPP;
 }
 
 static int nss_phy_match_phy_device(struct phy_device *phydev)

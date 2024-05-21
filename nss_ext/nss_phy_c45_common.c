@@ -1,0 +1,262 @@
+/*
+ * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+#include "nss_phy.h"
+#include "nss_phy_c45_common.h"
+
+int nss_phy_c45_common_eee_adv_set(struct nss_phy_device *nss_phydev,
+	u32 adv)
+{
+	u16 phy_data = 0;
+	int ret;
+
+	ret = nss_phy_common_eee_adv_set(nss_phydev, adv);
+	if (ret < 0)
+		return ret;
+
+	if (adv & EEE_2500BASE_T)
+		phy_data |= NSS_PHY_MMD7_EEE_ADV_2500M;
+	if (adv & EEE_5000BASE_T)
+		phy_data |= NSS_PHY_MMD7_EEE_ADV_5000M;
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_8023AZ_EEE_CTRL1, NSS_PHY_MMD7_EEE_MASK1,
+		phy_data);
+
+	nss_phydev_eee_update(nss_phydev, ALL_SPEED_EEE);
+
+	return nss_phy_c45_common_autoneg_restart(nss_phydev);
+}
+
+int nss_phy_c45_common_eee_adv_get(struct nss_phy_device *nss_phydev,
+	u32 *adv)
+{
+	u16 phy_data = 0;
+	int ret;
+
+	ret = nss_phy_common_eee_adv_get(nss_phydev, adv);
+	if (ret < 0)
+		return ret;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_8023AZ_EEE_CTRL1);
+	if (phy_data & NSS_PHY_MMD7_EEE_ADV_2500M)
+		*adv |= EEE_2500BASE_T;
+	if (phy_data & NSS_PHY_MMD7_EEE_ADV_5000M)
+		*adv |= EEE_5000BASE_T;
+
+	return 0;
+}
+
+int nss_phy_c45_common_eee_partner_adv_get(struct nss_phy_device *nss_phydev,
+	u32 *adv)
+{
+	u16 phy_data = 0;
+	int ret;
+
+	ret = nss_phy_common_eee_partner_adv_get(nss_phydev, adv);
+	if (ret < 0)
+		return ret;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_8023AZ_EEE_PARTNER1);
+	if (phy_data & NSS_PHY_MMD7_EEE_PARTNER_ADV_2500M)
+		*adv |= EEE_2500BASE_T;
+	if (phy_data & NSS_PHY_MMD7_EEE_PARTNER_ADV_5000M)
+		*adv |= EEE_5000BASE_T;
+
+	return 0;
+}
+
+int nss_phy_c45_common_eee_cap_get(struct nss_phy_device *nss_phydev,
+	u32 *cap)
+{
+	u16 phy_data = 0;
+	int ret;
+
+	ret = nss_phy_common_eee_cap_get(nss_phydev, cap);
+	if (ret < 0)
+		return ret;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_8023AZ_EEE_CAPABILITY1);
+	if (phy_data & NSS_PHY_MMD3_EEE_CAPABILITY_2500M)
+		*cap |= EEE_2500BASE_T;
+	if (phy_data & NSS_PHY_MMD3_EEE_CAPABILITY_5000M)
+		*cap |= EEE_5000BASE_T;
+
+	return 0;
+}
+
+int nss_phy_c45_common_8023az_set(struct nss_phy_device *nss_phydev,
+	bool enable)
+{
+	u32 eee_adv = 0;
+
+	if (enable == true)
+		eee_adv = ALL_SPEED_EEE;
+
+	return nss_phy_c45_common_eee_adv_set(nss_phydev, eee_adv);
+}
+
+int nss_phy_c45_common_8023az_get(struct nss_phy_device *nss_phydev,
+	bool *enable)
+{
+	u32 eee_adv = 0, eee_cap = 0;
+	int ret = 0;
+
+	ret = nss_phy_c45_common_eee_adv_get(nss_phydev, &eee_adv);
+	if (ret < 0)
+		return ret;
+	ret = nss_phy_c45_common_eee_cap_get(nss_phydev, &eee_cap);
+	if (ret < 0)
+		return ret;
+
+	if (eee_adv == eee_cap)
+		*enable = true;
+	else
+		*enable = false;
+
+	return 0;
+}
+
+int nss_phy_c45_common_autoneg_set(struct nss_phy_device *nss_phydev,
+	bool enable)
+{
+	u16 phy_data = 0;
+	int ret = 0;
+
+	if (enable)
+		phy_data |= NSS_PHY_AUTONEG_EN;
+
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_AN_CONTROL, NSS_PHY_AUTONEG_EN, phy_data);
+	if (ret < 0)
+		return ret;
+
+	return nss_phydev_autoneg_update(nss_phydev, enable);
+}
+
+int nss_phy_c45_common_force_speed_set(struct nss_phy_device *nss_phydev)
+{
+	u16 phy_speed_ctrl = 0, phy_speed_type = 0;
+	int ret = 0;
+
+	switch (nss_phydev_speed_get(nss_phydev)) {
+	case NSS_PHY_SPEED_10:
+		phy_speed_ctrl = NSS_PHY_MMD1_PMA_CONTROL_10M;
+		phy_speed_type = NSS_PHY_MMD1_PMA_TYPE_10M;
+		break;
+	case NSS_PHY_SPEED_100:
+		phy_speed_ctrl = NSS_PHY_MMD1_PMA_CONTROL_100M;
+		phy_speed_type = NSS_PHY_MMD1_PMA_TYPE_100M;
+		break;
+	case NSS_PHY_SPEED_1000:
+		phy_speed_ctrl = NSS_PHY_MMD1_PMA_CONTROL_1000M;
+		phy_speed_type = NSS_PHY_MMD1_PMA_TYPE_1000M;
+		break;
+	case NSS_PHY_SPEED_2500:
+		phy_speed_ctrl = NSS_PHY_MMD1_PMA_CONTROL_2500M;
+		phy_speed_type = NSS_PHY_MMD1_PMA_TYPE_2500M;
+		break;
+	case NSS_PHY_SPEED_5000:
+		phy_speed_ctrl = NSS_PHY_MMD1_PMA_CONTROL_5000M;
+		phy_speed_type = NSS_PHY_MMD1_PMA_TYPE_5000M;
+		break;
+	case NSS_PHY_SPEED_10000:
+		phy_speed_ctrl = NSS_PHY_MMD1_PMA_CONTROL_10000M;
+		phy_speed_type = NSS_PHY_MMD1_PMA_TYPE_10000M;
+		break;
+	default:
+		return -NSS_PHY_EOPNOTSUPP;
+	}
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD1_NUM,
+		NSS_PHY_MMD1_PMA_CONTROL, NSS_PHY_MMD1_PMA_SPEED_MASK,
+		phy_speed_ctrl);
+	if (ret < 0)
+		return ret;
+
+	return nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD1_NUM,
+		NSS_PHY_MMD1_PMA_TTYPE, NSS_PHY_MMD1_PMA_TYPE_MASK,
+		phy_speed_type);
+}
+
+int
+nss_phy_c45_common_local_loopback_set(struct nss_phy_device *nss_phydev,
+	bool enable)
+{
+	u16 phy_data = 0;
+	bool autoneg = false;
+	int ret = 0;
+
+	if (enable) {
+		ret = nss_phy_c45_common_force_speed_set(nss_phydev);
+		if (ret < 0)
+			return ret;
+		phy_data |= NSS_PHY_LOCAL_LOOPBACK_EN;
+	} else {
+		autoneg = true;
+	}
+
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD31_NUM,
+		NSS_PHY_CONTROL, NSS_PHY_LOCAL_LOOPBACK_EN, phy_data);
+	if (ret < 0)
+		return ret;
+
+	return nss_phy_c45_common_autoneg_set(nss_phydev, autoneg);
+}
+
+int nss_phy_c45_common_local_loopback_get(struct nss_phy_device *nss_phydev,
+	bool *enable)
+{
+	u16 phy_data = 0;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD31_NUM,
+		NSS_PHY_CONTROL);
+
+	if (phy_data & NSS_PHY_LOCAL_LOOPBACK_EN)
+		*enable = true;
+	else
+		*enable = false;
+
+	return 0;
+}
+
+int nss_phy_c45_common_fifo_reset(struct nss_phy_device *nss_phydev,
+	bool enable)
+{
+	int phy_data = 0;
+
+	if (!enable)
+		phy_data |= NSS_PHY_FIFO_RESET_MASK;
+
+	return nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD31_NUM,
+		NSS_PHY_FIFO_CONTROL,
+		NSS_PHY_FIFO_RESET_MASK,
+		phy_data);
+}
+
+int nss_phy_c45_common_autoneg_restart(struct nss_phy_device *nss_phydev)
+{
+	int ret = 0;
+
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_AN_CONTROL,
+		NSS_PHY_AUTONEG_RESTART | NSS_PHY_AUTONEG_EN,
+		NSS_PHY_AUTONEG_RESTART | NSS_PHY_AUTONEG_EN);
+	if (ret < 0)
+		return ret;
+
+	return nss_phydev_autoneg_update(nss_phydev, true);
+}

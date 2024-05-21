@@ -1,0 +1,104 @@
+/*
+ * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#include "nss_phy.h"
+#include "qca81xx_phy.h"
+#include "nss_phy_c45_common.h"
+
+static int qca81xx_phy_soft_reset(struct nss_phy_device *nss_phydev)
+{
+	int ret;
+
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD31_NUM,
+		QCA81XX_PHY_MMD31_SMART_SPEED,
+		QCA81XX_PHY_MMD31_AUTO_SOFT_RESET,
+		QCA81XX_PHY_MMD31_AUTO_SOFT_RESET);
+	if (ret < 0)
+		return ret;
+
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD1_NUM,
+		NSS_PHY_MMD1_PMA_CONTROL,
+		NSS_PHY_POWER_DOWN,
+		NSS_PHY_POWER_DOWN);
+	if (ret < 0)
+		return ret;
+	nss_phy_mdelay(10);
+
+	return nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD1_NUM,
+		NSS_PHY_MMD1_PMA_CONTROL,
+		NSS_PHY_POWER_DOWN,
+		NSS_PHY_POWER_UP);
+}
+
+static int qca81xx_phy_function_reset(struct nss_phy_device *nss_phydev,
+	enum nss_phy_reset reset_type)
+{
+	int ret = 0;
+
+	switch (reset_type) {
+	case FIFO_RESET:
+		ret = nss_phy_c45_common_fifo_reset(nss_phydev, true);
+		if (ret < 0)
+			return ret;
+		nss_phy_mdelay(50);
+		ret = nss_phy_c45_common_fifo_reset(nss_phydev, false);
+		if (ret < 0)
+			return ret;
+		break;
+	case SOFT_RESET:
+		ret = qca81xx_phy_soft_reset(nss_phydev);
+		if (ret < 0)
+			return ret;
+		break;
+	default:
+		return NSS_PHY_EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
+struct nss_phy_ops *qca81xx_phy_ops_get(void)
+{
+	static bool ops_init;
+	struct nss_phy_ops *ops = NULL;
+
+	if (ops_init == true)
+		return NULL;
+
+	ops = nss_phy_kzalloc(sizeof(struct nss_phy_ops));
+	if (!ops) {
+		nss_phy_pr_info("qca81xx phy ops kzalloc failed!\n");
+		return NULL;
+	}
+	ops->hibernation_set = nss_phy_common_hibernation_set;
+	ops->hibernation_get = nss_phy_common_hibernation_get;
+	ops->function_reset = qca81xx_phy_function_reset;
+	ops->eee_adv_set = nss_phy_c45_common_eee_adv_set;
+	ops->eee_adv_get = nss_phy_c45_common_eee_adv_get;
+	ops->eee_partner_adv_get = nss_phy_c45_common_eee_partner_adv_get;
+	ops->eee_cap_get = nss_phy_c45_common_eee_cap_get;
+	ops->eee_status_get = nss_phy_common_eee_status_get;
+	ops->ieee_8023az_set = nss_phy_c45_common_8023az_set;
+	ops->ieee_8023az_get = nss_phy_c45_common_8023az_get;
+	ops->local_loopback_set = nss_phy_c45_common_local_loopback_set;
+	ops->local_loopback_get = nss_phy_c45_common_local_loopback_get;
+	ops->remote_loopback_set = nss_phy_common_remote_loopback_set;
+	ops->remote_loopback_get = nss_phy_common_remote_loopback_get;
+
+	ops_init = true;
+
+	return ops;
+}

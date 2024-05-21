@@ -28,6 +28,8 @@ extern "C" {
 #define QCA8075_PHY		0x004dd0b1
 #define QCA8072_PHY		0x004dd0b2
 #define QCA807X_MASK		0xfffffff0
+#define QCA8111_PHY		0x004dd1c0
+#define QCA81XX_MASK		0xfffffff0
 
 #define NSS_BIT(_n)		(1UL << (_n))
 #define EEE_100BASE_T		0x2
@@ -156,6 +158,7 @@ struct nss_phy_ops {
 };
 
 struct nss_phy_ops *qca807x_phy_ops_get(void);
+struct nss_phy_ops *qca81xx_phy_ops_get(void);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

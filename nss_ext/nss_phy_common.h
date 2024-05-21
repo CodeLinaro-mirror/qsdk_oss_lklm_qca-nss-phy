@@ -57,16 +57,10 @@ extern "C" {
 #define NSS_PHY_MMD31_NUM		0x1f
 
 /*MMD registers*/
-#define NSS_PHY_MMD1_PMA_CONTROL		0x0
-#define NSS_PHY_MMD1_PMA_TTYPE		0x7
 #define NSS_PHY_MMD3_8023AZ_EEE_CAPABILITY		0x14
-#define NSS_PHY_MMD3_8023AZ_EEE_CAPABILITY1		0x15
 #define NSS_PHY_MMD3_REMOTE_LOOPBACK_CTRL		0x805a
-#define NSS_PHY_MMD7_AN_CONTROL		0x0
 #define NSS_PHY_MMD7_8023AZ_EEE_CTRL		0x3c
 #define NSS_PHY_MMD7_8023AZ_EEE_PARTNER		0x3d
-#define NSS_PHY_MMD7_8023AZ_EEE_CTRL1		0x3e
-#define NSS_PHY_MMD7_8023AZ_EEE_PARTNER1		0x3f
 #define NSS_PHY_MMD7_8023AZ_EEE_STATUS		0x8000
 #define NSS_PHY_MMD7_LED_BLINK_FREQ_CTRL		0x8073
 #define NSS_PHY_MMD7_LED_POLARITY_CTRL		0x901a
@@ -85,6 +79,9 @@ extern "C" {
 #define NSS_PHY_MMD7_EEE_PARTNER_ADV_10000M		0x0008
 #define NSS_PHY_MMD7_EEE_STATUS_100M		0x0002
 #define NSS_PHY_MMD7_EEE_STATUS_1000M		0x0004
+#define NSS_PHY_MMD7_EEE_STATUS_2500M		0x0008
+#define NSS_PHY_MMD7_EEE_STATUS_5000M		0x0010
+#define NSS_PHY_MMD7_EEE_STATUS_10000M		0x0020
 #define NSS_PHY_MMD7_LINK_1000M_LIGHT_EN		0x40
 #define NSS_PHY_MMD7_LINK_100M_LIGHT_EN		0x20
 #define NSS_PHY_MMD7_LINK_10M_LIGHT_EN		0x10
@@ -131,8 +128,20 @@ int nss_phy_common_eee_partner_adv_get(struct nss_phy_device *nss_phydev,
 int nss_phy_common_eee_cap_get(struct nss_phy_device *nss_phydev, u32 *cap);
 int nss_phy_common_eee_status_get(struct nss_phy_device *nss_phydev,
 	u32 *status);
-int nss_phy_common_8023az_set(struct nss_phy_device *nss_phydev, bool enable);
-int nss_phy_common_8023az_get(struct nss_phy_device *nss_phydev, bool *enable);
+int nss_phy_common_ge_eee_adv_set(struct nss_phy_device *nss_phydev,
+	u32 adv);
+int nss_phy_common_ge_eee_adv_get(struct nss_phy_device *nss_phydev,
+	u32 *adv);
+int nss_phy_common_ge_eee_partner_adv_get(struct nss_phy_device *nss_phydev,
+	u32 *adv);
+int nss_phy_common_ge_eee_cap_get(struct nss_phy_device *nss_phydev,
+	u32 *cap);
+int nss_phy_common_ge_eee_status_get(struct nss_phy_device *nss_phydev,
+	u32 *status);
+int nss_phy_common_ge_8023az_set(struct nss_phy_device *nss_phydev,
+	bool enable);
+int nss_phy_common_ge_8023az_get(struct nss_phy_device *nss_phydev,
+	bool *enable);
 int nss_phy_common_reg_pages_sel(struct nss_phy_device *nss_phydev,
 	enum nss_phy_reg_pages phy_reg_pages);
 int nss_phy_common_local_loopback_set(struct nss_phy_device *nss_phydev,

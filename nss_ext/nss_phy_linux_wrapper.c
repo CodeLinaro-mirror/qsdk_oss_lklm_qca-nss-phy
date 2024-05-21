@@ -104,7 +104,7 @@ int nss_phy_modify_mmd(struct nss_phy_device *nss_phydev, int devad,
 	return phy_modify_mmd(nss_phydev->phydev, devad, reg, mask, set);
 }
 
-int __nss_phy_read_debug(struct nss_phy_device *nss_phydev,
+static int __nss_phy_c22_read_debug(struct nss_phy_device *nss_phydev,
 	u16 reg)
 {
 	int ret;
@@ -116,7 +116,27 @@ int __nss_phy_read_debug(struct nss_phy_device *nss_phydev,
 	return __nss_phy_read(nss_phydev, 30);
 }
 
-int __nss_phy_write_debug(struct nss_phy_device *nss_phydev,
+static int __nss_phy_c45_read_debug(struct nss_phy_device *nss_phydev,
+	u16 reg)
+{
+	int ret;
+
+	ret = __nss_phy_write_mmd(nss_phydev, 31, 29, reg);
+	if (ret < 0)
+		return ret;
+
+	return __nss_phy_read_mmd(nss_phydev, 31, 30);
+}
+
+int __nss_phy_read_debug(struct nss_phy_device *nss_phydev, u16 reg)
+{
+	if (nss_phydev->phydev->is_c45)
+		return __nss_phy_c45_read_debug(nss_phydev, reg);
+
+	return __nss_phy_c22_read_debug(nss_phydev, reg);
+}
+
+static int __nss_phy_c22_write_debug(struct nss_phy_device *nss_phydev,
 	u16 reg, u16 data)
 {
 	int ret;
@@ -128,8 +148,29 @@ int __nss_phy_write_debug(struct nss_phy_device *nss_phydev,
 	return __nss_phy_write(nss_phydev, 30, data);
 }
 
-int __nss_phy_modify_debug(struct nss_phy_device *nss_phydev,
-	u16 reg, u16 mask, u16 set)
+static int __nss_phy_c45_write_debug(struct nss_phy_device *nss_phydev,
+	u16 reg, u16 data)
+{
+	int ret;
+
+	ret = __nss_phy_write_mmd(nss_phydev, 31, 29, reg);
+	if (ret < 0)
+		return ret;
+
+	return __nss_phy_write_mmd(nss_phydev, 31, 30, data);
+}
+
+int __nss_phy_write_debug(struct nss_phy_device *nss_phydev, u16 reg,
+	u16 data)
+{
+	if (nss_phydev->phydev->is_c45)
+		return __nss_phy_c45_write_debug(nss_phydev, reg, data);
+
+	return __nss_phy_c22_write_debug(nss_phydev, reg, data);
+}
+
+int __nss_phy_modify_debug(struct nss_phy_device *nss_phydev, u16 reg,
+	u16 mask, u16 set)
 {
 	u16 new;
 	int ret;

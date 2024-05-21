@@ -101,19 +101,29 @@ int nss_phy_common_combo_prefer_medium_set(struct nss_phy_device *nss_phydev,
 int nss_phy_common_eee_adv_set(struct nss_phy_device *nss_phydev, u32 adv)
 {
 	u16 phy_data = 0;
-	int ret;
 
 	if (adv & EEE_100BASE_T)
 		phy_data |= NSS_PHY_MMD7_EEE_ADV_100M;
 	if (adv & EEE_1000BASE_T)
 		phy_data |= NSS_PHY_MMD7_EEE_ADV_1000M;
+	if (adv & EEE_10000BASE_T)
+		phy_data |= NSS_PHY_MMD7_EEE_ADV_10000M;
 
-	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
-		NSS_PHY_MMD7_8023AZ_EEE_CTRL, NSS_PHY_MMD7_EEE_MASK, phy_data);
+	return nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_8023AZ_EEE_CTRL, NSS_PHY_MMD7_EEE_MASK,
+		phy_data);
+}
+
+int nss_phy_common_ge_eee_adv_set(struct nss_phy_device *nss_phydev,
+	u32 adv)
+{
+	int ret;
+
+	ret = nss_phy_common_eee_adv_set(nss_phydev, (adv & GE_EEE));
 	if (ret < 0)
 		return ret;
 
-	nss_phydev_eee_update(nss_phydev, adv);
+	nss_phydev_eee_update(nss_phydev, (adv & GE_EEE));
 
 	return nss_phy_common_autoneg_restart(nss_phydev);
 }
@@ -130,6 +140,22 @@ int nss_phy_common_eee_adv_get(struct nss_phy_device *nss_phydev, u32 *adv)
 		*adv |= EEE_100BASE_T;
 	if (phy_data & NSS_PHY_MMD7_EEE_ADV_1000M)
 		*adv |= EEE_1000BASE_T;
+	if (phy_data & NSS_PHY_MMD7_EEE_ADV_10000M)
+		*adv |= EEE_10000BASE_T;
+
+	return 0;
+}
+
+int nss_phy_common_ge_eee_adv_get(struct nss_phy_device *nss_phydev,
+	u32 *adv)
+{
+	int ret;
+
+	ret = nss_phy_common_eee_adv_get(nss_phydev, adv);
+	if (ret < 0)
+		return ret;
+
+	*adv &= GE_EEE;
 
 	return 0;
 }
@@ -147,6 +173,22 @@ int nss_phy_common_eee_partner_adv_get(struct nss_phy_device *nss_phydev,
 		*adv |= EEE_100BASE_T;
 	if (phy_data & NSS_PHY_MMD7_EEE_PARTNER_ADV_1000M)
 		*adv |= EEE_1000BASE_T;
+	if (phy_data & NSS_PHY_MMD7_EEE_PARTNER_ADV_10000M)
+		*adv |= EEE_10000BASE_T;
+
+	return 0;
+}
+
+int nss_phy_common_ge_eee_partner_adv_get(struct nss_phy_device *nss_phydev,
+	u32 *adv)
+{
+	int ret;
+
+	ret = nss_phy_common_eee_partner_adv_get(nss_phydev, adv);
+	if (ret < 0)
+		return ret;
+
+	*adv &= GE_EEE;
 
 	return 0;
 }
@@ -163,9 +205,26 @@ int nss_phy_common_eee_cap_get(struct nss_phy_device *nss_phydev, u32 *cap)
 		*cap |= EEE_100BASE_T;
 	if (phy_data & NSS_PHY_MMD3_EEE_CAPABILITY_1000M)
 		*cap |= EEE_1000BASE_T;
+	if (phy_data & NSS_PHY_MMD3_EEE_CAPABILITY_10000M)
+		*cap |= EEE_10000BASE_T;
 
 	return 0;
 }
+
+int nss_phy_common_ge_eee_cap_get(struct nss_phy_device *nss_phydev,
+	u32 *cap)
+{
+	int ret;
+
+	ret = nss_phy_common_eee_cap_get(nss_phydev, cap);
+	if (ret < 0)
+		return ret;
+
+	*cap &= GE_EEE;
+
+	return 0;
+}
+
 int nss_phy_common_eee_status_get(struct nss_phy_device *nss_phydev,
 	u32 *status)
 {
@@ -179,29 +238,51 @@ int nss_phy_common_eee_status_get(struct nss_phy_device *nss_phydev,
 		*status |= EEE_100BASE_T;
 	if (phy_data & NSS_PHY_MMD7_EEE_STATUS_1000M)
 		*status |= EEE_1000BASE_T;
+	if (phy_data & NSS_PHY_MMD7_EEE_STATUS_2500M)
+		*status |= EEE_2500BASE_T;
+	if (phy_data & NSS_PHY_MMD7_EEE_STATUS_5000M)
+		*status |= EEE_5000BASE_T;
+	if (phy_data & NSS_PHY_MMD7_EEE_STATUS_10000M)
+		*status |= EEE_10000BASE_T;
 
 	return 0;
 }
 
-int nss_phy_common_8023az_set(struct nss_phy_device *nss_phydev, bool enable)
+int nss_phy_common_ge_eee_status_get(struct nss_phy_device *nss_phydev,
+	u32 *status)
+{
+	int ret;
+
+	ret = nss_phy_common_eee_status_get(nss_phydev, status);
+	if (ret < 0)
+		return ret;
+
+	*status &= GE_EEE;
+
+	return 0;
+}
+
+int nss_phy_common_ge_8023az_set(struct nss_phy_device *nss_phydev,
+	bool enable)
 {
 	u32 eee_adv = 0;
 
 	if (enable == true)
-		eee_adv = ALL_SPEED_EEE;
+		eee_adv = GE_EEE;
 
-	return nss_phy_common_eee_adv_set(nss_phydev, eee_adv);
+	return nss_phy_common_ge_eee_adv_set(nss_phydev, eee_adv);
 }
 
-int nss_phy_common_8023az_get(struct nss_phy_device *nss_phydev, bool *enable)
+int nss_phy_common_ge_8023az_get(struct nss_phy_device *nss_phydev,
+	bool *enable)
 {
 	u32 eee_adv = 0, eee_cap = 0;
 	int ret = 0;
 
-	ret = nss_phy_common_eee_adv_get(nss_phydev, &eee_adv);
+	ret = nss_phy_common_ge_eee_adv_get(nss_phydev, &eee_adv);
 	if (ret < 0)
 		return ret;
-	ret = nss_phy_common_eee_cap_get(nss_phydev, &eee_cap);
+	ret = nss_phy_common_ge_eee_cap_get(nss_phydev, &eee_cap);
 	if (ret < 0)
 		return ret;
 
