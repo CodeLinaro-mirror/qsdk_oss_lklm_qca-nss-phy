@@ -643,3 +643,19 @@ int nss_phy_common_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 
 	return ret;
 }
+
+u32 nss_phy_common_reset_done(struct nss_phy_device *nss_phydev)
+{
+	u16 phy_data;
+	u16 ii = 200;
+
+	do {
+		phy_data = nss_phy_read(nss_phydev, NSS_PHY_CONTROL);
+			nss_phy_mdelay(10);
+	} while ((phy_data & NSS_PHY_SOFT_RESET) && --ii);
+
+	if (ii == 0)
+		return NSS_PHY_FALSE;
+
+	return !NSS_PHY_FALSE;
+}

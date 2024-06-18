@@ -190,6 +190,7 @@ int nss_phy_common_cdt_status_get(struct nss_phy_device *nss_phydev,
 	u32 mdi_pair, enum nss_phy_cable_status *cable_status, u32 *cable_len);
 int nss_phy_common_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 	enum nss_phy_cable_status *cable_status, u32 *cable_len);
+u32 nss_phy_common_reset_done(struct nss_phy_device *nss_phydev);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

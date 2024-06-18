@@ -18,6 +18,8 @@
 #include "qca807x_phy.h"
 #include "qca81xx_phy.h"
 #include "qca808x_phy.h"
+#include "qca803x_phy.h"
+#include "qca833x_phy.h"
 
 #define NSS_PHY_DRV_NUM		6
 static struct nss_phy_ops *g_ops[NSS_PHY_DRV_NUM] = { NULL };
@@ -132,6 +134,11 @@ static int nss_phy_ops_init(struct phy_device *phydev)
 		ret = qca81xx_phy_ops_init(ops);
 	else if (nss_phydev_id_compare(phydev, QCA8084_PHY, QCA808X_MASK))
 		ret = qca808x_phy_ops_init(ops);
+	else if (nss_phydev_id_compare(phydev, QCA8033_PHY, QCA803X_MASK))
+		ret = qca803x_phy_ops_init(ops);
+	else if (nss_phydev_id_compare(phydev, QCA8337_PHY_V4,
+		QCA8337_PHY_MASK))
+		ret = qca833x_phy_ops_init(ops);
 	else
 		ret = -NSS_PHY_EOPNOTSUPP;
 

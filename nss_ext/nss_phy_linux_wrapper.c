@@ -316,6 +316,11 @@ int nss_phydev_speed_get(struct nss_phy_device *nss_phydev)
 	return nss_phydev->phydev->speed;
 }
 
+int nss_phydev_link_get(struct nss_phy_device *nss_phydev)
+{
+	return nss_phydev->phydev->link;
+}
+
 int nss_phydev_autoneg_update(struct nss_phy_device *nss_phydev, u32 enable)
 {
 	nss_phydev->phydev->autoneg = enable;

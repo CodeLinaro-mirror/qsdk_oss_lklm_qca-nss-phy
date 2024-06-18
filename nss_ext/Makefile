@@ -12,4 +12,6 @@ $(TARGET)-objs := \
 	nss_phy_c45_common.o	\
 	qca81xx_phy.o	\
 	qca808x_phy.o	\
-	qca8084_pinctrl.o
+	qca8084_pinctrl.o	\
+	qca803x_phy.o	\
+	qca833x_phy.o
