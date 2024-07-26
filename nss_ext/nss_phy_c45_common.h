@@ -64,19 +64,19 @@ int nss_phy_c45_common_eee_partner_adv_get(struct nss_phy_device *nss_phydev,
 int nss_phy_c45_common_eee_cap_get(struct nss_phy_device *nss_phydev,
 	u32 *cap);
 int nss_phy_c45_common_8023az_set(struct nss_phy_device *nss_phydev,
-	bool enable);
+	u32 enable);
 int nss_phy_c45_common_8023az_get(struct nss_phy_device *nss_phydev,
-	bool *enable);
+	u32 *enable);
 int nss_phy_c45_common_autoneg_set(struct nss_phy_device *nss_phydev,
-	bool enable);
+	u32 enable);
 int nss_phy_c45_common_force_speed_set(struct nss_phy_device *nss_phydev);
 int
 nss_phy_c45_common_local_loopback_set(struct nss_phy_device *nss_phydev,
-	bool enable);
+	u32 enable);
 int nss_phy_c45_common_local_loopback_get(struct nss_phy_device *nss_phydev,
-	bool *enable);
+	u32 *enable);
 int nss_phy_c45_common_fifo_reset(struct nss_phy_device *nss_phydev,
-	bool enable);
+	u32 enable);
 int nss_phy_c45_common_autoneg_restart(struct nss_phy_device *nss_phydev);
 #ifdef __cplusplus
 }

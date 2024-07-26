@@ -10,4 +10,6 @@ $(TARGET)-objs := \
 	nss_phy_linux.o	\
 	qca807x_phy.o	\
 	nss_phy_c45_common.o	\
-	qca81xx_phy.o
+	qca81xx_phy.o	\
+	qca808x_phy.o	\
+	qca8084_pinctrl.o

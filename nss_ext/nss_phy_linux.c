@@ -15,6 +15,9 @@
  */
 
 #include "nss_phy.h"
+#include "qca807x_phy.h"
+#include "qca81xx_phy.h"
+#include "qca808x_phy.h"
 
 #define NSS_PHY_DRV_NUM		6
 static struct nss_phy_ops *g_ops[NSS_PHY_DRV_NUM] = { NULL };
@@ -83,7 +86,7 @@ static int nss_phy_base_addr_get(struct phy_device *phydev)
 		ret = nss_phy_id_get(phydev, addr, &phy_id);
 		if (ret < 0)
 			return ret;
-		if (nss_phydev_id_compare(phydev, phy_id, GENMASK(31, 0)))
+		if (nss_phydev_id_compare(phydev, phy_id, QCA_PHY_EXACT_MASK))
 			base_addr = addr;
 		else
 			break;
@@ -111,23 +114,37 @@ static int nss_phy_base_addr_init(struct phy_device *phydev)
 
 static int nss_phy_ops_init(struct phy_device *phydev)
 {
+	int ret;
 	struct nss_phy_ops *ops = NULL;
 
-	if (nss_phydev_id_compare(phydev, QCA8075_PHY, QCA807X_MASK))
-		ops = qca807x_phy_ops_get();
-	else if (nss_phydev_id_compare(phydev, QCA8111_PHY, QCA81XX_MASK))
-		ops = qca81xx_phy_ops_get();
+	if (phydev->drv->driver_data)
+		return 0;
 
-	if (ops) {
-		if (!(phydev->drv->driver_data))
-			phydev->drv->driver_data = ops;
-		else
-			phydev_warn(phydev, "driver_data have been init\n");
-
-		return nss_phy_ops_add(ops);
+	ops = nss_phy_kzalloc(sizeof(struct nss_phy_ops));
+	if (!ops) {
+		phydev_err(phydev, "nss phy ops kzalloc failed!\n");
+		return -NSS_PHY_ENOSPC;
 	}
 
-	return NSS_PHY_EOPNOTSUPP;
+	if (nss_phydev_id_compare(phydev, QCA8075_PHY, QCA807X_MASK))
+		ret = qca807x_phy_ops_init(ops);
+	else if (nss_phydev_id_compare(phydev, QCA8111_PHY, QCA81XX_MASK))
+		ret = qca81xx_phy_ops_init(ops);
+	else if (nss_phydev_id_compare(phydev, QCA8084_PHY, QCA808X_MASK))
+		ret = qca808x_phy_ops_init(ops);
+	else
+		ret = -NSS_PHY_EOPNOTSUPP;
+
+	if (ret < 0) {
+		phydev_err(phydev, "nss phy ops init failed\n");
+		kfree(ops);
+		ops = NULL;
+		return ret;
+	}
+
+	phydev->drv->driver_data = ops;
+
+	return nss_phy_ops_add(ops);
 }
 
 static int nss_phy_match_phy_device(struct phy_device *phydev)
@@ -204,6 +221,18 @@ struct phy_driver nss_phy_driver = {
 	.resume = nss_phy_resume,
 };
 
+static int nss_phy_fixup(struct phy_device *phydev)
+{
+	struct nss_phy_device nss_phydev = {0};
+	int ret = 0;
+
+	nss_phydev.phydev = phydev;
+	if (nss_phydev_id_compare(phydev, QCA8084_PHY, QCA_PHY_EXACT_MASK))
+		ret = qca8084_phy_fixup(&nss_phydev);
+
+	return ret;
+}
+
 static int __init nss_phy_module_init(void)
 {
 	int ret = 0;
@@ -212,6 +241,9 @@ static int __init nss_phy_module_init(void)
 	if (!ret)
 		pr_info("nss phy driver register successfully\n");
 
+	ret = phy_register_fixup_for_uid(QCA_PHY_ID, QCA_PHY_MASK,
+		nss_phy_fixup);
+
 	return ret;
 }
 
@@ -219,6 +251,7 @@ static void __exit nss_phy_module_exit(void)
 {
 	nss_phy_ops_free();
 	phy_driver_unregister(&nss_phy_driver);
+	phy_unregister_fixup_for_uid(QCA_PHY_ID, QCA_PHY_MASK);
 }
 
 module_init(nss_phy_module_init);

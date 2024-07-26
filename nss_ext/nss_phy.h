@@ -22,6 +22,7 @@ extern "C" {
 #endif				/* __cplusplus */
 #include "nss_phy_lib.h"
 
+#define QCA_PHY_EXACT_MASK		0xffffffff
 #define QCA_PHY_ID		0x004dd000
 #define QCA_PHY_MASK		0xfffff000
 #define QCA_PHY_MATCH(phy_id)		((phy_id & QCA_PHY_MASK) == QCA_PHY_ID)
@@ -32,8 +33,10 @@ extern "C" {
 #define QCA81XX_MASK		0xfffffff0
 #define QCA8081_PHY		0x004dd101
 #define QCA8084_PHY		0x004dd180
+#define QCA808X_MASK		0xffffff00
 
 #define NSS_BIT(_n)		(1UL << (_n))
+#define NSS_PHY_FALSE		0
 #define EEE_100BASE_T		0x2
 #define EEE_1000BASE_T		0x4
 #define EEE_2500BASE_T		0x8
@@ -146,11 +149,72 @@ struct nss_phy_stats_info {
 	u64 TxBadCRC;
 };
 
+enum NSS_PHY_PIN_DRV_STRENGTH {
+	DRV_STRENGTH_2_MA,
+	DRV_STRENGTH_4_MA,
+	DRV_STRENGTH_6_MA,
+	DRV_STRENGTH_8_MA,
+	DRV_STRENGTH_10_MA,
+	DRV_STRENGTH_12_MA,
+	DRV_STRENGTH_14_MA,
+	DRV_STRENGTH_16_MA,
+};
+
+enum NSS_PHY_PIN_PARAM {
+	PULL_DISABLE,/*Disables all pull*/
+	PULL_DOWN,
+	PULL_BUS_HOLD,/*Weak Keepers*/
+	PULL_UP,
+};
+
+/****************************************************************************
+ *
+ *  2) PINs Functions Selection  GPIO_CFG[5:2] (FUNC_SEL)
+ *
+ ****************************************************************************/
+struct nss_phy_pinctrl_mux {
+	u32 pin;
+	u32 func;
+};
+
+struct nss_phy_pinctrl_configs {
+	u32 pin;
+	u32 num_configs;
+	u_long *configs;
+};
+
+struct nss_phy_pinctrl_setting {
+	enum nss_phy_pinctrl_map_type type;
+	union {
+		struct nss_phy_pinctrl_mux mux;
+		struct nss_phy_pinctrl_configs configs;
+	} data;
+};
+
+#define NSS_PHY_PIN_SETTING_MUX(pin_id, function)	\
+{								\
+	.type = NSS_PHY_PIN_MAP_TYPE_MUX_GROUP,	\
+	.data.mux = {						\
+		.pin = pin_id,					\
+		.func = function				\
+	},							\
+}
+
+#define NSS_PHY_PIN_SETTING_CONFIG(pin_id, cfgs)	\
+{								\
+	.type = NSS_PHY_PIN_MAP_TYPE_CONFIGS_PIN,	\
+	.data.configs = {						\
+		.pin = pin_id,					\
+		.configs = cfgs,				\
+		.num_configs = ARRAY_SIZE(cfgs)				\
+	},							\
+}
+
 struct nss_phy_ops {
 	int (*hibernation_set)(struct nss_phy_device *nss_phydev, u32 enable);
 	int (*hibernation_get)(struct nss_phy_device *nss_phydev, u32 *enable);
-	int (*powersave_set)(struct nss_phy_device *nss_phydev, bool enable);
-	int (*powersave_get)(struct nss_phy_device *nss_phydev, bool *enable);
+	int (*powersave_set)(struct nss_phy_device *nss_phydev, u32 enable);
+	int (*powersave_get)(struct nss_phy_device *nss_phydev, u32 *enable);
 	int (*function_reset)(struct nss_phy_device *nss_phydev,
 		enum nss_phy_reset reset_type);
 	int (*interface_set)(struct nss_phy_device *nss_phydev,
@@ -162,16 +226,16 @@ struct nss_phy_ops {
 	int (*eee_partner_adv_get)(struct nss_phy_device *nss_phydev, u32 *adv);
 	int (*eee_cap_get)(struct nss_phy_device *nss_phydev, u32 *cap);
 	int (*eee_status_get)(struct nss_phy_device *nss_phydev, u32 *status);
-	int (*ieee_8023az_set)(struct nss_phy_device *nss_phydev, bool enable);
-	int (*ieee_8023az_get)(struct nss_phy_device *nss_phydev, bool *enable);
+	int (*ieee_8023az_set)(struct nss_phy_device *nss_phydev, u32 enable);
+	int (*ieee_8023az_get)(struct nss_phy_device *nss_phydev, u32 *enable);
 	int (*local_loopback_set)(struct nss_phy_device *nss_phydev,
-		bool enable);
+		u32 enable);
 	int (*local_loopback_get)(struct nss_phy_device *nss_phydev,
-		bool *enable);
+		u32 *enable);
 	int (*remote_loopback_set)(struct nss_phy_device *nss_phydev,
-		bool enable);
+		u32 enable);
 	int (*remote_loopback_get)(struct nss_phy_device *nss_phydev,
-		bool *enable);
+		u32 *enable);
 	int (*combo_prefer_medium_set)(struct nss_phy_device *nss_phydev,
 		enum nss_phy_medium phy_medium);
 	int (*combo_prefer_medium_get)(struct nss_phy_device *nss_phydev,
@@ -188,11 +252,11 @@ struct nss_phy_ops {
 		u32 source_id, struct nss_phy_led_pattern_ctrl *pattern);
 	int (*pll_on)(struct nss_phy_device *nss_phydev);
 	int (*pll_off)(struct nss_phy_device *nss_phydev);
-	int (*ldo_set)(struct nss_phy_device *nss_phydev, bool enable);
+	int (*ldo_set)(struct nss_phy_device *nss_phydev, u32 enable);
 	int (*cdt)(struct nss_phy_device *nss_phydev, u32 pair,
 		enum nss_phy_cable_status *cable_status, u32 *cable_len);
-	int (*wol_set)(struct nss_phy_device *nss_phydev, bool enable);
-	int (*wol_get)(struct nss_phy_device *nss_phydev, bool *enable);
+	int (*wol_set)(struct nss_phy_device *nss_phydev, u32 enable);
+	int (*wol_get)(struct nss_phy_device *nss_phydev, u32 *enable);
 	int (*magic_frame_set)(struct nss_phy_device *nss_phydev,
 		struct nss_phy_mac *mac);
 	int (*magic_frame_get)(struct nss_phy_device *nss_phydev,
@@ -203,8 +267,8 @@ struct nss_phy_ops {
 		enum nss_phy_mdix_mode *mode);
 	int (*mdix_status_get)(struct nss_phy_device *nss_phydev,
 		enum nss_phy_mdix_status *mode);
-	int (*stats_status_set)(struct nss_phy_device *nss_phydev, bool enable);
-	int (*stats_status_get)(struct nss_phy_device *nss_phydev, bool *enable);
+	int (*stats_status_set)(struct nss_phy_device *nss_phydev, u32 enable);
+	int (*stats_status_get)(struct nss_phy_device *nss_phydev, u32 *enable);
 	int (*stats_get)(struct nss_phy_device *nss_phydev,
 		struct nss_phy_stats_info *cnt);
 	int (*intr_mask_set)(struct nss_phy_device *nss_phydev, u32 mask);
@@ -227,9 +291,6 @@ struct nss_phy_ops {
 	int (*phyid_get)(struct nss_phy_device *nss_phydev, u16 *org_id, u16 *rev_id);
 	int (*link_status_get)(struct nss_phy_device *nss_phydev, u32 status);
 };
-
-struct nss_phy_ops *qca807x_phy_ops_get(void);
-struct nss_phy_ops *qca81xx_phy_ops_get(void);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

@@ -114,13 +114,15 @@ int nss_phy_common_hibernation_set(struct nss_phy_device *nss_phydev,
 int nss_phy_common_hibernation_get(struct nss_phy_device *nss_phydev,
 	u32 *enable);
 int nss_phy_common_powersave_set(struct nss_phy_device *nss_phydev,
-	bool enable);
+	u32 enable);
 int nss_phy_common_powersave_get(struct nss_phy_device *nss_phydev,
-	bool *enable);
+	u32 *enable);
 int nss_phy_common_combo_prefer_medium_get(struct nss_phy_device *nss_phydev,
 	enum nss_phy_medium *phy_medium);
 int nss_phy_common_combo_prefer_medium_set(struct nss_phy_device *nss_phydev,
 	enum nss_phy_medium phy_medium);
+int nss_phy_combo_medium_status_get(struct nss_phy_device *nss_phydev,
+	enum nss_phy_medium *phy_medium);
 int nss_phy_common_eee_adv_set(struct nss_phy_device *nss_phydev, u32 adv);
 int nss_phy_common_eee_adv_get(struct nss_phy_device *nss_phydev, u32 *adv);
 int nss_phy_common_eee_partner_adv_get(struct nss_phy_device *nss_phydev,
@@ -128,30 +130,20 @@ int nss_phy_common_eee_partner_adv_get(struct nss_phy_device *nss_phydev,
 int nss_phy_common_eee_cap_get(struct nss_phy_device *nss_phydev, u32 *cap);
 int nss_phy_common_eee_status_get(struct nss_phy_device *nss_phydev,
 	u32 *status);
-int nss_phy_common_ge_eee_adv_set(struct nss_phy_device *nss_phydev,
-	u32 adv);
-int nss_phy_common_ge_eee_adv_get(struct nss_phy_device *nss_phydev,
-	u32 *adv);
-int nss_phy_common_ge_eee_partner_adv_get(struct nss_phy_device *nss_phydev,
-	u32 *adv);
-int nss_phy_common_ge_eee_cap_get(struct nss_phy_device *nss_phydev,
-	u32 *cap);
-int nss_phy_common_ge_eee_status_get(struct nss_phy_device *nss_phydev,
-	u32 *status);
-int nss_phy_common_ge_8023az_set(struct nss_phy_device *nss_phydev,
-	bool enable);
-int nss_phy_common_ge_8023az_get(struct nss_phy_device *nss_phydev,
-	bool *enable);
+int nss_phy_common_8023az_set(struct nss_phy_device *nss_phydev,
+	u32 enable);
+int nss_phy_common_8023az_get(struct nss_phy_device *nss_phydev,
+	u32 *enable);
 int nss_phy_common_reg_pages_sel(struct nss_phy_device *nss_phydev,
 	enum nss_phy_reg_pages phy_reg_pages);
 int nss_phy_common_local_loopback_set(struct nss_phy_device *nss_phydev,
-	bool enable);
+	u32 enable);
 int nss_phy_common_local_loopback_get(struct nss_phy_device *nss_phydev,
-	bool *enable);
+	u32 *enable);
 int nss_phy_common_remote_loopback_set(struct nss_phy_device *nss_phydev,
-	bool enable);
+	u32 enable);
 int nss_phy_common_remote_loopback_get(struct nss_phy_device *nss_phydev,
-	bool *enable);
+	u32 *enable);
 int nss_phy_common_combo_fiber_mode_set(struct nss_phy_device *nss_phydev,
 	enum nss_phy_fiber_mode fiber_mode);
 int nss_phy_common_combo_fiber_mode_get(struct nss_phy_device *nss_phydev,
@@ -172,11 +164,13 @@ int nss_phy_common_led_blink_freq_set(struct nss_phy_device *nss_phydev,
 	u32 mode, u32 freq);
 int nss_phy_common_led_blink_freq_get(struct nss_phy_device *nss_phydev,
 	u32 mode, u32 *freq);
-int nss_phy_common_fifo_reset(struct nss_phy_device *nss_phydev, bool enable);
+int nss_phy_common_fifo_reset(struct nss_phy_device *nss_phydev, u32 enable);
 int nss_phy_common_soft_reset(struct nss_phy_device *nss_phydev);
 int nss_phy_common_function_reset(struct nss_phy_device *nss_phydev,
 	enum nss_phy_reset reset_type);
 int nss_phy_common_autoneg_restart(struct nss_phy_device *nss_phydev);
+int nss_phy_common_autoneg_set(struct nss_phy_device *nss_phydev,
+	u32 enable);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

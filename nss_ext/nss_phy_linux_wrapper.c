@@ -238,6 +238,7 @@ int nss_phy_share_addr_get(struct nss_phy_device *nss_phydev)
 
 	return 0;
 }
+
 int __nss_phy_read_package(struct nss_phy_device *nss_phydev,
 	int addr_offset, u16 reg)
 {
@@ -315,7 +316,7 @@ int nss_phydev_speed_get(struct nss_phy_device *nss_phydev)
 	return nss_phydev->phydev->speed;
 }
 
-int nss_phydev_autoneg_update(struct nss_phy_device *nss_phydev, bool enable)
+int nss_phydev_autoneg_update(struct nss_phy_device *nss_phydev, u32 enable)
 {
 	nss_phydev->phydev->autoneg = enable;
 
@@ -338,4 +339,116 @@ int nss_phydev_eee_update(struct nss_phy_device *nss_phydev, u32 adv)
 		nss_phydev->phydev->advertising_eee, adv & EEE_10000BASE_T);
 
 	return 0;
+}
+
+int nss_phy_package_read_mmd(struct nss_phy_device *nss_phydev,
+	unsigned int addr_offset, int devad, u32 regnum)
+{
+	int addr = 0;
+
+	addr = nss_phy_share_addr_get(nss_phydev) + addr_offset;
+
+	if (addr < 0)
+		return addr;
+
+	return mdiobus_c45_read(nss_phydev->phydev->mdio.bus, addr,
+		devad, regnum);
+
+}
+
+int nss_phy_package_modify_mmd(struct nss_phy_device *nss_phydev,
+	unsigned int addr_offset, int devad, u32 regnum, u16 mask, u16 set)
+{
+	int new, ret;
+	int addr = 0;
+
+	addr = nss_phy_share_addr_get(nss_phydev) + addr_offset;
+
+	phy_lock_mdio_bus(nss_phydev->phydev);
+	ret = __mdiobus_c45_read(nss_phydev->phydev->mdio.bus, addr, devad,
+		regnum);
+	new = (ret & ~mask) | set;
+	ret |= __mdiobus_c45_write(nss_phydev->phydev->mdio.bus, addr, devad,
+		regnum, new);
+	phy_unlock_mdio_bus(nss_phydev->phydev);
+
+	return ret;
+}
+
+bool nss_phy_support_2500(struct nss_phy_device *nss_phydev)
+{
+	return (linkmode_test_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT,
+		nss_phydev->phydev->advertising) &&
+		(linkmode_test_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT,
+		nss_phydev->phydev->supported)));
+}
+
+bool nss_phy_is_fiber(struct nss_phy_device *nss_phydev)
+{
+	return (nss_phydev->phydev->port == PORT_FIBRE);
+}
+
+u32 __nss_phy_read_soc(struct nss_phy_device *nss_phydev, u32 reg)
+{
+	struct nss_phy_linux_mdio_data *mdio_priv;
+
+	mdio_priv = nss_phydev->phydev->mdio.bus->priv;
+
+	return mdio_priv->sw_read(nss_phydev->phydev->mdio.bus, reg);
+}
+
+int __nss_phy_write_soc(struct nss_phy_device *nss_phydev, u32 reg, u32 val)
+{
+	struct nss_phy_linux_mdio_data *mdio_priv;
+
+	mdio_priv = nss_phydev->phydev->mdio.bus->priv;
+
+	mdio_priv->sw_write(nss_phydev->phydev->mdio.bus, reg, val);
+
+	return 0;
+}
+
+int __nss_phy_modify_soc(struct nss_phy_device *nss_phydev, u32 reg,
+	u32 mask, u32 set)
+{
+	int val, new;
+
+	val = __nss_phy_read_soc(nss_phydev, reg);
+	new = (val & ~mask) | set;
+	if (new == val)
+		return 0;
+
+	return __nss_phy_write_soc(nss_phydev, reg, new);
+}
+
+u32 nss_phy_read_soc(struct nss_phy_device *nss_phydev, u32 reg)
+{
+	int val;
+
+	phy_lock_mdio_bus(nss_phydev->phydev);
+	val = __nss_phy_read_soc(nss_phydev, reg);
+	phy_unlock_mdio_bus(nss_phydev->phydev);
+
+	return val;
+}
+
+int nss_phy_write_soc(struct nss_phy_device *nss_phydev, u32 reg, u32 val)
+{
+	phy_lock_mdio_bus(nss_phydev->phydev);
+	__nss_phy_write_soc(nss_phydev, reg, val);
+	phy_unlock_mdio_bus(nss_phydev->phydev);
+
+	return 0;
+}
+
+int nss_phy_modify_soc(struct nss_phy_device *nss_phydev, u32 reg,
+	u32 mask, u32 set)
+{
+	int ret;
+
+	phy_lock_mdio_bus(nss_phydev->phydev);
+	ret = __nss_phy_modify_soc(nss_phydev, reg, mask, set);
+	phy_unlock_mdio_bus(nss_phydev->phydev);
+
+	return ret;
 }

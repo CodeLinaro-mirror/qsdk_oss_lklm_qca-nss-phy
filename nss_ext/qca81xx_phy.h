@@ -27,6 +27,8 @@ extern "C"
 
 /*MMD registers field*/
 #define QCA81XX_PHY_MMD31_AUTO_SOFT_RESET		0x8000
+
+int qca81xx_phy_ops_init(struct nss_phy_ops *ops);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

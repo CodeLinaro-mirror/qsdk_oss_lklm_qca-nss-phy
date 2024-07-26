@@ -60,43 +60,7 @@ enum qca807x_phy_addr_offset {
 #define QCA807X_PHY_MMD7_AUTO_DETECTION_EN		1
 #define QCA807X_PHY_MMD7_AUTO_DETECTION_1000BX		0x8
 
-int qca807x_phy_powersave_set(struct nss_phy_device *nss_phy_device,
-	bool enable);
-int qca807x_phy_powersave_get(struct nss_phy_device *nss_phy_device,
-	bool *enable);
-int qca807x_phy_function_reset(struct nss_phy_device *nss_phydev,
-	enum nss_phy_reset reset_type);
-int qca807x_phy_interface_set(struct nss_phy_device *nss_phydev,
-	nss_phy_interface_t interface);
-int qca807x_phy_interface_get(struct nss_phy_device *nss_phydev,
-	nss_phy_interface_t *interface);
-int qca807x_phy_eee_adv_set(struct nss_phy_device *nss_phydev, u32 adv);
-int qca807x_phy_eee_adv_get(struct nss_phy_device *nss_phydev, u32 *adv);
-int qca807x_phy_eee_partner_adv_get(struct nss_phy_device *nss_phydev,
-	u32 *adv);
-int qca807x_phy_eee_cap_get(struct nss_phy_device *nss_phydev, u32 *cap);
-int qca807x_phy_eee_status_get(struct nss_phy_device *nss_phydev,
-	u32 *status);
-int qca807x_phy_8023az_set(struct nss_phy_device *nss_phydev, bool enable);
-int qca807x_phy_8023az_get(struct nss_phy_device *nss_phydev, bool *enable);
-int qca807x_phy_local_loopback_set(struct nss_phy_device *nss_phydev,
-	bool enable);
-int qca807x_phy_local_loopback_get(struct nss_phy_device *nss_phydev,
-	bool *enable);
-int qca807x_phy_combo_prefer_medium_set(struct nss_phy_device *nss_phydev,
-	enum nss_phy_medium phy_medium);
-int qca807x_phy_combo_prefer_medium_get(struct nss_phy_device *nss_phydev,
-	enum nss_phy_medium *phy_medium);
-int qca807x_phy_combo_medium_status_get(struct nss_phy_device *nss_phydev,
-	enum nss_phy_medium *phy_medium);
-int qca807x_phy_combo_fiber_mode_set(struct nss_phy_device *nss_phydev,
-	enum nss_phy_fiber_mode fiber_mode);
-int qca807x_phy_combo_fiber_mode_get(struct nss_phy_device *nss_phydev,
-	enum nss_phy_fiber_mode *fiber_mode);
-int qca807x_phy_led_ctrl_source_set(struct nss_phy_device *nss_phydev,
-	u32 source_id, struct nss_phy_led_pattern_ctrl *pattern);
-int qca807x_phy_led_ctrl_source_get(struct nss_phy_device *nss_phydev,
-	u32 source_id, struct nss_phy_led_pattern_ctrl *pattern);
+int qca807x_phy_ops_init(struct nss_phy_ops *ops);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

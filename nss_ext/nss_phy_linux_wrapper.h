@@ -22,19 +22,20 @@ extern "C" {
 #endif				/* __cplusplus */
 
 #include <linux/phy.h>
+#include <linux/pinctrl/pinconf-generic.h>
 
 struct nss_phy_device {
 	struct phy_device *phydev;
 };
 
 #define nss_phy_err(nss_phydev, format, args...)	\
-	(phydev_err(nss_phydev->phydev, format, ##args))
+	phydev_err(nss_phydev->phydev, format, ##args)
 #define nss_phy_info(nss_phydev, format, args...)	\
-	(phydev_info(nss_phydev->phydev, format, ##args))
+	phydev_info(nss_phydev->phydev, format, ##args)
 #define nss_phy_warn(nss_phydev, format, args...)	\
-	(phydev_warn(nss_phydev->phydev, format, ##args))
+	phydev_warn(nss_phydev->phydev, format, ##args)
 #define nss_phy_dbg(nss_phydev, format, args...)	\
-	(phydev_dbg(nss_phydev->phydev, format, ##args))
+	phydev_dbg(nss_phydev->phydev, format, ##args)
 #define nss_phy_pr_info		pr_info
 
 #define NSS_PHY_EOPNOTSUPP		EOPNOTSUPP
@@ -69,6 +70,39 @@ struct nss_phy_device {
 #define NSS_PHY_SPEED_2500		SPEED_2500
 #define NSS_PHY_SPEED_5000		SPEED_5000
 #define NSS_PHY_SPEED_10000		SPEED_10000
+
+#define nss_phy_pinctrl_map_type	pinctrl_map_type
+#define NSS_PHY_PIN_MAP_TYPE_INVALID	PIN_MAP_TYPE_INVALID
+#define NSS_PHY_PIN_MAP_TYPE_DUMMY_STATED	PIN_MAP_TYPE_DUMMY_STATE
+#define NSS_PHY_PIN_MAP_TYPE_MUX_GROUP	PIN_MAP_TYPE_MUX_GROUP
+#define NSS_PHY_PIN_MAP_TYPE_CONFIGS_PIN	PIN_MAP_TYPE_CONFIGS_PIN
+#define NSS_PHY_PIN_MAP_TYPE_CONFIGS_GROUP	PIN_MAP_TYPE_CONFIGS_GROUP
+
+#define nss_phy_pin_config_param	pin_config_param
+#define NSS_PHY_PIN_CONFIG_BIAS_BUS_HOLD	PIN_CONFIG_BIAS_BUS_HOLD
+#define NSS_PHY_PIN_CONFIG_BIAS_DISABLE	PIN_CONFIG_BIAS_DISABLE
+#define NSS_PHY_PIN_CONFIG_BIAS_PULL_DOWN	PIN_CONFIG_BIAS_PULL_DOWN
+#define NSS_PHY_PIN_CONFIG_BIAS_PULL_UP	PIN_CONFIG_BIAS_PULL_UP
+#define NSS_PHY_PIN_CONFIG_DRIVE_STRENGTH	PIN_CONFIG_DRIVE_STRENGTH
+#define NSS_PHY_PIN_CONFIG_OUTPUT_ENABLE	PIN_CONFIG_OUTPUT_ENABLE
+#define NSS_PHY_PIN_CONFIG_INPUT_ENABLE	PIN_CONFIG_INPUT_ENABLE
+#define NSS_PHY_PIN_CONFIG_OUTPUT	PIN_CONFIG_OUTPUT
+
+#define nss_phy_pinconf_to_config_param	pinconf_to_config_param
+#define nss_phy_pinconf_to_config_argument	pinconf_to_config_argument
+
+struct nss_phy_linux_mdio_data {
+	void __iomem *membase[2];
+	void __iomem *eth_ldo_rdy[3];
+	int clk_div;
+	bool force_c22;
+	struct gpio_descs *reset_gpios;
+	void (*preinit)(struct mii_bus *bus);
+	u32 (*sw_read)(struct mii_bus *bus, u32 reg);
+	void (*sw_write)(struct mii_bus *bus, u32 reg, u32 val);
+	struct clk *clk[];
+};
+
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

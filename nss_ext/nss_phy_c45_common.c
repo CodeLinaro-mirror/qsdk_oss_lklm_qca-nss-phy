@@ -22,10 +22,19 @@ int nss_phy_c45_common_eee_adv_set(struct nss_phy_device *nss_phydev,
 	u16 phy_data = 0;
 	int ret;
 
-	ret = nss_phy_common_eee_adv_set(nss_phydev, adv);
+	if (adv & EEE_100BASE_T)
+		phy_data |= NSS_PHY_MMD7_EEE_ADV_100M;
+	if (adv & EEE_1000BASE_T)
+		phy_data |= NSS_PHY_MMD7_EEE_ADV_1000M;
+	if (adv & EEE_10000BASE_T)
+		phy_data |= NSS_PHY_MMD7_EEE_ADV_10000M;
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_8023AZ_EEE_CTRL, NSS_PHY_MMD7_EEE_MASK,
+		phy_data);
 	if (ret < 0)
 		return ret;
 
+	phy_data = 0;
 	if (adv & EEE_2500BASE_T)
 		phy_data |= NSS_PHY_MMD7_EEE_ADV_2500M;
 	if (adv & EEE_5000BASE_T)
@@ -43,11 +52,16 @@ int nss_phy_c45_common_eee_adv_get(struct nss_phy_device *nss_phydev,
 	u32 *adv)
 {
 	u16 phy_data = 0;
-	int ret;
 
-	ret = nss_phy_common_eee_adv_get(nss_phydev, adv);
-	if (ret < 0)
-		return ret;
+	*adv = 0;
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_8023AZ_EEE_CTRL);
+	if (phy_data & NSS_PHY_MMD7_EEE_ADV_100M)
+		*adv |= EEE_100BASE_T;
+	if (phy_data & NSS_PHY_MMD7_EEE_ADV_1000M)
+		*adv |= EEE_1000BASE_T;
+	if (phy_data & NSS_PHY_MMD7_EEE_ADV_10000M)
+		*adv |= EEE_10000BASE_T;
 
 	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
 		NSS_PHY_MMD7_8023AZ_EEE_CTRL1);
@@ -63,11 +77,16 @@ int nss_phy_c45_common_eee_partner_adv_get(struct nss_phy_device *nss_phydev,
 	u32 *adv)
 {
 	u16 phy_data = 0;
-	int ret;
 
-	ret = nss_phy_common_eee_partner_adv_get(nss_phydev, adv);
-	if (ret < 0)
-		return ret;
+	*adv = 0;
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_8023AZ_EEE_PARTNER);
+	if (phy_data & NSS_PHY_MMD7_EEE_PARTNER_ADV_100M)
+		*adv |= EEE_100BASE_T;
+	if (phy_data & NSS_PHY_MMD7_EEE_PARTNER_ADV_1000M)
+		*adv |= EEE_1000BASE_T;
+	if (phy_data & NSS_PHY_MMD7_EEE_PARTNER_ADV_10000M)
+		*adv |= EEE_10000BASE_T;
 
 	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
 		NSS_PHY_MMD7_8023AZ_EEE_PARTNER1);
@@ -83,11 +102,16 @@ int nss_phy_c45_common_eee_cap_get(struct nss_phy_device *nss_phydev,
 	u32 *cap)
 {
 	u16 phy_data = 0;
-	int ret;
 
-	ret = nss_phy_common_eee_cap_get(nss_phydev, cap);
-	if (ret < 0)
-		return ret;
+	*cap = 0;
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_8023AZ_EEE_CAPABILITY);
+	if (phy_data & NSS_PHY_MMD3_EEE_CAPABILITY_100M)
+		*cap |= EEE_100BASE_T;
+	if (phy_data & NSS_PHY_MMD3_EEE_CAPABILITY_1000M)
+		*cap |= EEE_1000BASE_T;
+	if (phy_data & NSS_PHY_MMD3_EEE_CAPABILITY_10000M)
+		*cap |= EEE_10000BASE_T;
 
 	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
 		NSS_PHY_MMD3_8023AZ_EEE_CAPABILITY1);
@@ -99,19 +123,42 @@ int nss_phy_c45_common_eee_cap_get(struct nss_phy_device *nss_phydev,
 	return 0;
 }
 
+int nss_phy_c45_common_eee_status_get(struct nss_phy_device *nss_phydev,
+	u32 *status)
+{
+	u16 phy_data = 0;
+
+	*status = 0;
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_8023AZ_EEE_STATUS);
+
+	if (phy_data & NSS_PHY_MMD7_EEE_STATUS_100M)
+		*status |= EEE_100BASE_T;
+	if (phy_data & NSS_PHY_MMD7_EEE_STATUS_1000M)
+		*status |= EEE_1000BASE_T;
+	if (phy_data & NSS_PHY_MMD7_EEE_STATUS_2500M)
+		*status |= EEE_2500BASE_T;
+	if (phy_data & NSS_PHY_MMD7_EEE_STATUS_5000M)
+		*status |= EEE_5000BASE_T;
+	if (phy_data & NSS_PHY_MMD7_EEE_STATUS_10000M)
+		*status |= EEE_10000BASE_T;
+
+	return 0;
+}
+
 int nss_phy_c45_common_8023az_set(struct nss_phy_device *nss_phydev,
-	bool enable)
+	u32 enable)
 {
 	u32 eee_adv = 0;
 
-	if (enable == true)
+	if (enable)
 		eee_adv = ALL_SPEED_EEE;
 
 	return nss_phy_c45_common_eee_adv_set(nss_phydev, eee_adv);
 }
 
 int nss_phy_c45_common_8023az_get(struct nss_phy_device *nss_phydev,
-	bool *enable)
+	u32 *enable)
 {
 	u32 eee_adv = 0, eee_cap = 0;
 	int ret = 0;
@@ -124,15 +171,15 @@ int nss_phy_c45_common_8023az_get(struct nss_phy_device *nss_phydev,
 		return ret;
 
 	if (eee_adv == eee_cap)
-		*enable = true;
+		*enable = !NSS_PHY_FALSE;
 	else
-		*enable = false;
+		*enable = NSS_PHY_FALSE;
 
 	return 0;
 }
 
 int nss_phy_c45_common_autoneg_set(struct nss_phy_device *nss_phydev,
-	bool enable)
+	u32 enable)
 {
 	u16 phy_data = 0;
 	int ret = 0;
@@ -194,10 +241,10 @@ int nss_phy_c45_common_force_speed_set(struct nss_phy_device *nss_phydev)
 
 int
 nss_phy_c45_common_local_loopback_set(struct nss_phy_device *nss_phydev,
-	bool enable)
+	u32 enable)
 {
 	u16 phy_data = 0;
-	bool autoneg = false;
+	u32 autoneg = 0;
 	int ret = 0;
 
 	if (enable) {
@@ -206,7 +253,7 @@ nss_phy_c45_common_local_loopback_set(struct nss_phy_device *nss_phydev,
 			return ret;
 		phy_data |= NSS_PHY_LOCAL_LOOPBACK_EN;
 	} else {
-		autoneg = true;
+		autoneg = !NSS_PHY_FALSE;
 	}
 
 	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD31_NUM,
@@ -218,7 +265,7 @@ nss_phy_c45_common_local_loopback_set(struct nss_phy_device *nss_phydev,
 }
 
 int nss_phy_c45_common_local_loopback_get(struct nss_phy_device *nss_phydev,
-	bool *enable)
+	u32 *enable)
 {
 	u16 phy_data = 0;
 
@@ -226,15 +273,15 @@ int nss_phy_c45_common_local_loopback_get(struct nss_phy_device *nss_phydev,
 		NSS_PHY_CONTROL);
 
 	if (phy_data & NSS_PHY_LOCAL_LOOPBACK_EN)
-		*enable = true;
+		*enable = !NSS_PHY_FALSE;
 	else
-		*enable = false;
+		*enable = NSS_PHY_FALSE;
 
 	return 0;
 }
 
 int nss_phy_c45_common_fifo_reset(struct nss_phy_device *nss_phydev,
-	bool enable)
+	u32 enable)
 {
 	int phy_data = 0;
 
@@ -258,5 +305,5 @@ int nss_phy_c45_common_autoneg_restart(struct nss_phy_device *nss_phydev)
 	if (ret < 0)
 		return ret;
 
-	return nss_phydev_autoneg_update(nss_phydev, true);
+	return nss_phydev_autoneg_update(nss_phydev, !NSS_PHY_FALSE);
 }

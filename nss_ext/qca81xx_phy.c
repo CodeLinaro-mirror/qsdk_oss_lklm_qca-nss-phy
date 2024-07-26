@@ -64,25 +64,19 @@ static int qca81xx_phy_function_reset(struct nss_phy_device *nss_phydev,
 			return ret;
 		break;
 	default:
-		return NSS_PHY_EOPNOTSUPP;
+		return -NSS_PHY_EOPNOTSUPP;
 	}
 
 	return 0;
 }
 
-struct nss_phy_ops *qca81xx_phy_ops_get(void)
+int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 {
-	static bool ops_init;
-	struct nss_phy_ops *ops = NULL;
+	static u32 ops_init;
 
-	if (ops_init == true)
-		return NULL;
+	if (ops_init)
+		return -NSS_PHY_EINVAL;
 
-	ops = nss_phy_kzalloc(sizeof(struct nss_phy_ops));
-	if (!ops) {
-		nss_phy_pr_info("qca81xx phy ops kzalloc failed!\n");
-		return NULL;
-	}
 	ops->hibernation_set = nss_phy_common_hibernation_set;
 	ops->hibernation_get = nss_phy_common_hibernation_get;
 	ops->function_reset = qca81xx_phy_function_reset;
@@ -98,7 +92,7 @@ struct nss_phy_ops *qca81xx_phy_ops_get(void)
 	ops->remote_loopback_set = nss_phy_common_remote_loopback_set;
 	ops->remote_loopback_get = nss_phy_common_remote_loopback_get;
 
-	ops_init = true;
+	ops_init = !NSS_PHY_FALSE;
 
-	return ops;
+	return 0;
 }

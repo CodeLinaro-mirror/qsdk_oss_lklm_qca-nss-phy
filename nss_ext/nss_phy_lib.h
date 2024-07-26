@@ -78,7 +78,21 @@ int nss_phy_modify_package(struct nss_phy_device *nss_phy_device,
 void *nss_phy_kzalloc(unsigned size);
 int nss_phydev_speed_get(struct nss_phy_device *nss_phydev);
 int nss_phydev_eee_update(struct nss_phy_device *nss_phydev, u32 adv);
-int nss_phydev_autoneg_update(struct nss_phy_device *nss_phydev, bool enable);
+int nss_phydev_autoneg_update(struct nss_phy_device *nss_phydev, u32 enable);
+int nss_phy_package_read_mmd(struct nss_phy_device *nss_phydev,
+	unsigned int addr_offset, int devad, u32 regnum);
+int nss_phy_package_modify_mmd(struct nss_phy_device *nss_phydev,
+	unsigned int addr_offset, int devad, u32 regnum, u16 mask, u16 set);
+bool nss_phy_support_2500(struct nss_phy_device *nss_phydev);
+bool nss_phy_is_fiber(struct nss_phy_device *nss_phydev);
+u32 __nss_phy_read_soc(struct nss_phy_device *nss_phydev, u32 reg);
+int __nss_phy_write_soc(struct nss_phy_device *nss_phydev, u32 reg, u32 val);
+int __nss_phy_modify_soc(struct nss_phy_device *nss_phydev, u32 reg,
+	u32 mask, u32 set);
+u32 nss_phy_read_soc(struct nss_phy_device *nss_phydev, u32 reg);
+int nss_phy_write_soc(struct nss_phy_device *nss_phydev, u32 reg, u32 val);
+int nss_phy_modify_soc(struct nss_phy_device *nss_phydev, u32 reg,
+	u32 mask, u32 set);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */
