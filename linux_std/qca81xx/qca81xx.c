@@ -181,6 +181,43 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_PCS_MMD31_AN_RESTART		0x200
 #define QCA81XX_PCS_MMD31_MII_AN_COMPLETE_INT		0x1
 
+/*SOC GCC registers*/
+#define GCC_E2S_TX_CMD_RCGR		0x800000
+#define GCC_E2S_TX_CFG_RCGR		0x800004
+#define GCC_E2S_TX_DIV_CDIVR		0x800008
+#define GCC_E2S_SRDS_CH0_RX_CBCR		0x800010
+#define GCC_E2S_GEPHY_TX_CBCR		0x800014
+#define GCC_E2S_RX_CMD_RCGR		0x800018
+#define GCC_E2S_RX_CFG_RCGR		0x80001c
+#define GCC_E2S_RX_DIV_CDIVR		0x800020
+#define GCC_E2S_SRDS_CH0_TX_CBCR		0x800028
+#define GCC_E2S_GEPHY_RX_CBCR		0x80002c
+#define GCC_AHB_CMD_RCGR		0x80003c
+#define GCC_AHB_CFG_RCGR		0x800040
+#define GCC_SRDS_SYS_CBCR		0x80007c
+#define GCC_GEPHY_SYS_CBCR		0x800080
+#define GCC_SEC_CTRL_CMD_RCGR		0x800088
+#define GCC_SEC_CTRL_CFG_RCGR		0x80008c
+#define GCC_SERDES_CTL		0x80030C
+
+#define GCC_CLK_ENABLE		0x1
+#define GCC_CLK_ARES		0x4
+#define XPCS_PWR_ARES		0x1
+#define GCC_E2S_SRC_MASK		GENMASK(10, 8)
+#define GCC_E2S_SRC0_REF_50MCLK		0
+#define GCC_E2S_SRC1_EPHY_TXCLK		1
+#define GCC_E2S_SRC2_EPHY_RXCLK		2
+#define GCC_E2S_SRC3_SRDS_TXCLK		3
+#define GCC_E2S_SRC4_SRDS_RXCLK		4
+
+#define SRC_DIV_MASK		GENMASK(4, 0)
+#define CLK_DIV_MASK		GENMASK(3, 0)
+#define CLK_CMD_UPDATE		BIT(0)
+
+/*SOC SEC_TCSR registers*/
+#define EPHY_CFG		0x90F018
+#define EPHY_LDO_CTRL		BIT(20)
+
 static int __qca81xx_phy_debug_write(struct phy_device *phydev,
 	unsigned int reg, u16 val)
 {
@@ -290,6 +327,221 @@ static int qca81xx_soc_modify(struct phy_device *phydev, u32 reg,
 
 }
 
+static int qca81xx_pcs_txclk_en_set(struct phy_device *phydev,
+	bool enable)
+{
+	return qca81xx_soc_modify(phydev, GCC_E2S_SRDS_CH0_TX_CBCR,
+		GCC_CLK_ENABLE, enable ? GCC_CLK_ENABLE : 0);
+}
+
+static int qca81xx_pcs_rxclk_en_set(struct phy_device *phydev,
+	bool enable)
+{
+	return qca81xx_soc_modify(phydev, GCC_E2S_SRDS_CH0_RX_CBCR,
+		GCC_CLK_ENABLE, enable ? GCC_CLK_ENABLE : 0);
+}
+
+static int qca81xx_pcs_clk_en_set(struct phy_device *phydev,
+	bool enable)
+{
+	int ret;
+
+	ret = qca81xx_pcs_txclk_en_set(phydev, enable);
+	if (ret < 0)
+		return ret;
+
+	return qca81xx_pcs_rxclk_en_set(phydev, enable);
+}
+
+static int qca81xx_pcs_clk_reset_update(struct phy_device *phydev,
+	bool assert)
+{
+	int ret;
+
+	ret = qca81xx_soc_modify(phydev, GCC_E2S_SRDS_CH0_RX_CBCR,
+		GCC_CLK_ARES, assert ? GCC_CLK_ARES : 0);
+	if (ret < 0)
+		return ret;
+
+	return qca81xx_soc_modify(phydev, GCC_E2S_SRDS_CH0_TX_CBCR,
+		GCC_CLK_ARES, assert ? GCC_CLK_ARES : 0);
+}
+
+static int qca81xx_pcs_clk_reset(struct phy_device *phydev)
+{
+	int ret;
+
+	ret = qca81xx_pcs_clk_reset_update(phydev, true);
+	if (ret < 0)
+		return ret;
+	mdelay(1);
+
+	return qca81xx_pcs_clk_reset_update(phydev, false);
+}
+
+static int qca81xx_pcs_sysclk_en_set(struct phy_device *phydev,
+	bool enable)
+{
+	return qca81xx_soc_modify(phydev, GCC_SRDS_SYS_CBCR, GCC_CLK_ENABLE,
+		enable ? GCC_CLK_ENABLE : 0);
+}
+
+static int qca81xx_pcs_sysclk_reset_update(struct phy_device *phydev,
+	bool assert)
+{
+	return qca81xx_soc_modify(phydev, GCC_SRDS_SYS_CBCR, GCC_CLK_ARES,
+		assert ? GCC_CLK_ARES : 0);
+}
+
+static int qca81xx_pcs_sysclk_reset(struct phy_device *phydev)
+{
+	int ret;
+
+	ret = qca81xx_pcs_sysclk_reset_update(phydev, true);
+	if (ret < 0)
+		return ret;
+	mdelay(1);
+
+	return qca81xx_pcs_sysclk_reset_update(phydev, false);
+}
+
+static int qca81xx_xpcs_clk_reset_update(struct phy_device *phydev,
+	bool assert)
+{
+	return qca81xx_soc_modify(phydev, GCC_SERDES_CTL, XPCS_PWR_ARES,
+		assert ? XPCS_PWR_ARES : 0);
+}
+
+static int qca81xx_phy_clk_en_set(struct phy_device *phydev, bool enable)
+{
+	int ret;
+
+	ret = qca81xx_soc_modify(phydev, GCC_E2S_GEPHY_TX_CBCR,
+		GCC_CLK_ENABLE, enable ? GCC_CLK_ENABLE : 0);
+	if (ret < 0)
+		return ret;
+
+	return qca81xx_soc_modify(phydev, GCC_E2S_GEPHY_RX_CBCR,
+		GCC_CLK_ENABLE, enable ? GCC_CLK_ENABLE : 0);
+}
+
+static int qca81xx_phy_txclk_reset_update(struct phy_device *phydev,
+	bool assert)
+{
+	return qca81xx_soc_modify(phydev, GCC_E2S_GEPHY_TX_CBCR, GCC_CLK_ARES,
+		assert ? GCC_CLK_ARES : 0);
+}
+
+static int qca81xx_phy_rxclk_reset_update(struct phy_device *phydev,
+	bool assert)
+{
+	return qca81xx_soc_modify(phydev, GCC_E2S_GEPHY_RX_CBCR, GCC_CLK_ARES,
+		assert ? GCC_CLK_ARES : 0);
+}
+
+static int qca81xx_phy_clk_reset_update(struct phy_device *phydev,
+	bool assert)
+{
+	int ret;
+
+	ret = qca81xx_phy_txclk_reset_update(phydev, assert);
+	if (ret < 0)
+		return ret;
+
+	return qca81xx_phy_rxclk_reset_update(phydev, assert);
+}
+
+static int qca81xx_phy_clk_reset(struct phy_device *phydev)
+{
+	int ret;
+
+	ret = qca81xx_phy_clk_reset_update(phydev, true);
+	if (ret < 0)
+		return ret;
+	mdelay(1);
+
+	return qca81xx_phy_clk_reset_update(phydev, false);
+}
+
+static int qca81xx_phy_sysclk_reset_update(struct phy_device *phydev,
+	bool assert)
+{
+	return qca81xx_soc_modify(phydev, GCC_GEPHY_SYS_CBCR, GCC_CLK_ARES,
+		assert ? GCC_CLK_ARES : 0);
+}
+
+static int qca81xx_phy_sysclk_reset(struct phy_device *phydev)
+{
+	int ret;
+
+	ret = qca81xx_phy_sysclk_reset_update(phydev, true);
+	if (ret < 0)
+		return ret;
+	mdelay(1);
+
+	return qca81xx_phy_sysclk_reset_update(phydev, false);
+}
+
+static int qca81xx_phy_speed_clk_set(struct phy_device *phydev)
+{
+	int ret, div0, div1;
+
+	switch (phydev->speed) {
+	case SPEED_100:
+		/* 312.5 divided by 2.5*5 */
+		div0 = 4;
+		div1 = 4;
+		break;
+	case SPEED_1000:
+		/* 312.5 divided by 2.5*1 */
+		div0 = 4;
+		div1 = 0;
+		break;
+	case SPEED_2500:
+		/* 312.5 divided by 1*4 */
+		div0 = 1;
+		div1 = 3;
+		break;
+	case SPEED_5000:
+		/* 312.5 divided by 1*2 */
+		div0 = 1;
+		div1 = 1;
+		break;
+	case SPEED_10000:
+		/* 312.5 divided by 1*1 */
+		div0 = 1;
+		div1 = 0;
+		break;
+	default:
+		break;
+	}
+
+	ret = qca81xx_soc_modify(phydev, GCC_E2S_TX_CFG_RCGR,
+		SRC_DIV_MASK, div0);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_soc_modify(phydev, GCC_E2S_TX_DIV_CDIVR,
+		CLK_DIV_MASK, div1);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_soc_modify(phydev, GCC_E2S_TX_CMD_RCGR,
+		CLK_CMD_UPDATE, CLK_CMD_UPDATE);
+	if (ret < 0)
+		return ret;
+
+	ret = qca81xx_soc_modify(phydev, GCC_E2S_RX_CFG_RCGR,
+		SRC_DIV_MASK, div0);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_soc_modify(phydev, GCC_E2S_RX_DIV_CDIVR,
+		CLK_DIV_MASK, div1);
+	if (ret < 0)
+		return ret;
+
+	return qca81xx_soc_modify(phydev, GCC_E2S_RX_CMD_RCGR,
+		CLK_CMD_UPDATE, CLK_CMD_UPDATE);
+}
+
 static int qca81xx_pcs_eee_enable(struct phy_device *phydev)
 {
 	int ret = 0;
@@ -342,10 +594,33 @@ static int qca81xx_pcs_usxgmii_init(struct phy_device *phydev)
 	int ret = 0;
 	u16 phy_data = 0;
 
+	ret = qca81xx_phy_clk_en_set(phydev, false);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_pcs_clk_en_set(phydev, false);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_pcs_sysclk_en_set(phydev, true);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_pcs_sysclk_reset(phydev);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_xpcs_clk_reset_update(phydev, true);
+	if (ret < 0)
+		return ret;
+	/* optional, would settle after SOD VI, write 1 to */
+	/* CSR0 MMD1_reg0x7c[3],to invert pcs txclk */
 	ret = qca81xx_pcs_modify_mmd(phydev,
 		MDIO_MMD_PMAPMD, QCA81XX_PCS_MMD1_MODE_CTRL,
 		QCA81XX_PCS_MMD1_MODE_MASK,
 		QCA81XX_PCS_MMD1_XPCS_MODE);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_pcs_clk_reset(phydev);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_clk_reset(phydev);
 	if (ret < 0)
 		return ret;
 	ret = qca81xx_pcs_modify(phydev,
@@ -371,6 +646,12 @@ static int qca81xx_pcs_usxgmii_init(struct phy_device *phydev)
 		MDIO_MMD_PMAPMD, QCA81XX_PCS_MMD1_CDA_CONTROL1,
 		QCA81XX_PCS_MMD1_SSCG_ENABLE,
 		QCA81XX_PCS_MMD1_SSCG_ENABLE);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_pcs_txclk_en_set(phydev, true);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_xpcs_clk_reset_update(phydev, false);
 	if (ret < 0)
 		return ret;
 	ret = phy_modify_mmd(phydev, MDIO_MMD_PMAPMD,
@@ -494,14 +775,72 @@ static int qca81xx_phy_cdt_thresh_init(struct phy_device *phydev)
 	return ret;
 }
 
+static int qca81xx_phy_gcc_pre_init(struct phy_device *phydev)
+{
+	int ret;
+
+	/*gephy system reset and release*/
+	/* gephy system clock is enabled in default */
+	ret = qca81xx_phy_sysclk_reset(phydev);
+	if (ret < 0)
+		return ret;
+	/*enable efuse loading into analog circuit*/
+	ret = qca81xx_soc_modify(phydev, EPHY_CFG, EPHY_LDO_CTRL, 0);
+	mdelay(10);
+
+	return ret;
+}
+
+static int qca81xx_phy_gcc_post_init(struct phy_device *phydev)
+{
+	int ret;
+
+	/* ahb clock use srds_txclk and switch to 312.5M/3 */
+	ret = qca81xx_soc_modify(phydev, GCC_AHB_CFG_RCGR,
+		GCC_E2S_SRC_MASK | SRC_DIV_MASK,
+		(GCC_E2S_SRC3_SRDS_TXCLK << 8) | 0x5);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_soc_modify(phydev, GCC_AHB_CMD_RCGR,
+		CLK_CMD_UPDATE, CLK_CMD_UPDATE);
+	/* security control clock switch as 25M */
+	ret = qca81xx_soc_modify(phydev, GCC_SEC_CTRL_CFG_RCGR,
+		GCC_E2S_SRC_MASK | SRC_DIV_MASK, 0x3);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_soc_modify(phydev, GCC_SEC_CTRL_CMD_RCGR,
+		CLK_CMD_UPDATE, CLK_CMD_UPDATE);
+	if (ret < 0)
+		return ret;
+
+	/*select uphy rx, ephy tx clock source as srds_rxclk*/
+	ret = qca81xx_soc_modify(phydev, GCC_E2S_TX_CFG_RCGR,
+		GCC_E2S_SRC_MASK, GCC_E2S_SRC4_SRDS_RXCLK << 8);
+	if (ret < 0)
+		return ret;
+
+	/*select uphy tx, ephy rx clock source as srds_txclk*/
+	ret = qca81xx_soc_modify(phydev, GCC_E2S_RX_CFG_RCGR,
+		GCC_E2S_SRC_MASK, GCC_E2S_SRC3_SRDS_TXCLK << 8);
+
+	return ret;
+}
+
 static int qca81xx_phy_config_init(struct phy_device *phydev)
 {
 	int ret = 0;
 
+	ret = qca81xx_phy_gcc_pre_init(phydev);
+	if (ret < 0)
+		return ret;
 	ret = qca81xx_pcs_usxgmii_init(phydev);
 	if (ret < 0)
 		return ret;
 	phydev->interface = PHY_INTERFACE_MODE_USXGMII;
+
+	ret = qca81xx_phy_gcc_post_init(phydev);
+	if (ret < 0)
+		return ret;
 
 	ret = qca81xx_phy_cdt_thresh_init(phydev);
 
@@ -605,8 +944,28 @@ static int qca81xx_phy_speed_fixup(struct phy_device *phydev)
 	if (ret < 0)
 		return ret;
 	mdelay(10);
-	if (phydev->link)
+	if (phydev->link) {
+		ret = qca81xx_phy_speed_clk_set(phydev);
+		if (ret < 0)
+			return ret;
+		/*avoid garbe data transmit out, need to assert ephy tx clock*/
+		qca81xx_phy_txclk_reset_update(phydev, true);
 		port_clock_en = true;
+	}
+	ret = qca81xx_pcs_clk_en_set(phydev, port_clock_en);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_clk_en_set(phydev, port_clock_en);
+	if (ret < 0)
+		return ret;
+	mdelay(10);
+
+	ret = qca81xx_pcs_clk_reset(phydev);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_clk_reset(phydev);
+	if (ret < 0)
+		return ret;
 	ret = qca81xx_pcs_modify_mmd(phydev,
 		MDIO_MMD_PCS, QCA81XX_PCS_MII_DIG_CTRL,
 		QCA81XX_PCS_MMD3_USXG_FIFO_RESET,
