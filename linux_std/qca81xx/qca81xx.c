@@ -19,8 +19,11 @@
 #include <linux/delay.h>
 #include <linux/phy.h>
 
+#define QCA8111_PHY		0x004dd1c0
+
 static struct phy_driver qca81xx_phy_driver[] = {
 {
+	PHY_ID_MATCH_EXACT(QCA8111_PHY),
 	.name = "Qualcomm QCA81xx",
 	.flags = PHY_POLL_CABLE_TEST,
 	.aneg_done = genphy_c45_aneg_done,

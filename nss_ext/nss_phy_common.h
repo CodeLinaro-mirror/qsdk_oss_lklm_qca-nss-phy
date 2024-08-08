@@ -110,9 +110,9 @@ extern "C" {
 #define NSS_PHY_LED_SOURCE2		0x2
 
 int nss_phy_common_hibernation_set(struct nss_phy_device *nss_phydev,
-	bool enable);
+	u32 enable);
 int nss_phy_common_hibernation_get(struct nss_phy_device *nss_phydev,
-	bool *enable);
+	u32 *enable);
 int nss_phy_common_powersave_set(struct nss_phy_device *nss_phydev,
 	bool enable);
 int nss_phy_common_powersave_get(struct nss_phy_device *nss_phydev,

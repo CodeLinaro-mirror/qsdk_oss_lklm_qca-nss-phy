@@ -18,7 +18,7 @@
 #include "nss_phy_common.h"
 
 int nss_phy_common_hibernation_set(struct nss_phy_device *nss_phydev,
-	bool enable)
+	u32 enable)
 {
 	return nss_phy_modify_debug(nss_phydev,
 		NSS_PHY_DEBUG_PHY_HIBERNATION_CTRL,
@@ -27,7 +27,7 @@ int nss_phy_common_hibernation_set(struct nss_phy_device *nss_phydev,
 }
 
 int nss_phy_common_hibernation_get(struct nss_phy_device *nss_phydev,
-	bool *enable)
+	u32 *enable)
 {
 	int ret;
 

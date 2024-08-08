@@ -30,6 +30,8 @@ extern "C" {
 #define QCA807X_MASK		0xfffffff0
 #define QCA8111_PHY		0x004dd1c0
 #define QCA81XX_MASK		0xfffffff0
+#define QCA8081_PHY		0x004dd101
+#define QCA8084_PHY		0x004dd180
 
 #define NSS_BIT(_n)		(1UL << (_n))
 #define EEE_100BASE_T		0x2
@@ -115,9 +117,38 @@ struct nss_phy_led_pattern_ctrl {
 	u32 active_level;
 };
 
+enum nss_phy_cable_status {
+	CABLE_NORMAL = 0,
+	CABLE_SHORT,
+	CABLE_OPENED,
+	CABLE_INVALID,
+};
+
+struct nss_phy_mac {
+	u32 uc[6];
+};
+
+enum nss_phy_mdix_mode {
+	MODE_AUTO = 0,
+	MODE_MDI,
+	MODE_MDIX
+};
+
+enum nss_phy_mdix_status      {
+	STATUS_MDI = 0,
+	STATUS_MDIX = 1
+};
+
+struct nss_phy_stats_info {
+	u64 RxGoodFrame;
+	u64 RxBadCRC;
+	u64 TxGoodFrame;
+	u64 TxBadCRC;
+};
+
 struct nss_phy_ops {
-	int (*hibernation_set)(struct nss_phy_device *nss_phydev, bool enable);
-	int (*hibernation_get)(struct nss_phy_device *nss_phydev, bool *enable);
+	int (*hibernation_set)(struct nss_phy_device *nss_phydev, u32 enable);
+	int (*hibernation_get)(struct nss_phy_device *nss_phydev, u32 *enable);
 	int (*powersave_set)(struct nss_phy_device *nss_phydev, bool enable);
 	int (*powersave_get)(struct nss_phy_device *nss_phydev, bool *enable);
 	int (*function_reset)(struct nss_phy_device *nss_phydev,
@@ -155,6 +186,46 @@ struct nss_phy_ops {
 		u32 source_id, struct nss_phy_led_pattern_ctrl *pattern);
 	int (*led_ctrl_source_get)(struct nss_phy_device *nss_phydev,
 		u32 source_id, struct nss_phy_led_pattern_ctrl *pattern);
+	int (*pll_on)(struct nss_phy_device *nss_phydev);
+	int (*pll_off)(struct nss_phy_device *nss_phydev);
+	int (*ldo_set)(struct nss_phy_device *nss_phydev, bool enable);
+	int (*cdt)(struct nss_phy_device *nss_phydev, u32 pair,
+		enum nss_phy_cable_status *cable_status, u32 *cable_len);
+	int (*wol_set)(struct nss_phy_device *nss_phydev, bool enable);
+	int (*wol_get)(struct nss_phy_device *nss_phydev, bool *enable);
+	int (*magic_frame_set)(struct nss_phy_device *nss_phydev,
+		struct nss_phy_mac *mac);
+	int (*magic_frame_get)(struct nss_phy_device *nss_phydev,
+		struct nss_phy_mac *mac);
+	int (*mdix_set)(struct nss_phy_device *nss_phydev,
+		enum nss_phy_mdix_mode mode);
+	int (*mdix_get)(struct nss_phy_device *nss_phydev,
+		enum nss_phy_mdix_mode *mode);
+	int (*mdix_status_get)(struct nss_phy_device *nss_phydev,
+		enum nss_phy_mdix_status *mode);
+	int (*stats_status_set)(struct nss_phy_device *nss_phydev, bool enable);
+	int (*stats_status_get)(struct nss_phy_device *nss_phydev, bool *enable);
+	int (*stats_get)(struct nss_phy_device *nss_phydev,
+		struct nss_phy_stats_info *cnt);
+	int (*intr_mask_set)(struct nss_phy_device *nss_phydev, u32 mask);
+	int (*intr_mask_get)(struct nss_phy_device *nss_phydev, u32 *mask);
+	int (*intr_status_get)(struct nss_phy_device *nss_phydev, u32 *status);
+	/*below APIs can be covered by linux std driver and nss ext driver*/
+	int (*speed_get)(struct nss_phy_device *nss_phydev, u32 *speed);
+	int (*speed_set)(struct nss_phy_device *nss_phydev, u32 speed);
+	int (*duplex_get)(struct nss_phy_device *nss_phydev, u32 *duplex);
+	int (*duplex_set)(struct nss_phy_device *nss_phydev, u32 duplex);
+	int (*autoneg_enable)(struct nss_phy_device *nss_phydev);
+	int (*autoneg_status_get)(struct nss_phy_device *nss_phydev, u32 *status);
+	int (*autoneg_restart)(struct nss_phy_device *nss_phydev);
+	int (*autoadv_get)(struct nss_phy_device *nss_phydev, u32 *adv);
+	int (*autoadv_set)(struct nss_phy_device *nss_phydev, u32 adv);
+	int (*reset)(struct nss_phy_device *nss_phydev);
+	int (*power_on)(struct nss_phy_device *nss_phydev);
+	int (*power_off)(struct nss_phy_device *nss_phydev);
+	int (*interface_mode_status_get)(struct nss_phy_device *nss_phydev, u32 status);
+	int (*phyid_get)(struct nss_phy_device *nss_phydev, u16 *org_id, u16 *rev_id);
+	int (*link_status_get)(struct nss_phy_device *nss_phydev, u32 status);
 };
 
 struct nss_phy_ops *qca807x_phy_ops_get(void);
