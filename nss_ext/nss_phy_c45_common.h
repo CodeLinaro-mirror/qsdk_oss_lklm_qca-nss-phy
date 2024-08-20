@@ -26,6 +26,15 @@ extern "C" {
 #define NSS_PHY_MMD1_PMA_CONTROL		0x0
 #define NSS_PHY_MMD1_PMA_TTYPE		0x7
 #define NSS_PHY_MMD3_8023AZ_EEE_CAPABILITY1		0x15
+#define NSS_PHY_MMD3_10G_FRAME_CHECK_CTRL		0xa110
+#define NSS_PHY_MMD3_10G_EGRESS_COUNTER_HIGH		0xa146
+#define NSS_PHY_MMD3_10G_EGRESS_COUNTER_MIDDLE		0xa115
+#define NSS_PHY_MMD3_10G_EGRESS_COUNTER_LOW		0xa114
+#define NSS_PHY_MMD3_10G_EGRESS_ERROR_COUNTER		0xa116
+#define NSS_PHY_MMD3_10G_INGRESS_COUNTER_HIGH		0xa145
+#define NSS_PHY_MMD3_10G_INGRESS_COUNTER_MIDDLE		0xa119
+#define NSS_PHY_MMD3_10G_INGRESS_COUNTER_LOW		0xa118
+#define NSS_PHY_MMD3_10G_INGRESS_ERROR_COUNTER		0xa11a
 #define NSS_PHY_MMD7_AN_CONTROL		0x0
 #define NSS_PHY_MMD7_8023AZ_EEE_CTRL1		0x3e
 #define NSS_PHY_MMD7_8023AZ_EEE_PARTNER1		0x3f
@@ -48,6 +57,7 @@ extern "C" {
 
 #define NSS_PHY_MMD3_EEE_CAPABILITY_2500M		0x0001
 #define NSS_PHY_MMD3_EEE_CAPABILITY_5000M		0x0002
+#define NSS_PHY_MMD3_10G_FRAME_CHECK_EN		0x80
 
 #define NSS_PHY_MMD7_EEE_MASK1		0x0003
 #define NSS_PHY_MMD7_EEE_ADV_2500M		0x0001
@@ -85,6 +95,12 @@ int nss_phy_c45_common_mdix_get(struct nss_phy_device *nss_phydev,
 	enum nss_phy_mdix_mode *mode);
 int nss_phy_c45_common_mdix_status_get(struct nss_phy_device *nss_phydev,
 	enum nss_phy_mdix_status *mode);
+int nss_phy_c45_common_stats_status_set(struct nss_phy_device *nss_phydev,
+	u32 enable);
+int nss_phy_c45_common_stats_status_get(struct nss_phy_device *nss_phydev,
+	u32 *enable);
+int nss_phy_c45_common_stats_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_stats_info *cnt_info);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

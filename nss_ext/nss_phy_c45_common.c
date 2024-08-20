@@ -384,3 +384,65 @@ int nss_phy_c45_common_mdix_status_get(struct nss_phy_device *nss_phydev,
 
 	return 0;
 }
+
+int nss_phy_c45_common_stats_status_set(struct nss_phy_device *nss_phydev,
+	u32 enable)
+{
+	int ret = 0;
+	u16 phy_data = 0;
+
+	if (enable)
+		phy_data |= NSS_PHY_MMD3_10G_FRAME_CHECK_EN;
+
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_10G_FRAME_CHECK_CTRL,
+		NSS_PHY_MMD3_10G_FRAME_CHECK_EN,
+		phy_data);
+
+	return ret;
+}
+
+int nss_phy_c45_common_stats_status_get(struct nss_phy_device *nss_phydev,
+	u32 *enable)
+{
+	u16 phy_data  = 0;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_10G_FRAME_CHECK_CTRL);
+	if (phy_data & NSS_PHY_MMD3_10G_FRAME_CHECK_EN)
+		*enable = !NSS_PHY_FALSE;
+	else
+		*enable = NSS_PHY_FALSE;
+
+	return 0;
+}
+
+int nss_phy_c45_common_stats_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_stats_info *stats_info)
+{
+	u64 cnt_h = 0, cnt_m = 0, cnt_l  = 0;
+
+	cnt_h = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_10G_INGRESS_COUNTER_HIGH);
+	cnt_m = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_10G_INGRESS_COUNTER_MIDDLE);
+	cnt_l = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_10G_INGRESS_COUNTER_LOW);
+	stats_info->RxGoodFrame = (cnt_h << 32) | (cnt_m << 16) |
+		cnt_l;
+	stats_info->RxFcsErr = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_10G_INGRESS_ERROR_COUNTER);
+
+	cnt_h = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_10G_EGRESS_COUNTER_HIGH);
+	cnt_m = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_10G_EGRESS_COUNTER_MIDDLE);
+	cnt_l = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_10G_EGRESS_COUNTER_LOW);
+	stats_info->TxGoodFrame = (cnt_h << 32) | (cnt_m << 1) |
+		cnt_l;
+	stats_info->TxFcsErr = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_10G_EGRESS_ERROR_COUNTER);
+
+	return 0;
+}

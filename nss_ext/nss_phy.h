@@ -153,9 +153,13 @@ enum nss_phy_mdix_status      {
 
 struct nss_phy_stats_info {
 	u64 RxGoodFrame;
-	u64 RxBadCRC;
+	u64 RxFcsErr;
 	u64 TxGoodFrame;
-	u64 TxBadCRC;
+	u64 TxFcsErr;
+	u64 SysRxGoodFrame;
+	u64 SysRxFcsErr;
+	u64 SysTxGoodFrame;
+	u64 SysTxFcsErr;
 };
 
 enum NSS_PHY_PIN_DRV_STRENGTH {

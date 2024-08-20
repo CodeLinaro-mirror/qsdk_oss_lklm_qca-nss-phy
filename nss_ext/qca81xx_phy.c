@@ -98,6 +98,52 @@ static int qca81xx_phy_mdix_set(struct nss_phy_device *nss_phydev,
 	return qca81xx_phy_soft_reset(nss_phydev);
 }
 
+static int qca81xx_phy_stats_status_set(struct nss_phy_device *nss_phydev,
+	u32 enable)
+{
+	int ret;
+
+	ret = nss_phy_c45_common_stats_status_set(nss_phydev, enable);
+	if (ret < 0)
+		return ret;
+
+	return nss_phy_common_stats_status_set(nss_phydev, enable);
+}
+
+static int qca81xx_phy_stats_status_get(struct nss_phy_device *nss_phydev,
+	u32 *enable)
+{
+	int ret;
+	u32 enable0, enable1;
+
+	ret = nss_phy_common_stats_status_get(nss_phydev, &enable0);
+	if (ret < 0)
+		return ret;
+	ret = nss_phy_c45_common_stats_status_get(nss_phydev, &enable1);
+	if (ret < 0)
+		return ret;
+
+	if (enable0 && enable1)
+		*enable = !NSS_PHY_FALSE;
+	else
+		*enable = NSS_PHY_FALSE;
+
+	return 0;
+}
+
+static int qca81xx_phy_stats_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_stats_info *cnt_info)
+{
+	int ret;
+
+	if (nss_phydev_speed_get(nss_phydev) >= NSS_PHY_SPEED_2500)
+		ret = nss_phy_c45_common_stats_get(nss_phydev, cnt_info);
+	else
+		ret = nss_phy_common_stats_get(nss_phydev, cnt_info);
+
+	return ret;
+}
+
 int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 {
 	ops->hibernation_set = nss_phy_common_hibernation_set;
@@ -118,6 +164,9 @@ int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 	ops->mdix_set = qca81xx_phy_mdix_set;
 	ops->mdix_get = nss_phy_c45_common_mdix_get;
 	ops->mdix_status_get = nss_phy_c45_common_mdix_status_get;
+	ops->stats_status_set = qca81xx_phy_stats_status_set;
+	ops->stats_status_get = qca81xx_phy_stats_status_get;
+	ops->stats_get = qca81xx_phy_stats_get;
 
 	return 0;
 }

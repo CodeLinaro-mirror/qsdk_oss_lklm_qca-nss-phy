@@ -385,6 +385,9 @@ int qca807x_phy_ops_init(struct nss_phy_ops *ops)
 	ops->mdix_set = nss_phy_common_mdix_set;
 	ops->mdix_get = nss_phy_common_mdix_get;
 	ops->mdix_status_get = nss_phy_common_mdix_status_get;
+	ops->stats_status_set = nss_phy_common_stats_status_set;
+	ops->stats_status_get = nss_phy_common_stats_status_get;
+	ops->stats_get = nss_phy_common_stats_get;
 
 	return 0;
 }

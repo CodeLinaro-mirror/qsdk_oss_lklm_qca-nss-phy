@@ -601,6 +601,65 @@ int nss_phy_common_mdix_status_get(struct nss_phy_device *nss_phydev,
 	return 0;
 }
 
+int nss_phy_common_stats_status_set(struct nss_phy_device *nss_phydev,
+	u32 enable)
+{
+	u16 phy_data = 0;
+
+	if (enable) {
+		phy_data |= NSS_PHY_MMD7_FRAME_CHECK_EN;
+		phy_data |= NSS_PHY_MMD7_CNT_SELFCLR;
+	}
+
+	return nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_COUNTER_CTRL,
+		NSS_PHY_MMD7_FRAME_CHECK_EN | NSS_PHY_MMD7_CNT_SELFCLR,
+		phy_data);
+}
+
+int nss_phy_common_stats_status_get(struct nss_phy_device *nss_phydev,
+	u32 *enable)
+{
+	u16 phy_data;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_COUNTER_CTRL);
+	if (phy_data & NSS_PHY_MMD7_FRAME_CHECK_EN)
+		*enable = !NSS_PHY_FALSE;
+	else
+		*enable = NSS_PHY_FALSE;
+
+	return 0;
+}
+
+int nss_phy_common_stats_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_stats_info *stats_info)
+{
+	u16 ingress_high_counter = 0;
+	u16 ingress_low_counter = 0;
+	u16 egress_high_counter = 0;
+	u16 egress_low_counter = 0;
+
+	ingress_high_counter = nss_phy_read_mmd(nss_phydev,
+		NSS_PHY_MMD7_NUM, NSS_PHY_MMD7_INGRESS_COUNTER_HIGH);
+	ingress_low_counter = nss_phy_read_mmd(nss_phydev,
+		NSS_PHY_MMD7_NUM, NSS_PHY_MMD7_INGRESS_COUNTER_LOW);
+	stats_info->RxGoodFrame = (ingress_high_counter << 16) |
+		ingress_low_counter;
+	stats_info->RxFcsErr = nss_phy_read_mmd(nss_phydev,
+		NSS_PHY_MMD7_NUM, NSS_PHY_MMD7_INGRESS_ERROR_COUNTER);
+
+	egress_high_counter = nss_phy_read_mmd(nss_phydev,
+		NSS_PHY_MMD7_NUM, NSS_PHY_MMD7_EGRESS_COUNTER_HIGH);
+	egress_low_counter = nss_phy_read_mmd(nss_phydev,
+		NSS_PHY_MMD7_NUM, NSS_PHY_MMD7_EGRESS_COUNTER_LOW);
+	stats_info->TxGoodFrame = (egress_high_counter << 16) |
+		egress_low_counter;
+	stats_info->TxFcsErr = nss_phy_read_mmd(nss_phydev,
+		NSS_PHY_MMD7_NUM, NSS_PHY_MMD7_EGRESS_ERROR_COUNTER);
+
+	return 0;
+}
 
 static enum nss_phy_cable_status
 nss_phy_common_cdt_cable_status_get(u32 mdi_pair, u16 phy_status)

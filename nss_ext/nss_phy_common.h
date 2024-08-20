@@ -77,12 +77,22 @@ extern "C" {
 #define NSS_PHY_MMD7_8023AZ_EEE_STATUS		0x8000
 #define NSS_PHY_MMD7_LED_BLINK_FREQ_CTRL		0x8073
 #define NSS_PHY_MMD7_LED_POLARITY_CTRL		0x901a
+#define NSS_PHY_MMD7_COUNTER_CTRL		0x8029
+#define NSS_PHY_MMD7_INGRESS_COUNTER_HIGH		0x802a
+#define NSS_PHY_MMD7_INGRESS_COUNTER_LOW		0x802b
+#define NSS_PHY_MMD7_INGRESS_ERROR_COUNTER		0x802c
+#define NSS_PHY_MMD7_EGRESS_COUNTER_HIGH		0x802d
+#define NSS_PHY_MMD7_EGRESS_COUNTER_LOW		0x802e
+#define NSS_PHY_MMD7_EGRESS_ERROR_COUNTER		0x802f
 
 /*MMD registers field*/
 #define NSS_PHY_MMD3_EEE_CAPABILITY_100M		0x0002
 #define NSS_PHY_MMD3_EEE_CAPABILITY_1000M		0x0004
 #define NSS_PHY_MMD3_EEE_CAPABILITY_10000M		0x0008
 #define NSS_PHY_MMD3_REMOTE_LOOPBACK_EN		0x0001
+
+#define NSS_PHY_MMD7_FRAME_CHECK_EN		0x0001
+#define NSS_PHY_MMD7_CNT_SELFCLR		0x0002
 #define NSS_PHY_MMD7_EEE_MASK		0x000e
 #define NSS_PHY_MMD7_EEE_ADV_100M		0x0002
 #define NSS_PHY_MMD7_EEE_ADV_1000M		0x0004
@@ -197,6 +207,12 @@ int nss_phy_common_mdix_get(struct nss_phy_device *nss_phydev,
 	enum nss_phy_mdix_mode *mode);
 int nss_phy_common_mdix_status_get(struct nss_phy_device *nss_phydev,
 	enum nss_phy_mdix_status *mode);
+int nss_phy_common_stats_status_set(struct nss_phy_device *nss_phydev,
+	u32 enable);
+int nss_phy_common_stats_status_get(struct nss_phy_device *nss_phydev,
+	u32 *enable);
+int nss_phy_common_stats_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_stats_info *stats_info);
 int nss_phy_common_cdt_start(struct nss_phy_device *nss_phydev);
 int nss_phy_common_cdt_status_get(struct nss_phy_device *nss_phydev,
 	u32 mdi_pair, enum nss_phy_cable_status *cable_status, u32 *cable_len);
