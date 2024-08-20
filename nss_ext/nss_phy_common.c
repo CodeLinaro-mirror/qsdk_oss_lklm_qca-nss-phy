@@ -548,6 +548,60 @@ int nss_phy_common_autoneg_set(struct nss_phy_device *nss_phydev,
 	return nss_phydev_autoneg_update(nss_phydev, enable);
 }
 
+int nss_phy_common_mdix_set(struct nss_phy_device *nss_phydev,
+	enum nss_phy_mdix_mode mode)
+{
+	u16 phy_data = 0;
+	int ret = 0;
+
+	if (mode == MODE_AUTO)
+		phy_data = NSS_PHY_MDIX_AUTO;
+	else if (mode == MODE_MDIX)
+		phy_data = NSS_PHY_MDIX;
+	else if (mode == MODE_MDI)
+		phy_data = NSS_PHY_MDI;
+	else
+		return NSS_PHY_EOPNOTSUPP;
+
+	ret = nss_phy_modify(nss_phydev, NSS_PHY_SPEC_CONTROL,
+		NSS_PHY_MDIX_AUTO, phy_data);
+	if (ret < 0)
+		return ret;
+
+	return nss_phy_common_soft_reset(nss_phydev);
+}
+
+int nss_phy_common_mdix_get(struct nss_phy_device *nss_phydev,
+	enum nss_phy_mdix_mode *mode)
+{
+	u16 phy_data = 0;
+
+	phy_data = nss_phy_read(nss_phydev, NSS_PHY_SPEC_CONTROL);
+
+	if ((phy_data & NSS_PHY_MDIX_AUTO) == NSS_PHY_MDIX_AUTO)
+		*mode = MODE_AUTO;
+	else if ((phy_data & NSS_PHY_MDIX_AUTO) == NSS_PHY_MDIX)
+		*mode = MODE_MDIX;
+	else
+		*mode = MODE_MDI;
+
+	return 0;
+}
+
+int nss_phy_common_mdix_status_get(struct nss_phy_device *nss_phydev,
+	enum nss_phy_mdix_status *mode)
+{
+	u16 phy_data = 0;
+
+	phy_data = nss_phy_read(nss_phydev, NSS_PHY_SPEC_STATUS);
+
+	*mode = (phy_data & NSS_PHY_MDIX_STATUS) ? STATUS_MDIX :
+		STATUS_MDI;
+
+	return 0;
+}
+
+
 static enum nss_phy_cable_status
 nss_phy_common_cdt_cable_status_get(u32 mdi_pair, u16 phy_status)
 {

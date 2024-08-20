@@ -30,6 +30,8 @@ extern "C" {
 
 /*mii register*/
 #define NSS_PHY_CONTROL		0
+#define NSS_PHY_SPEC_CONTROL		0x10
+#define NSS_PHY_SPEC_STATUS		0x11
 #define NSS_PHY_CDT_CONTROL		0x16
 #define NSS_PHY_CHIP_CONFIGURATION		0x1f
 #define NSS_PHY_FIFO_CONTROL		0x19
@@ -50,6 +52,10 @@ extern "C" {
 #define NSS_PHY_LOOPBACK_10M		0x4100
 #define NSS_PHY_LOOPBACK_100M		0x6100
 #define NSS_PHY_LOOPBACK_1000M		0x4140
+#define NSS_PHY_MDI		0
+#define NSS_PHY_MDIX		0x0020
+#define NSS_PHY_MDIX_AUTO	0x0060
+#define NSS_PHY_MDIX_STATUS		0x0040
 
 /*MMD number*/
 #define NSS_PHY_MMD1_NUM		0x1
@@ -185,6 +191,12 @@ int nss_phy_common_function_reset(struct nss_phy_device *nss_phydev,
 int nss_phy_common_autoneg_restart(struct nss_phy_device *nss_phydev);
 int nss_phy_common_autoneg_set(struct nss_phy_device *nss_phydev,
 	u32 enable);
+int nss_phy_common_mdix_set(struct nss_phy_device *nss_phydev,
+	enum nss_phy_mdix_mode mode);
+int nss_phy_common_mdix_get(struct nss_phy_device *nss_phydev,
+	enum nss_phy_mdix_mode *mode);
+int nss_phy_common_mdix_status_get(struct nss_phy_device *nss_phydev,
+	enum nss_phy_mdix_status *mode);
 int nss_phy_common_cdt_start(struct nss_phy_device *nss_phydev);
 int nss_phy_common_cdt_status_get(struct nss_phy_device *nss_phydev,
 	u32 mdi_pair, enum nss_phy_cable_status *cable_status, u32 *cable_len);
