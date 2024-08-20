@@ -161,6 +161,10 @@ int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 	ops->remote_loopback_set = nss_phy_common_remote_loopback_set;
 	ops->remote_loopback_get = nss_phy_common_remote_loopback_get;
 	ops->cdt = qca81xx_phy_cdt;
+	ops->wol_set = nss_phy_common_wol_set;
+	ops->wol_get = nss_phy_common_wol_get;
+	ops->magic_frame_set = nss_phy_common_magic_frame_set;
+	ops->magic_frame_get = nss_phy_common_magic_frame_get;
 	ops->mdix_set = qca81xx_phy_mdix_set;
 	ops->mdix_get = nss_phy_c45_common_mdix_get;
 	ops->mdix_status_get = nss_phy_c45_common_mdix_status_get;

@@ -66,6 +66,10 @@ extern "C" {
 /*MMD registers*/
 #define NSS_PHY_MMD3_8023AZ_EEE_CAPABILITY		0x14
 #define NSS_PHY_MMD3_REMOTE_LOOPBACK_CTRL		0x805a
+#define NSS_PHY_MMD3_WOL_MAGIC_MAC_CTRL1		0x804a
+#define NSS_PHY_MMD3_WOL_MAGIC_MAC_CTRL2		0x804b
+#define NSS_PHY_MMD3_WOL_MAGIC_MAC_CTRL3		0x804c
+#define NSS_PHY_MMD3_WOL_CTRL		0x8012
 #define NSS_PHY_MMD3_CDT_STATUS		0x8064
 #define NSS_PHY_MMD3_CDT_PAIR0		0x8065
 #define NSS_PHY_MMD3_CDT_PAIR1		0x8066
@@ -90,6 +94,7 @@ extern "C" {
 #define NSS_PHY_MMD3_EEE_CAPABILITY_1000M		0x0004
 #define NSS_PHY_MMD3_EEE_CAPABILITY_10000M		0x0008
 #define NSS_PHY_MMD3_REMOTE_LOOPBACK_EN		0x0001
+#define NSS_PHY_MMD3_WOL_EN		0x0020
 
 #define NSS_PHY_MMD7_FRAME_CHECK_EN		0x0001
 #define NSS_PHY_MMD7_CNT_SELFCLR		0x0002
@@ -207,6 +212,14 @@ int nss_phy_common_mdix_get(struct nss_phy_device *nss_phydev,
 	enum nss_phy_mdix_mode *mode);
 int nss_phy_common_mdix_status_get(struct nss_phy_device *nss_phydev,
 	enum nss_phy_mdix_status *mode);
+int nss_phy_common_magic_frame_set(struct nss_phy_device *nss_phydev,
+	struct nss_phy_mac *mac);
+int nss_phy_common_magic_frame_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_mac *mac);
+int nss_phy_common_wol_set(struct nss_phy_device *nss_phydev,
+	u32 enable);
+int nss_phy_common_wol_get(struct nss_phy_device *nss_phydev,
+	u32 *enable);
 int nss_phy_common_stats_status_set(struct nss_phy_device *nss_phydev,
 	u32 enable);
 int nss_phy_common_stats_status_get(struct nss_phy_device *nss_phydev,

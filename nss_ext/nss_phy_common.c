@@ -601,6 +601,95 @@ int nss_phy_common_mdix_status_get(struct nss_phy_device *nss_phydev,
 	return 0;
 }
 
+int nss_phy_common_magic_frame_set(struct nss_phy_device *nss_phydev,
+	struct nss_phy_mac *mac)
+{
+	u16 phy_data1 = 0;
+	u16 phy_data2 = 0;
+	u16 phy_data3 = 0;
+	u16 ret = 0;
+
+	phy_data1 = (mac->uc[0] << 8) | mac->uc[1];
+	phy_data2 = (mac->uc[2] << 8) | mac->uc[3];
+	phy_data3 = (mac->uc[4] << 8) | mac->uc[5];
+
+	ret = nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_WOL_MAGIC_MAC_CTRL1, phy_data1);
+	if (ret < 0)
+		return ret;
+
+	ret = nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_WOL_MAGIC_MAC_CTRL2, phy_data2);
+	if (ret < 0)
+		return ret;
+
+	ret = nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_WOL_MAGIC_MAC_CTRL3, phy_data3);
+
+	return ret;
+}
+
+int nss_phy_common_magic_frame_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_mac *mac)
+{
+	u16 phy_data1 = 0;
+	u16 phy_data2 = 0;
+	u16 phy_data3 = 0;
+	int ret = 0;
+
+	phy_data1 = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_WOL_MAGIC_MAC_CTRL1);
+	if (ret < 0)
+		return ret;
+
+	phy_data2 = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_WOL_MAGIC_MAC_CTRL2);
+	if (ret < 0)
+		return ret;
+
+	phy_data3 = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_WOL_MAGIC_MAC_CTRL3);
+	if (ret < 0)
+		return ret;
+
+	mac->uc[0] = (phy_data1 >> 8);
+	mac->uc[1] = (phy_data1 & 0x00ff);
+	mac->uc[2] = (phy_data2 >> 8);
+	mac->uc[3] = (phy_data2 & 0x00ff);
+	mac->uc[4] = (phy_data3 >> 8);
+	mac->uc[5] = (phy_data3 & 0x00ff);
+
+	return 0;
+}
+
+int nss_phy_common_wol_set(struct nss_phy_device *nss_phydev,
+	u32 enable)
+{
+	u16 phy_data = 0;
+
+	if (enable)
+		phy_data |= NSS_PHY_MMD3_WOL_EN;
+
+	return nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_WOL_CTRL, NSS_PHY_MMD3_WOL_EN, phy_data);
+}
+
+int nss_phy_common_wol_get(struct nss_phy_device *nss_phydev,
+	u32 *enable)
+
+{
+	u16 phy_data = 0;
+
+	*enable = NSS_PHY_FALSE;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_WOL_CTRL);
+	if (phy_data & NSS_PHY_MMD3_WOL_EN)
+		*enable = !NSS_PHY_FALSE;
+
+	return 0;
+}
+
 int nss_phy_common_stats_status_set(struct nss_phy_device *nss_phydev,
 	u32 enable)
 {

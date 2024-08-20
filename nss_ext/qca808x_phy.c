@@ -627,6 +627,10 @@ int qca808x_phy_ops_init(struct nss_phy_ops *ops)
 	ops->pll_on = qca808x_phy_pll_on;
 	ops->pll_off = qca808x_phy_pll_off;
 	ops->cdt = qca808x_phy_cdt;
+	ops->wol_set = nss_phy_common_wol_set;
+	ops->wol_get = nss_phy_common_wol_get;
+	ops->magic_frame_set = nss_phy_common_magic_frame_set;
+	ops->magic_frame_get = nss_phy_common_magic_frame_get;
 	ops->mdix_set = nss_phy_common_mdix_set;
 	ops->mdix_get = nss_phy_common_mdix_get;
 	ops->mdix_status_get = nss_phy_common_mdix_status_get;

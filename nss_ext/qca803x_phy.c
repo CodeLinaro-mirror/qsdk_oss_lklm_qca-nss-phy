@@ -186,6 +186,10 @@ int qca803x_phy_ops_init(struct nss_phy_ops *ops)
 	ops->combo_fiber_mode_set = nss_phy_common_combo_fiber_mode_set;
 	ops->combo_fiber_mode_get = nss_phy_common_combo_fiber_mode_get;
 	ops->cdt = qca803x_phy_cdt;
+	ops->wol_set = nss_phy_common_wol_set;
+	ops->wol_get = nss_phy_common_wol_get;
+	ops->magic_frame_set = nss_phy_common_magic_frame_set;
+	ops->magic_frame_get = nss_phy_common_magic_frame_get;
 
 	return 0;
 }

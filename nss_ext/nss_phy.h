@@ -137,7 +137,7 @@ enum nss_phy_cable_status {
 };
 
 struct nss_phy_mac {
-	u32 uc[6];
+	u8 uc[6];
 };
 
 enum nss_phy_mdix_mode {
