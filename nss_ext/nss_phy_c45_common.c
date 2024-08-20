@@ -446,3 +446,111 @@ int nss_phy_c45_common_stats_get(struct nss_phy_device *nss_phydev,
 
 	return 0;
 }
+
+u16 nss_phy_c45_common_intr_to_reg(struct nss_phy_device *nss_phydev,
+	u32 mask)
+{
+	u16 phy_data = 0;
+
+	if (INTR_WOL & mask)
+		phy_data |= NSS_PHY_INTR_WOL;
+	if (INTR_POE & mask)
+		phy_data |= NSS_PHY_INTR_POE;
+	if (INTR_TX_PTP & mask)
+		phy_data |= NSS_PHY_MMD31_INTR_TX_PTP;
+	if (INTR_RX_PTP & mask)
+		phy_data |= NSS_PHY_MMD31_INTR_RX_PTP;
+	if (INTR_10MS_PTP & mask)
+		phy_data |= NSS_PHY_MMD31_INTR_10MS_PTP;
+	if (INTR_DOWNSHIF & mask)
+		phy_data |= NSS_PHY_MMD31_INTR_DOWNSHIF;
+	if (INTR_FAST_LINK_DOWN_100M & mask)
+		phy_data |= NSS_PHY_MMD31_INTR_FAST_LINK_DOWN_100M;
+	if (INTR_FAST_LINK_DOWN_1000M & mask)
+		phy_data |= NSS_PHY_MMD31_INTR_FAST_LINK_DOWN_1000M;
+	if (INTR_LINK_UP & mask)
+		phy_data |= NSS_PHY_INTR_LINK_UP;
+	if (INTR_LINK_DOWN & mask)
+		phy_data |= NSS_PHY_INTR_LINK_DOWN;
+	if (INTR_SEC_ENA & mask)
+		phy_data |= NSS_PHY_MMD31_INTR_SEC_ENA;
+	if (INTR_SPEED & mask)
+		phy_data |= NSS_PHY_INTR_SPEED;
+	if (INTR_FAST_LINK_DOWN & mask)
+		phy_data |= NSS_PHY_MMD31_INTR_FAST_LINK_DOWN;
+
+	return phy_data;
+}
+
+u32 nss_phy_c45_common_intr_from_reg(struct nss_phy_device *nss_phydev,
+	u16 phy_data)
+{
+	u32 mask = 0;
+
+	if (NSS_PHY_INTR_WOL & phy_data)
+		mask |= INTR_WOL;
+	if (NSS_PHY_INTR_POE & phy_data)
+		mask |= INTR_POE;
+	if (NSS_PHY_MMD31_INTR_TX_PTP & phy_data)
+		mask |= INTR_TX_PTP;
+	if (NSS_PHY_MMD31_INTR_RX_PTP & phy_data)
+		mask |= INTR_RX_PTP;
+	if (NSS_PHY_MMD31_INTR_10MS_PTP & phy_data)
+		mask |= INTR_10MS_PTP;
+	if (NSS_PHY_MMD31_INTR_DOWNSHIF & phy_data)
+		mask |= INTR_DOWNSHIF;
+	if (NSS_PHY_MMD31_INTR_FAST_LINK_DOWN_100M & phy_data)
+		mask |= INTR_FAST_LINK_DOWN_100M;
+	if (NSS_PHY_MMD31_INTR_FAST_LINK_DOWN_1000M & phy_data)
+		mask |= INTR_FAST_LINK_DOWN_1000M;
+	if (NSS_PHY_INTR_LINK_UP & phy_data)
+		mask |= INTR_LINK_UP;
+	if (NSS_PHY_INTR_LINK_DOWN & phy_data)
+		mask |= INTR_LINK_DOWN;
+	if (NSS_PHY_INTR_MEDIA_TYPE & phy_data)
+		mask |= INTR_MEDIA_TYPE;
+	if (NSS_PHY_INTR_SPEED & phy_data)
+		mask |= INTR_SPEED;
+	if (NSS_PHY_MMD31_INTR_FAST_LINK_DOWN & phy_data)
+		mask |= INTR_FAST_LINK_DOWN;
+
+	return mask;
+}
+
+int nss_phy_c45_common_intr_mask_set(struct nss_phy_device *nss_phydev,
+	u32 intr_mask)
+{
+	u16 phy_data = 0;
+
+	phy_data = nss_phy_c45_common_intr_to_reg(nss_phydev, intr_mask);
+
+	return nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD31_NUM,
+		NSS_PHY_INTR_MASK, phy_data);
+}
+
+int nss_phy_c45_common_intr_mask_get(struct nss_phy_device *nss_phydev,
+	u32 *intr_mask)
+{
+	u16 phy_data = 0;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD31_NUM,
+		NSS_PHY_INTR_MASK);
+
+	*intr_mask = nss_phy_common_intr_from_reg(nss_phydev, phy_data);
+
+	return 0;
+}
+
+int nss_phy_c45_common_intr_status_get(struct nss_phy_device *nss_phydev,
+	u32 *intr_status)
+{
+	u16 phy_data = 0;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD31_NUM,
+		NSS_PHY_INTR_STATUS);
+
+	*intr_status = nss_phy_common_intr_from_reg(nss_phydev, phy_data);
+
+	return 0;
+}
+

@@ -606,6 +606,103 @@ static int qca808x_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 	return 0;
 }
 
+static int qca8084_phy_intr_enable(struct nss_phy_device *nss_phydev,
+	u32 intr_bmp)
+{
+	int ret;
+	u32 phy_index = 0, data0 = 0, data1 = 0, mask0 = 0, mask1 = 0;
+
+	phy_index =
+	nss_phy_addr_get(nss_phydev) - nss_phy_share_addr_get(nss_phydev);
+	mask0 = NSS_BIT(QCA8084_SOC_GLOBAL_INTR_ENABLE_PHY0_BOFFSET
+	- phy_index);
+	mask1 = NSS_BIT(phy_index);
+	if (intr_bmp) {
+		data0 |= mask0;
+		if (intr_bmp & INTR_WOL)
+			data1 |= mask1;
+	}
+
+	ret = nss_phy_modify_soc(nss_phydev, QCA8084_SOC_GLOBAL_INTR_ENABLE,
+		mask0, data0);
+	if (ret < 0)
+		return ret;
+
+	ret = nss_phy_modify_soc(nss_phydev, QCA8084_SOC_WOL_INTR_ENABLE,
+		mask1, data1);
+
+	return ret;
+}
+
+static int qca808x_phy_intr_mask_set(struct nss_phy_device *nss_phydev,
+	u32 intr_mask)
+{
+	u16 phy_data = 0;
+	int ret = 0;
+
+	phy_data = nss_phy_c45_common_intr_to_reg(nss_phydev, intr_mask);
+
+	if (intr_mask & INTR_FAST_LINK_DOWN_10M)
+		phy_data |= QCA808X_PHY_INTR_FAST_LINK_DOWN_10M;
+	if (intr_mask & INTR_SG_LINK_FAIL)
+		phy_data |= QCA808X_PHY_INTR_SG_LINK_FAIL;
+	if (intr_mask & INTR_SG_LINK_SUCCESS)
+		phy_data |= QCA808X_PHY_INTR_SG_LINK_SUCCESS;
+
+	ret = nss_phy_write(nss_phydev, NSS_PHY_INTR_MASK,
+		phy_data);
+	if (ret < 0)
+		return ret;
+	if (nss_phy_id_check(nss_phydev, QCA8084_PHY, QCA_PHY_EXACT_MASK)) {
+		ret = qca8084_phy_intr_enable(nss_phydev, intr_mask);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
+static int qca808x_phy_intr_mask_get(struct nss_phy_device *nss_phydev,
+	u32 *intr_mask)
+
+{
+	u16 phy_data = 0;
+
+	phy_data = nss_phy_read(nss_phydev, NSS_PHY_INTR_MASK);
+
+	*intr_mask = nss_phy_c45_common_intr_from_reg(nss_phydev,
+		phy_data & (~QCA808X_PHY_INTR_MASK));
+
+	if (phy_data & QCA808X_PHY_INTR_FAST_LINK_DOWN_10M)
+		*intr_mask |= INTR_FAST_LINK_DOWN_10M;
+	if (phy_data & QCA808X_PHY_INTR_SG_LINK_FAIL)
+		*intr_mask |= INTR_SG_LINK_FAIL;
+	if (phy_data & QCA808X_PHY_INTR_SG_LINK_SUCCESS)
+		*intr_mask |= INTR_SG_LINK_SUCCESS;
+
+	return 0;
+}
+
+static int qca808x_phy_intr_status_get(struct nss_phy_device *nss_phydev,
+	u32 *intr_status)
+{
+	u16 phy_data = 0;
+
+	phy_data = nss_phy_read(nss_phydev, NSS_PHY_INTR_STATUS);
+
+	*intr_status = nss_phy_c45_common_intr_from_reg(nss_phydev,
+		phy_data & (~QCA808X_PHY_INTR_MASK));
+
+	if (phy_data & QCA808X_PHY_INTR_FAST_LINK_DOWN_10M)
+		*intr_status |= INTR_FAST_LINK_DOWN_10M;
+	if (phy_data & QCA808X_PHY_INTR_SG_LINK_FAIL)
+		*intr_status |= INTR_SG_LINK_FAIL;
+	if (phy_data & QCA808X_PHY_INTR_SG_LINK_SUCCESS)
+		*intr_status |= INTR_SG_LINK_SUCCESS;
+
+	return 0;
+}
+
 int qca808x_phy_ops_init(struct nss_phy_ops *ops)
 {
 	ops->hibernation_set = nss_phy_common_hibernation_set;
@@ -637,6 +734,9 @@ int qca808x_phy_ops_init(struct nss_phy_ops *ops)
 	ops->stats_status_set = nss_phy_common_stats_status_set;
 	ops->stats_status_get = nss_phy_common_stats_status_get;
 	ops->stats_get = nss_phy_common_stats_get;
+	ops->intr_mask_set = qca808x_phy_intr_mask_set;
+	ops->intr_mask_get = qca808x_phy_intr_mask_get;
+	ops->intr_status_get = qca808x_phy_intr_status_get;
 
 	return 0;
 }

@@ -97,6 +97,9 @@ int qca833x_phy_ops_init(struct nss_phy_ops *ops)
 	ops->remote_loopback_set = nss_phy_common_remote_loopback_set;
 	ops->remote_loopback_get = nss_phy_common_remote_loopback_get;
 	ops->cdt = qca833x_phy_cdt;
+	ops->intr_mask_set = nss_phy_common_intr_mask_set;
+	ops->intr_mask_get = nss_phy_common_intr_mask_get;
+	ops->intr_status_get = nss_phy_common_intr_status_get;
 
 	return 0;
 }

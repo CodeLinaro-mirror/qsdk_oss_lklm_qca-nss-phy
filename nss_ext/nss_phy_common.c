@@ -861,3 +861,92 @@ u32 nss_phy_common_reset_done(struct nss_phy_device *nss_phydev)
 
 	return !NSS_PHY_FALSE;
 }
+
+u16 nss_phy_common_intr_to_reg(struct nss_phy_device *nss_phydev,
+	u32 mask)
+{
+	u16 phy_data = 0;
+
+	if (INTR_WOL & mask)
+		phy_data |= NSS_PHY_INTR_WOL;
+	if (INTR_POE & mask)
+		phy_data |= NSS_PHY_INTR_POE;
+	if (INTR_BX_FX_LINK_UP & mask)
+		phy_data |= NSS_PHY_INTR_BX_FX_LINK_UP;
+	if (INTR_BX_FX_LINK_DOWN & mask)
+		phy_data |= NSS_PHY_INTR_BX_FX_LINK_DOWN;
+	if (INTR_LINK_UP & mask)
+		phy_data |= NSS_PHY_INTR_LINK_UP;
+	if (INTR_LINK_DOWN & mask)
+		phy_data |= NSS_PHY_INTR_LINK_DOWN;
+	if (INTR_MEDIA_TYPE & mask)
+		phy_data |= NSS_PHY_INTR_MEDIA_TYPE;
+	if (INTR_DUPLEX & mask)
+		phy_data |= NSS_PHY_INTR_DUPLEX;
+	if (INTR_SPEED & mask)
+		phy_data |= NSS_PHY_INTR_SPEED;
+
+	return phy_data;
+}
+
+u32 nss_phy_common_intr_from_reg(struct nss_phy_device *nss_phydev,
+	u16 phy_data)
+{
+	u32 mask = 0;
+
+	if (NSS_PHY_INTR_WOL & phy_data)
+		mask |= INTR_WOL;
+	if (NSS_PHY_INTR_POE & phy_data)
+		mask |= INTR_POE;
+	if (NSS_PHY_INTR_BX_FX_LINK_UP & phy_data)
+		mask |= INTR_BX_FX_LINK_UP;
+	if (NSS_PHY_INTR_BX_FX_LINK_DOWN & phy_data)
+		mask |= INTR_BX_FX_LINK_DOWN;
+	if (NSS_PHY_INTR_LINK_UP & phy_data)
+		mask |= INTR_LINK_UP;
+	if (NSS_PHY_INTR_LINK_DOWN & phy_data)
+		mask |= INTR_LINK_DOWN;
+	if (NSS_PHY_INTR_MEDIA_TYPE & phy_data)
+		mask |= INTR_MEDIA_TYPE;
+	if (NSS_PHY_INTR_DUPLEX & phy_data)
+		mask |= INTR_DUPLEX;
+	if (NSS_PHY_INTR_SPEED & phy_data)
+		mask |= INTR_SPEED;
+
+	return mask;
+}
+
+int nss_phy_common_intr_mask_set(struct nss_phy_device *nss_phydev,
+	u32 intr_mask)
+{
+	u16 phy_data = 0;
+
+	phy_data = nss_phy_common_intr_to_reg(nss_phydev, intr_mask);
+
+	return nss_phy_write(nss_phydev, NSS_PHY_INTR_MASK,
+		phy_data);
+}
+
+int nss_phy_common_intr_mask_get(struct nss_phy_device *nss_phydev,
+	u32 *intr_mask)
+{
+	u16 phy_data = 0;
+
+	phy_data = nss_phy_read(nss_phydev, NSS_PHY_INTR_MASK);
+
+	*intr_mask = nss_phy_common_intr_from_reg(nss_phydev, phy_data);
+
+	return 0;
+}
+
+int nss_phy_common_intr_status_get(struct nss_phy_device *nss_phydev,
+	u32 *intr_status)
+{
+	u16 phy_data = 0;
+
+	phy_data = nss_phy_read(nss_phydev, NSS_PHY_INTR_STATUS);
+
+	*intr_status = nss_phy_common_intr_from_reg(nss_phydev, phy_data);
+
+	return 0;
+}

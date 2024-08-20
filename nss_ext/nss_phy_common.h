@@ -32,6 +32,8 @@ extern "C" {
 #define NSS_PHY_CONTROL		0
 #define NSS_PHY_SPEC_CONTROL		0x10
 #define NSS_PHY_SPEC_STATUS		0x11
+#define NSS_PHY_INTR_MASK		0x12
+#define NSS_PHY_INTR_STATUS		0x13
 #define NSS_PHY_CDT_CONTROL		0x16
 #define NSS_PHY_CHIP_CONFIGURATION		0x1f
 #define NSS_PHY_FIFO_CONTROL		0x19
@@ -56,6 +58,16 @@ extern "C" {
 #define NSS_PHY_MDIX		0x0020
 #define NSS_PHY_MDIX_AUTO	0x0060
 #define NSS_PHY_MDIX_STATUS		0x0040
+
+#define NSS_PHY_INTR_SPEED		0x4000
+#define NSS_PHY_INTR_DUPLEX		0x2000
+#define NSS_PHY_INTR_MEDIA_TYPE		0x1000
+#define NSS_PHY_INTR_LINK_DOWN		0x0800
+#define NSS_PHY_INTR_LINK_UP		0x0400
+#define NSS_PHY_INTR_BX_FX_LINK_DOWN		0x0100
+#define NSS_PHY_INTR_BX_FX_LINK_UP		0x0080
+#define NSS_PHY_INTR_POE		0x0002
+#define NSS_PHY_INTR_WOL		0x0001
 
 /*MMD number*/
 #define NSS_PHY_MMD1_NUM		0x1
@@ -232,6 +244,16 @@ int nss_phy_common_cdt_status_get(struct nss_phy_device *nss_phydev,
 int nss_phy_common_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 	enum nss_phy_cable_status *cable_status, u32 *cable_len);
 u32 nss_phy_common_reset_done(struct nss_phy_device *nss_phydev);
+u16 nss_phy_common_intr_to_reg(struct nss_phy_device *nss_phydev,
+	u32 mask);
+u32 nss_phy_common_intr_from_reg(struct nss_phy_device *nss_phydev,
+	u16 phy_data);
+int nss_phy_common_intr_mask_set(struct nss_phy_device *nss_phydev,
+	u32 intr_mask);
+int nss_phy_common_intr_mask_get(struct nss_phy_device *nss_phydev,
+	u32 *intr_mask);
+int nss_phy_common_intr_status_get(struct nss_phy_device *nss_phydev,
+	u32 *intr_status);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

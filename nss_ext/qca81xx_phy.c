@@ -171,6 +171,9 @@ int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 	ops->stats_status_set = qca81xx_phy_stats_status_set;
 	ops->stats_status_get = qca81xx_phy_stats_status_get;
 	ops->stats_get = qca81xx_phy_stats_get;
+	ops->intr_mask_set = nss_phy_c45_common_intr_mask_set;
+	ops->intr_mask_get = nss_phy_c45_common_intr_mask_get;
+	ops->intr_status_get = nss_phy_c45_common_intr_status_get;
 
 	return 0;
 }

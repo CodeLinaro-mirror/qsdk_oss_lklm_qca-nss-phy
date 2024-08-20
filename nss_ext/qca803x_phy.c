@@ -190,6 +190,9 @@ int qca803x_phy_ops_init(struct nss_phy_ops *ops)
 	ops->wol_get = nss_phy_common_wol_get;
 	ops->magic_frame_set = nss_phy_common_magic_frame_set;
 	ops->magic_frame_get = nss_phy_common_magic_frame_get;
+	ops->intr_mask_set = nss_phy_common_intr_mask_set;
+	ops->intr_mask_get = nss_phy_common_intr_mask_get;
+	ops->intr_status_get = nss_phy_common_intr_status_get;
 
 	return 0;
 }

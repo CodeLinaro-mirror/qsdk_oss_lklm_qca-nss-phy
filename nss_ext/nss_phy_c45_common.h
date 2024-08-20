@@ -65,6 +65,17 @@ extern "C" {
 #define NSS_PHY_MMD7_EEE_PARTNER_ADV_2500M		0x0001
 #define NSS_PHY_MMD7_EEE_PARTNER_ADV_5000M		0x0002
 
+#define NSS_PHY_MMD31_INTR_FAST_LINK_DOWN		0x8000
+#define NSS_PHY_MMD31_INTR_SEC_ENA		0x2000
+#define NSS_PHY_MMD31_INTR_FAST_LINK_DOWN_100M		0x200
+#define NSS_PHY_MMD31_INTR_FAST_LINK_DOWN_1000M	0x240
+#define NSS_PHY_MMD31_INTR_FAST_LINK_RETRAIN_START		0x0100
+#define NSS_PHY_MMD31_INTR_FAST_LINK_RETRAIN_END		0x0080
+#define NSS_PHY_MMD31_INTR_DOWNSHIF		0x0020
+#define NSS_PHY_MMD31_INTR_10MS_PTP		0x0010
+#define NSS_PHY_MMD31_INTR_RX_PTP		0x0008
+#define NSS_PHY_MMD31_INTR_TX_PTP		0x0004
+
 int nss_phy_c45_common_eee_adv_set(struct nss_phy_device *nss_phydev,
 	u32 adv);
 int nss_phy_c45_common_eee_adv_get(struct nss_phy_device *nss_phydev,
@@ -101,6 +112,19 @@ int nss_phy_c45_common_stats_status_get(struct nss_phy_device *nss_phydev,
 	u32 *enable);
 int nss_phy_c45_common_stats_get(struct nss_phy_device *nss_phydev,
 	struct nss_phy_stats_info *cnt_info);
+u16 nss_phy_c45_common_intr_to_reg(struct nss_phy_device *nss_phydev,
+	u32 mask);
+u32 nss_phy_c45_common_intr_from_reg(struct nss_phy_device *nss_phydev,
+	u16 phy_data);
+int
+nss_phy_c45_common_intr_mask_set(struct nss_phy_device *nss_phydev,
+	u32 intr_mask);
+int
+nss_phy_c45_common_intr_mask_get(struct nss_phy_device *nss_phydev,
+	u32 *intr_mask);
+int
+nss_phy_c45_common_intr_status_get(struct nss_phy_device *nss_phydev,
+	u32 *intr_status);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */
