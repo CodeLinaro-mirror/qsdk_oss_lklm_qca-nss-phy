@@ -307,3 +307,27 @@ int nss_phy_c45_common_autoneg_restart(struct nss_phy_device *nss_phydev)
 
 	return nss_phydev_autoneg_update(nss_phydev, !NSS_PHY_FALSE);
 }
+
+int nss_phy_c45_common_cdt_start(struct nss_phy_device *nss_phydev)
+{
+	u16 status = 0;
+	u16 ii = 100;
+	int ret = 0;
+
+	ret = nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD31_NUM,
+		NSS_PHY_CDT_CONTROL, NSS_PHY_RUN_CDT |
+		NSS_PHY_CABLE_LENGTH_UNIT);
+	if (ret < 0)
+		return ret;
+
+	do {
+		nss_phy_mdelay(30);
+		status = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD31_NUM,
+			NSS_PHY_CDT_CONTROL);
+	} while ((status & NSS_PHY_RUN_CDT) && (--ii));
+
+	if (ii == 0)
+		return -NSS_PHY_ETIMEOUT;
+
+	return 0;
+}

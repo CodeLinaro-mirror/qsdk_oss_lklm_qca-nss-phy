@@ -30,6 +30,7 @@ extern "C" {
 
 /*mii register*/
 #define NSS_PHY_CONTROL		0
+#define NSS_PHY_CDT_CONTROL		0x16
 #define NSS_PHY_CHIP_CONFIGURATION		0x1f
 #define NSS_PHY_FIFO_CONTROL		0x19
 
@@ -59,6 +60,12 @@ extern "C" {
 /*MMD registers*/
 #define NSS_PHY_MMD3_8023AZ_EEE_CAPABILITY		0x14
 #define NSS_PHY_MMD3_REMOTE_LOOPBACK_CTRL		0x805a
+#define NSS_PHY_MMD3_CDT_STATUS		0x8064
+#define NSS_PHY_MMD3_CDT_PAIR0		0x8065
+#define NSS_PHY_MMD3_CDT_PAIR1		0x8066
+#define NSS_PHY_MMD3_CDT_PAIR2		0x8067
+#define NSS_PHY_MMD3_CDT_PAIR3		0x8068
+
 #define NSS_PHY_MMD7_8023AZ_EEE_CTRL		0x3c
 #define NSS_PHY_MMD7_8023AZ_EEE_PARTNER		0x3d
 #define NSS_PHY_MMD7_8023AZ_EEE_STATUS		0x8000
@@ -108,6 +115,13 @@ extern "C" {
 #define NSS_PHY_LED_SOURCE0		0x0
 #define NSS_PHY_LED_SOURCE1		0x1
 #define NSS_PHY_LED_SOURCE2		0x2
+
+#define NSS_PHY_MDI_PAIR_NUM		0x4
+#define NSS_PHY_RUN_CDT		0x8000
+#define NSS_PHY_CABLE_LENGTH_UNIT		0x0400
+
+#define NSS_PHY_CDT_PAIR_STATUS(mdi_pair, phy_status)		\
+	(phy_status >> ((3 - mdi_pair) * 4) & 3)
 
 int nss_phy_common_hibernation_set(struct nss_phy_device *nss_phydev,
 	u32 enable);
@@ -171,6 +185,11 @@ int nss_phy_common_function_reset(struct nss_phy_device *nss_phydev,
 int nss_phy_common_autoneg_restart(struct nss_phy_device *nss_phydev);
 int nss_phy_common_autoneg_set(struct nss_phy_device *nss_phydev,
 	u32 enable);
+int nss_phy_common_cdt_start(struct nss_phy_device *nss_phydev);
+int nss_phy_common_cdt_status_get(struct nss_phy_device *nss_phydev,
+	u32 mdi_pair, enum nss_phy_cable_status *cable_status, u32 *cable_len);
+int nss_phy_common_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
+	enum nss_phy_cable_status *cable_status, u32 *cable_len);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

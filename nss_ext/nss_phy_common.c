@@ -547,3 +547,99 @@ int nss_phy_common_autoneg_set(struct nss_phy_device *nss_phydev,
 
 	return nss_phydev_autoneg_update(nss_phydev, enable);
 }
+
+static enum nss_phy_cable_status
+nss_phy_common_cdt_cable_status_get(u32 mdi_pair, u16 phy_status)
+{
+	enum nss_phy_cable_status status = CABLE_INVALID;
+
+	switch (NSS_PHY_CDT_PAIR_STATUS(mdi_pair, phy_status)) {
+	case 1:
+		status = CABLE_NORMAL;
+		break;
+	case 2:
+		status = CABLE_OPENED;
+		break;
+	case 3:
+		status = CABLE_SHORT;
+		break;
+	}
+
+	return status;
+}
+
+int nss_phy_common_cdt_start(struct nss_phy_device *nss_phydev)
+{
+	u16 status = 0, ii = 100;
+
+	/* RUN CDT */
+	nss_phy_write(nss_phydev, NSS_PHY_CDT_CONTROL,
+		NSS_PHY_RUN_CDT | NSS_PHY_CABLE_LENGTH_UNIT);
+	do {
+		nss_phy_mdelay(30);
+		status =
+			nss_phy_read(nss_phydev, NSS_PHY_CDT_CONTROL);
+	} while ((status & NSS_PHY_RUN_CDT) && (--ii));
+
+	if (ii == 0)
+		return -NSS_PHY_ETIMEOUT;
+
+	return 0;
+}
+
+int nss_phy_common_cdt_status_get(struct nss_phy_device *nss_phydev,
+	u32 mdi_pair, enum nss_phy_cable_status *cable_status, u32 *cable_len)
+{
+	u16 cable_delta_time = 0;
+	u16 status = 0;
+
+	if (mdi_pair >= NSS_PHY_MDI_PAIR_NUM)
+		return -NSS_PHY_EINVAL;
+
+	/* Get cable status */
+	status = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_CDT_STATUS);
+	*cable_status = nss_phy_common_cdt_cable_status_get(mdi_pair,
+		status);
+	switch (mdi_pair) {
+	case 0:
+		cable_delta_time =
+			nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+			NSS_PHY_MMD3_CDT_PAIR0);
+		break;
+	case 1:
+		cable_delta_time =
+			nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+			NSS_PHY_MMD3_CDT_PAIR1);
+		break;
+	case 2:
+		cable_delta_time =
+			nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+			NSS_PHY_MMD3_CDT_PAIR2);
+		break;
+	case 3:
+		cable_delta_time =
+			nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+			NSS_PHY_MMD3_CDT_PAIR3);
+		break;
+	}
+
+	/* the actual cable length equals to CableDeltaTime * 0.824 */
+	*cable_len = ((cable_delta_time & 0xff) * 824) / 1000;
+
+	return 0;
+}
+
+int nss_phy_common_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
+	enum nss_phy_cable_status *cable_status, u32 *cable_len)
+{
+	int ret;
+
+	ret = nss_phy_common_cdt_start(nss_phydev);
+	if (ret < 0)
+		return ret;
+	ret = nss_phy_common_cdt_status_get(nss_phydev, mdi_pair, cable_status,
+		cable_len);
+
+	return ret;
+}

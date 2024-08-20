@@ -78,6 +78,7 @@ int nss_phy_c45_common_local_loopback_get(struct nss_phy_device *nss_phydev,
 int nss_phy_c45_common_fifo_reset(struct nss_phy_device *nss_phydev,
 	u32 enable);
 int nss_phy_c45_common_autoneg_restart(struct nss_phy_device *nss_phydev);
+int nss_phy_c45_common_cdt_start(struct nss_phy_device *nss_phydev);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

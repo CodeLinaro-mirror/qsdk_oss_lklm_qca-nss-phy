@@ -524,6 +524,53 @@ static int qca808x_phy_pll_off(struct nss_phy_device *nss_phydev)
 	return ret;
 }
 
+static int
+qca8084_phy_cdt_thresh_init(struct nss_phy_device *nss_phydev)
+{
+	int ret;
+
+	ret = nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		QCA8084_PHY_MMD3_CDT_THRESH_CTRL3,
+		QCA8084_PHY_MMD3_CDT_THRESH_CTRL3_VAL);
+	if (ret < 0)
+		return ret;
+	ret = nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		QCA8084_PHY_MMD3_CDT_THRESH_CTRL4,
+		QCA8084_PHY_MMD3_CDT_THRESH_CTRL4_VAL);
+	if (ret < 0)
+		return ret;
+	ret = nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		QCA8084_PHY_MMD3_CDT_THRESH_CTRL5,
+		QCA8084_PHY_MMD3_CDT_THRESH_CTRL5_VAL);
+	if (ret < 0)
+		return ret;
+	ret = nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		QCA8084_PHY_MMD3_CDT_THRESH_CTRL6,
+		QCA8084_PHY_MMD3_CDT_THRESH_CTRL6_VAL);
+	if (ret < 0)
+		return ret;
+	ret = nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		QCA8084_PHY_MMD3_CDT_THRESH_CTRL7,
+		QCA8084_PHY_MMD3_CDT_THRESH_CTRL7_VAL);
+	if (ret < 0)
+		return ret;
+	ret = nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		QCA8084_PHY_MMD3_CDT_THRESH_CTRL9,
+		QCA8084_PHY_MMD3_CDT_THRESH_CTRL9_VAL);
+	if (ret < 0)
+		return ret;
+	ret = nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		QCA8084_PHY_MMD3_CDT_THRESH_CTRL13,
+		QCA8084_PHY_MMD3_CDT_THRESH_CTRL13_VAL);
+	if (ret < 0)
+		return ret;
+	ret = nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		QCA8084_PHY_MMD3_CDT_THRESH_CTRL14,
+		QCA8084_PHY_MMD3_CDT_THRESH_CTRL14_VAL);
+
+	return ret;
+}
+
 int qca8084_phy_fixup(struct nss_phy_device *nss_phydev)
 {
 	int ret = 0;
@@ -531,7 +578,30 @@ int qca8084_phy_fixup(struct nss_phy_device *nss_phydev)
 	ret = qca8084_pinctrl_init(nss_phydev);
 	if (ret < 0)
 		return ret;
+	ret = qca8084_phy_cdt_thresh_init(nss_phydev);
+	if (ret < 0)
+		return ret;
 	nss_phy_info(nss_phydev, "qca8084 hw init fixup successfully\n");
+
+	return 0;
+}
+
+static int qca808x_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
+	enum nss_phy_cable_status *cable_status, u32 *cable_len)
+{
+	int ret;
+
+	ret = nss_phy_common_cdt(nss_phydev, mdi_pair, cable_status, cable_len);
+	if (ret < 0)
+		return ret;
+	/* CDT status open and short are reversed for QCA8084 PHY at */
+	/* analog level */
+	if (nss_phy_id_check(nss_phydev, QCA8084_PHY, QCA_PHY_EXACT_MASK)) {
+		if (*cable_status == CABLE_OPENED)
+			*cable_status = CABLE_SHORT;
+		else if (*cable_status == CABLE_SHORT)
+			*cable_status = CABLE_OPENED;
+	}
 
 	return 0;
 }
@@ -561,6 +631,7 @@ int qca808x_phy_ops_init(struct nss_phy_ops *ops)
 	ops->led_ctrl_source_get = qca808x_phy_led_ctrl_source_get;
 	ops->pll_on = qca808x_phy_pll_on;
 	ops->pll_off = qca808x_phy_pll_off;
+	ops->cdt = qca808x_phy_cdt;
 
 	ops_init = !NSS_PHY_FALSE;
 

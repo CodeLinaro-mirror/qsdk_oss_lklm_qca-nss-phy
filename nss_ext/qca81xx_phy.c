@@ -70,6 +70,22 @@ static int qca81xx_phy_function_reset(struct nss_phy_device *nss_phydev,
 	return 0;
 }
 
+static int qca81xx_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
+	enum nss_phy_cable_status *status, u32 *cable_len)
+{
+	int ret;
+
+	ret = nss_phy_c45_common_cdt_start(nss_phydev);
+	if (ret < 0)
+		return ret;
+
+	/* Get cable status */
+	ret = nss_phy_common_cdt_status_get(nss_phydev, mdi_pair, status,
+		cable_len);
+
+	return ret;
+}
+
 int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 {
 	static u32 ops_init;
@@ -91,6 +107,7 @@ int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 	ops->local_loopback_get = nss_phy_c45_common_local_loopback_get;
 	ops->remote_loopback_set = nss_phy_common_remote_loopback_set;
 	ops->remote_loopback_get = nss_phy_common_remote_loopback_get;
+	ops->cdt = qca81xx_phy_cdt;
 
 	ops_init = !NSS_PHY_FALSE;
 

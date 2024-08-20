@@ -41,6 +41,7 @@ struct nss_phy_device {
 #define NSS_PHY_EOPNOTSUPP		EOPNOTSUPP
 #define NSS_PHY_EINVAL		EINVAL
 #define NSS_PHY_ENOSPC		ENOSPC
+#define NSS_PHY_ETIMEOUT		ETIMEDOUT
 
 #define nss_phy_interface_t phy_interface_t
 #define NSS_NSS_PHY_INTERFACE_MODE_NA		\

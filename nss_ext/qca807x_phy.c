@@ -387,6 +387,7 @@ int qca807x_phy_ops_init(struct nss_phy_ops *ops)
 	ops->combo_fiber_mode_get = nss_phy_common_combo_fiber_mode_get;
 	ops->led_ctrl_source_set = qca807x_phy_led_ctrl_source_set;
 	ops->led_ctrl_source_get = qca807x_phy_led_ctrl_source_get;
+	ops->cdt = nss_phy_common_cdt;
 
 	ops_init = !NSS_PHY_FALSE;
 
