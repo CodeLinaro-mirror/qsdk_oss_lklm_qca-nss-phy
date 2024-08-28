@@ -608,11 +608,6 @@ static int qca808x_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 
 int qca808x_phy_ops_init(struct nss_phy_ops *ops)
 {
-	static u32 ops_init;
-
-	if (ops_init)
-		return -NSS_PHY_EINVAL;
-
 	ops->hibernation_set = nss_phy_common_hibernation_set;
 	ops->hibernation_get = nss_phy_common_hibernation_get;
 	ops->function_reset = qca808x_phy_function_reset;
@@ -632,8 +627,6 @@ int qca808x_phy_ops_init(struct nss_phy_ops *ops)
 	ops->pll_on = qca808x_phy_pll_on;
 	ops->pll_off = qca808x_phy_pll_off;
 	ops->cdt = qca808x_phy_cdt;
-
-	ops_init = !NSS_PHY_FALSE;
 
 	return 0;
 }

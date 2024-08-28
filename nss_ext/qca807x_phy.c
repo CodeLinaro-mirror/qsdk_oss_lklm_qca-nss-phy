@@ -356,12 +356,6 @@ qca807x_phy_led_ctrl_source_get(struct nss_phy_device *nss_phydev,
 
 int qca807x_phy_ops_init(struct nss_phy_ops *ops)
 {
-	static u32 ops_init;
-
-	/*nss phy ops would init one time*/
-	if (ops_init)
-		return -NSS_PHY_EINVAL;
-
 	ops->hibernation_set = nss_phy_common_hibernation_set;
 	ops->hibernation_get = nss_phy_common_hibernation_get;
 	ops->powersave_set = qca807x_phy_powersave_set;
@@ -388,8 +382,6 @@ int qca807x_phy_ops_init(struct nss_phy_ops *ops)
 	ops->led_ctrl_source_set = qca807x_phy_led_ctrl_source_set;
 	ops->led_ctrl_source_get = qca807x_phy_led_ctrl_source_get;
 	ops->cdt = nss_phy_common_cdt;
-
-	ops_init = !NSS_PHY_FALSE;
 
 	return 0;
 }

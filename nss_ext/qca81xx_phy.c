@@ -88,11 +88,6 @@ static int qca81xx_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 
 int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 {
-	static u32 ops_init;
-
-	if (ops_init)
-		return -NSS_PHY_EINVAL;
-
 	ops->hibernation_set = nss_phy_common_hibernation_set;
 	ops->hibernation_get = nss_phy_common_hibernation_get;
 	ops->function_reset = qca81xx_phy_function_reset;
@@ -108,8 +103,6 @@ int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 	ops->remote_loopback_set = nss_phy_common_remote_loopback_set;
 	ops->remote_loopback_get = nss_phy_common_remote_loopback_get;
 	ops->cdt = qca81xx_phy_cdt;
-
-	ops_init = !NSS_PHY_FALSE;
 
 	return 0;
 }

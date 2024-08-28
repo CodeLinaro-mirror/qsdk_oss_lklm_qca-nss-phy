@@ -162,11 +162,6 @@ static int qca803x_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 
 int qca803x_phy_ops_init(struct nss_phy_ops *ops)
 {
-	static u32 ops_init;
-
-	if (ops_init)
-		return -NSS_PHY_EINVAL;
-
 	ops->hibernation_set = nss_phy_common_hibernation_set;
 	ops->hibernation_get = nss_phy_common_hibernation_get;
 	ops->powersave_set = nss_phy_common_powersave_set;
@@ -191,8 +186,6 @@ int qca803x_phy_ops_init(struct nss_phy_ops *ops)
 	ops->combo_fiber_mode_set = nss_phy_common_combo_fiber_mode_set;
 	ops->combo_fiber_mode_get = nss_phy_common_combo_fiber_mode_get;
 	ops->cdt = qca803x_phy_cdt;
-
-	ops_init = !NSS_PHY_FALSE;
 
 	return 0;
 }
