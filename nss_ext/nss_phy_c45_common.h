@@ -79,6 +79,12 @@ int nss_phy_c45_common_fifo_reset(struct nss_phy_device *nss_phydev,
 	u32 enable);
 int nss_phy_c45_common_autoneg_restart(struct nss_phy_device *nss_phydev);
 int nss_phy_c45_common_cdt_start(struct nss_phy_device *nss_phydev);
+int nss_phy_c45_common_mdix_mode_set(struct nss_phy_device *nss_phydev,
+	enum nss_phy_mdix_mode mode);
+int nss_phy_c45_common_mdix_get(struct nss_phy_device *nss_phydev,
+	enum nss_phy_mdix_mode *mode);
+int nss_phy_c45_common_mdix_status_get(struct nss_phy_device *nss_phydev,
+	enum nss_phy_mdix_status *mode);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

@@ -86,6 +86,18 @@ static int qca81xx_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 	return ret;
 }
 
+static int qca81xx_phy_mdix_set(struct nss_phy_device *nss_phydev,
+	enum nss_phy_mdix_mode mode)
+{
+	int ret = 0;
+
+	ret = nss_phy_c45_common_mdix_mode_set(nss_phydev, mode);
+	if (ret < 0)
+		return ret;
+
+	return qca81xx_phy_soft_reset(nss_phydev);
+}
+
 int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 {
 	ops->hibernation_set = nss_phy_common_hibernation_set;
@@ -103,6 +115,9 @@ int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 	ops->remote_loopback_set = nss_phy_common_remote_loopback_set;
 	ops->remote_loopback_get = nss_phy_common_remote_loopback_get;
 	ops->cdt = qca81xx_phy_cdt;
+	ops->mdix_set = qca81xx_phy_mdix_set;
+	ops->mdix_get = nss_phy_c45_common_mdix_get;
+	ops->mdix_status_get = nss_phy_c45_common_mdix_status_get;
 
 	return 0;
 }

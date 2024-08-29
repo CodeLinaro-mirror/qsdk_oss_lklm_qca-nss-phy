@@ -382,6 +382,9 @@ int qca807x_phy_ops_init(struct nss_phy_ops *ops)
 	ops->led_ctrl_source_set = qca807x_phy_led_ctrl_source_set;
 	ops->led_ctrl_source_get = qca807x_phy_led_ctrl_source_get;
 	ops->cdt = nss_phy_common_cdt;
+	ops->mdix_set = nss_phy_common_mdix_set;
+	ops->mdix_get = nss_phy_common_mdix_get;
+	ops->mdix_status_get = nss_phy_common_mdix_status_get;
 
 	return 0;
 }
