@@ -157,7 +157,7 @@ static int nss_phy_ops_init(struct phy_device *phydev)
 static int nss_phy_match_phy_device(struct phy_device *phydev)
 {
 	if (!QCA_PHY_MATCH(nss_phydev_id_get(phydev)))
-		return -NSS_PHY_EOPNOTSUPP;
+		return false;
 
 	if (phydev->drv == NULL) {
 		phydev_info(phydev, "nss phy driver is used\n");
