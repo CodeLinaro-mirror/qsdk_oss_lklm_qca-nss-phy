@@ -503,9 +503,67 @@ static int qca81xx_phy_config_aneg(struct phy_device *phydev)
 	return genphy_c45_check_and_restart_aneg(phydev, changed);
 }
 
+static int qca81xx_phy_fifo_reset(struct phy_device *phydev,
+	bool enable)
+{
+	u16 phy_data = 0;
+
+	if (!enable)
+		phy_data |= QCA81XX_FIFO_RESET;
+
+	return phy_modify_mmd(phydev, MDIO_MMD_VEND2,
+		QCA81XX_FIFO_CONTROL,
+		QCA81XX_FIFO_RESET, phy_data);
+}
+
+static int qca81xx_phy_speed_fixup(struct phy_device *phydev)
+{
+	int ret = 0;
+	bool port_clock_en = false;
+	u16 phy_data = 0;
+
+	ret = read_poll_timeout(qca81xx_pcs_read_mmd, phy_data,
+		((phy_data & QCA81XX_PCS_MMD31_MII_AN_COMPLETE_INT)),
+		1000, 500000, true, phydev, MDIO_MMD_VEND2,
+		QCA81XX_PCS_MMD31_MII_ERR_SEL);
+	if (ret < 0) {
+		phydev_err(phydev, "!!!autoneg complete timeout!!!\n");
+		return ret;
+	}
+	ret = qca81xx_pcs_modify_mmd(phydev,
+		MDIO_MMD_VEND2, QCA81XX_PCS_MMD31_MII_ERR_SEL,
+		QCA81XX_PCS_MMD31_MII_AN_COMPLETE_INT, 0);
+	if (ret < 0)
+		return ret;
+	mdelay(10);
+	if (phydev->link)
+		port_clock_en = true;
+	ret = qca81xx_pcs_modify_mmd(phydev,
+		MDIO_MMD_PCS, QCA81XX_PCS_MII_DIG_CTRL,
+		QCA81XX_PCS_MMD3_USXG_FIFO_RESET,
+		QCA81XX_PCS_MMD3_USXG_FIFO_RESET);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_fifo_reset(phydev, true);
+	if (ret < 0)
+		return ret;
+	mdelay(1);
+	if (phydev->link) {
+		ret = qca81xx_phy_fifo_reset(phydev, false);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
 static int qca81xx_phy_read_status(struct phy_device *phydev)
 {
 	int ret = 0;
+	unsigned old_link = 0;
+
+
+	old_link = phydev->link;
 
 	/* Clause 45 has no standardized support for 1000BaseT, */
 	/* therefore use vendor registers. */
@@ -554,6 +612,9 @@ static int qca81xx_phy_read_status(struct phy_device *phydev)
 		else
 			phydev->duplex = DUPLEX_UNKNOWN;
 	}
+
+	if (phydev->link != old_link)
+		qca81xx_phy_speed_fixup(phydev);
 
 	return 0;
 }
