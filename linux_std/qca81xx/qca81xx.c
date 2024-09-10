@@ -21,9 +21,27 @@
 #include <linux/bitfield.h>
 
 #define QCA8111_PHY		0x004dd1c0
+/* in QCOM MDIO bus driver, bit29~31 is for soc type, 2 is for laguna */
+/* and bit24~28 is for phy address, 0~23 is for soc address */
+#define TO_QCA81XX_PHY_SOC_ADDR(addr, reg)		\
+	((BIT(30) | reg) | (addr << 24))
 
 enum qca81xx_addr_offset {
 	PCS_ADDR_OFFSET = 1,
+	SOC_ADDR_OFFSET = 2,
+};
+
+struct qca81xx_phy_mdio_data {
+	void __iomem	*membase[2];
+	void __iomem *eth_ldo_rdy[3];
+	int clk_div;
+	bool force_c22;
+	struct gpio_descs *reset_gpios;
+	void (*preinit)(struct mii_bus *bus);
+	u32 (*sw_read)(struct mii_bus *bus, u32 reg);
+	void (*sw_write)(struct mii_bus *bus, u32 reg, u32 val);
+	struct clk *clk[5];
+	void *i2c;
 };
 
 /* below two registers are used to access PHY */
@@ -219,6 +237,57 @@ static int qca81xx_pcs_modify(struct phy_device *phydev,
 
 	return mdiobus_modify(phydev->mdio.bus, addr, regnum,
 		mask, set);
+}
+
+static u32 qca81xx_soc_address(struct phy_device *phydev)
+{
+	return phydev->mdio.addr + SOC_ADDR_OFFSET;
+}
+
+static u32 __qca81xx_soc_read(struct phy_device *phydev, u32 reg)
+{
+	u32 reg_e, val;
+	int addr;
+	struct qca81xx_phy_mdio_data *mdio_priv = phydev->mdio.bus->priv;
+
+	addr = qca81xx_soc_address(phydev);
+	reg_e = TO_QCA81XX_PHY_SOC_ADDR(addr, reg);
+
+	if (mdio_priv && mdio_priv->sw_read)
+		val = mdio_priv->sw_read(phydev->mdio.bus, reg_e);
+
+	return val;
+}
+
+static int __qca81xx_soc_write(struct phy_device *phydev,
+	u32 reg, u32 val)
+{
+	u32 reg_e;
+	int addr;
+	struct qca81xx_phy_mdio_data *mdio_priv = phydev->mdio.bus->priv;
+
+	addr = qca81xx_soc_address(phydev);
+	reg_e = TO_QCA81XX_PHY_SOC_ADDR(addr, reg);
+
+	if (mdio_priv && mdio_priv->sw_write)
+		mdio_priv->sw_write(phydev->mdio.bus, reg_e, val);
+
+	return 0;
+}
+
+static int qca81xx_soc_modify(struct phy_device *phydev, u32 reg,
+	u32 mask, u32 set)
+{
+	u32 val;
+
+	phy_lock_mdio_bus(phydev);
+	val = __qca81xx_soc_read(phydev, reg);
+	val = (val & ~mask) | set;
+	__qca81xx_soc_write(phydev, reg, val);
+	phy_unlock_mdio_bus(phydev);
+
+	return 0;
+
 }
 
 static int qca81xx_pcs_eee_enable(struct phy_device *phydev)
