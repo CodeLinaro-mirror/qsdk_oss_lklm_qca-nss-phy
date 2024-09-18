@@ -84,6 +84,8 @@ int nss_phy_c45_common_eee_partner_adv_get(struct nss_phy_device *nss_phydev,
 	u32 *adv);
 int nss_phy_c45_common_eee_cap_get(struct nss_phy_device *nss_phydev,
 	u32 *cap);
+int nss_phy_c45_common_eee_status_get(struct nss_phy_device *nss_phydev,
+	u32 *status);
 int nss_phy_c45_common_8023az_set(struct nss_phy_device *nss_phydev,
 	u32 enable);
 int nss_phy_c45_common_8023az_get(struct nss_phy_device *nss_phydev,
