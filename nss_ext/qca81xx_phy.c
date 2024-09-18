@@ -153,7 +153,7 @@ int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 	ops->eee_adv_get = nss_phy_c45_common_eee_adv_get;
 	ops->eee_partner_adv_get = nss_phy_c45_common_eee_partner_adv_get;
 	ops->eee_cap_get = nss_phy_c45_common_eee_cap_get;
-	ops->eee_status_get = nss_phy_common_eee_status_get;
+	ops->eee_status_get = nss_phy_c45_common_eee_status_get;
 	ops->ieee_8023az_set = nss_phy_c45_common_8023az_set;
 	ops->ieee_8023az_get = nss_phy_c45_common_8023az_get;
 	ops->local_loopback_set = nss_phy_c45_common_local_loopback_set;
