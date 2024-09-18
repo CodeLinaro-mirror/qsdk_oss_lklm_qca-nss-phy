@@ -43,7 +43,7 @@ int nss_phy_c45_common_eee_adv_set(struct nss_phy_device *nss_phydev,
 		NSS_PHY_MMD7_8023AZ_EEE_CTRL1, NSS_PHY_MMD7_EEE_MASK1,
 		phy_data);
 
-	nss_phydev_eee_update(nss_phydev, ALL_SPEED_EEE);
+	nss_phydev_eee_update(nss_phydev, adv);
 
 	return nss_phy_c45_common_autoneg_restart(nss_phydev);
 }
@@ -439,7 +439,7 @@ int nss_phy_c45_common_stats_get(struct nss_phy_device *nss_phydev,
 		NSS_PHY_MMD3_10G_EGRESS_COUNTER_MIDDLE);
 	cnt_l = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
 		NSS_PHY_MMD3_10G_EGRESS_COUNTER_LOW);
-	stats_info->TxGoodFrame = (cnt_h << 32) | (cnt_m << 1) |
+	stats_info->TxGoodFrame = (cnt_h << 32) | (cnt_m << 16) |
 		cnt_l;
 	stats_info->TxFcsErr = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
 		NSS_PHY_MMD3_10G_EGRESS_ERROR_COUNTER);

@@ -323,9 +323,10 @@ struct nss_phy_ops {
 	int (*reset)(struct nss_phy_device *nss_phydev);
 	int (*power_on)(struct nss_phy_device *nss_phydev);
 	int (*power_off)(struct nss_phy_device *nss_phydev);
-	int (*interface_mode_status_get)(struct nss_phy_device *nss_phydev, u32 status);
+	int (*interface_mode_status_get)(struct nss_phy_device *nss_phydev,
+		u32 *status);
 	int (*phyid_get)(struct nss_phy_device *nss_phydev, u16 *org_id, u16 *rev_id);
-	int (*link_status_get)(struct nss_phy_device *nss_phydev, u32 status);
+	int (*link_status_get)(struct nss_phy_device *nss_phydev, u32 *status);
 };
 #ifdef __cplusplus
 }
