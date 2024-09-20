@@ -71,7 +71,7 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_MMD3_CDT_THRESH_CTRL13		0x807e
 #define QCA81XX_MMD3_CDT_THRESH_CTRL13_VAL		0xb060
 #define QCA81XX_MMD3_CDT_THRESH_CTRL14		0x807f
-#define QCA81XX_MMD3_CDT_THRESH_CTRL14_VAL		0xb8b0
+#define QCA81XX_MMD3_CDT_THRESH_CTRL14_VAL		0x9cb0
 
 /*PHY MMD31 registers*/
 #define QCA81XX_FIFO_CONTROL		0x19
@@ -589,6 +589,24 @@ static int qca81xx_pcs_eee_enable(struct phy_device *phydev)
 	return ret;
 }
 
+static int qca81xx_phy_soft_reset(struct phy_device *phydev)
+{
+	int ret;
+
+	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_VEND2,
+		QCA81XX_SMART_SPEED,
+		QCA81XX_AUTO_SOFT_RESET,
+		QCA81XX_AUTO_SOFT_RESET);
+	if (ret < 0)
+		return ret;
+
+	genphy_c45_pma_suspend(phydev);
+	mdelay(10);
+	genphy_c45_pma_resume(phydev);
+
+	return 0;
+}
+
 static int qca81xx_pcs_usxgmii_init(struct phy_device *phydev)
 {
 	int ret = 0;
@@ -654,8 +672,7 @@ static int qca81xx_pcs_usxgmii_init(struct phy_device *phydev)
 	ret = qca81xx_xpcs_clk_reset_update(phydev, false);
 	if (ret < 0)
 		return ret;
-	ret = phy_modify_mmd(phydev, MDIO_MMD_PMAPMD,
-		MDIO_CTRL1, MDIO_CTRL1_RESET, MDIO_CTRL1_RESET);
+	ret = qca81xx_phy_soft_reset(phydev);
 	if (ret < 0)
 		return ret;
 	ret = qca81xx_pcs_modify_mmd(phydev,
@@ -779,12 +796,12 @@ static int qca81xx_phy_gcc_pre_init(struct phy_device *phydev)
 {
 	int ret;
 
-	/*gephy system reset and release*/
+	/* gephy system reset and release */
 	/* gephy system clock is enabled in default */
 	ret = qca81xx_phy_sysclk_reset(phydev);
 	if (ret < 0)
 		return ret;
-	/*enable efuse loading into analog circuit*/
+	/* enable efuse loading into analog circuit */
 	ret = qca81xx_soc_modify(phydev, EPHY_CFG, EPHY_LDO_CTRL, 0);
 	mdelay(10);
 
@@ -795,14 +812,6 @@ static int qca81xx_phy_gcc_post_init(struct phy_device *phydev)
 {
 	int ret;
 
-	/* ahb clock use srds_txclk and switch to 312.5M/3 */
-	ret = qca81xx_soc_modify(phydev, GCC_AHB_CFG_RCGR,
-		GCC_E2S_SRC_MASK | SRC_DIV_MASK,
-		(GCC_E2S_SRC3_SRDS_TXCLK << 8) | 0x5);
-	if (ret < 0)
-		return ret;
-	ret = qca81xx_soc_modify(phydev, GCC_AHB_CMD_RCGR,
-		CLK_CMD_UPDATE, CLK_CMD_UPDATE);
 	/* security control clock switch as 25M */
 	ret = qca81xx_soc_modify(phydev, GCC_SEC_CTRL_CFG_RCGR,
 		GCC_E2S_SRC_MASK | SRC_DIV_MASK, 0x3);
@@ -859,24 +868,6 @@ static int qca81xx_phy_get_features(struct phy_device *phydev)
 		phydev->advertising);
 	linkmode_clear_bit(ETHTOOL_LINK_MODE_100baseT_Half_BIT,
 		phydev->supported);
-
-	return 0;
-}
-
-static int qca81xx_phy_soft_reset(struct phy_device *phydev)
-{
-	int ret;
-
-	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_VEND2,
-		QCA81XX_SMART_SPEED,
-		QCA81XX_AUTO_SOFT_RESET,
-		QCA81XX_AUTO_SOFT_RESET);
-	if (ret < 0)
-		return ret;
-
-	genphy_c45_pma_suspend(phydev);
-	mdelay(10);
-	genphy_c45_pma_resume(phydev);
 
 	return 0;
 }
