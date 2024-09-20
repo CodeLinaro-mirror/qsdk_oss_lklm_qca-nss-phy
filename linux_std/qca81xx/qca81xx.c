@@ -921,14 +921,10 @@ static int qca81xx_phy_speed_fixup(struct phy_device *phydev)
 	bool port_clock_en = false;
 	u16 phy_data = 0;
 
-	ret = read_poll_timeout(qca81xx_pcs_read_mmd, phy_data,
+	read_poll_timeout(qca81xx_pcs_read_mmd, phy_data,
 		((phy_data & QCA81XX_PCS_MMD31_MII_AN_COMPLETE_INT)),
 		1000, 500000, true, phydev, MDIO_MMD_VEND2,
 		QCA81XX_PCS_MMD31_MII_ERR_SEL);
-	if (ret < 0) {
-		phydev_err(phydev, "!!!autoneg complete timeout!!!\n");
-		return ret;
-	}
 	ret = qca81xx_pcs_modify_mmd(phydev,
 		MDIO_MMD_VEND2, QCA81XX_PCS_MMD31_MII_ERR_SEL,
 		QCA81XX_PCS_MMD31_MII_AN_COMPLETE_INT, 0);
