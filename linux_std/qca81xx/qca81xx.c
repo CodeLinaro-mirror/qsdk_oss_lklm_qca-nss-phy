@@ -51,7 +51,13 @@ struct qca81xx_phy_mdio_data {
 
 /*PHY DEBUG registers*/
 #define QCA81XX_ANA_DEBUG_AFE_DAC8_DP		0x2f80
+#define QCA81XX_ANA_DEBUG_AFE_DAC8_DP_VAL		0x5b56
 #define QCA81XX_ANA_DEBUG_AFE_DAC9_DP		0x3080
+#define QCA81XX_ANA_DEBUG_AFE_DAC9_DP_VAL		0x5b57
+#define QCA81XX_ANA_DEBUG_AFE_DAC38_DP		0x4d80
+#define QCA81XX_ANA_DEBUG_AFE_DAC38_DP_VAL		0x2a2a
+#define QCA81XX_ANA_DEBUG_AFE_DAC39_DP		0x4e80
+#define QCA81XX_ANA_DEBUG_AFE_DAC39_DP_VAL		0x2a2a
 
 /*PHY MMD3 registers*/
 #define QCA81XX_MMD3_CDT_THRESH_CTRL2		0x8073
@@ -72,6 +78,8 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_MMD3_CDT_THRESH_CTRL13_VAL		0xb060
 #define QCA81XX_MMD3_CDT_THRESH_CTRL14		0x807f
 #define QCA81XX_MMD3_CDT_THRESH_CTRL14_VAL		0x9cb0
+#define QCA81XX_MMD3_DEBUG5		0xa015
+#define QCA81XX_MMD3_DEBUG5_VAL		0xce80
 
 /*PHY MMD31 registers*/
 #define QCA81XX_FIFO_CONTROL		0x19
@@ -737,14 +745,6 @@ static int qca81xx_phy_cdt_thresh_init(struct phy_device *phydev)
 {
 	int ret = 0;
 
-	ret = qca81xx_phy_debug_write(phydev,
-		QCA81XX_ANA_DEBUG_AFE_DAC8_DP, 0);
-	if (ret < 0)
-		return ret;
-	ret = qca81xx_phy_debug_write(phydev,
-		QCA81XX_ANA_DEBUG_AFE_DAC9_DP, 0);
-	if (ret < 0)
-		return ret;
 	ret = phy_write_mmd(phydev, MDIO_MMD_PCS,
 		QCA81XX_MMD3_CDT_THRESH_CTRL2,
 		QCA81XX_MMD3_CDT_THRESH_CTRL2_VAL);
@@ -783,8 +783,6 @@ static int qca81xx_phy_cdt_thresh_init(struct phy_device *phydev)
 		QCA81XX_MMD3_CDT_THRESH_CTRL13_VAL);
 	if (ret < 0)
 		return ret;
-	/* for asic, read mmd3 0x808b and got the value, */
-	/* and program the value+1 to 0x807f threshold */
 	ret = phy_write_mmd(phydev, MDIO_MMD_PCS,
 		QCA81XX_MMD3_CDT_THRESH_CTRL14,
 		QCA81XX_MMD3_CDT_THRESH_CTRL14_VAL);
@@ -835,11 +833,41 @@ static int qca81xx_phy_gcc_post_init(struct phy_device *phydev)
 	return ret;
 }
 
+/* Fix some chip can not link to 10G automatically with long cable */
+static int qca81xx_phy_afe_dac_config_init(struct phy_device *phydev)
+{
+	int ret = 0;
+
+	ret = qca81xx_phy_debug_write(phydev, QCA81XX_ANA_DEBUG_AFE_DAC8_DP,
+		QCA81XX_ANA_DEBUG_AFE_DAC8_DP_VAL);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_debug_write(phydev, QCA81XX_ANA_DEBUG_AFE_DAC9_DP,
+		QCA81XX_ANA_DEBUG_AFE_DAC9_DP_VAL);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_debug_write(phydev, QCA81XX_ANA_DEBUG_AFE_DAC38_DP,
+		QCA81XX_ANA_DEBUG_AFE_DAC38_DP_VAL);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_debug_write(phydev, QCA81XX_ANA_DEBUG_AFE_DAC39_DP,
+		QCA81XX_ANA_DEBUG_AFE_DAC39_DP_VAL);
+	if (ret < 0)
+		return ret;
+	ret = phy_write_mmd(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_DEBUG5,
+		QCA81XX_MMD3_DEBUG5_VAL);
+
+	return ret;
+}
+
 static int qca81xx_phy_config_init(struct phy_device *phydev)
 {
 	int ret = 0;
 
 	ret = qca81xx_phy_gcc_pre_init(phydev);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_afe_dac_config_init(phydev);
 	if (ret < 0)
 		return ret;
 	ret = qca81xx_pcs_usxgmii_init(phydev);
@@ -848,6 +876,12 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 	phydev->interface = PHY_INTERFACE_MODE_USXGMII;
 
 	ret = qca81xx_phy_gcc_post_init(phydev);
+	if (ret < 0)
+		return ret;
+	/* configure the eee as disable, 100M, 1G, 10G is disable in default */
+	/* so only need disable 2.5G 5G eee */
+	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_AN,
+		MDIO_AN_EEE_ADV2, GENMASK(1, 0), 0);
 	if (ret < 0)
 		return ret;
 
