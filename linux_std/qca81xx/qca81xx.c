@@ -225,6 +225,25 @@ struct qca81xx_phy_mdio_data {
 /*SOC SEC_TCSR registers*/
 #define EPHY_CFG		0x90F018
 #define EPHY_LDO_CTRL		BIT(20)
+#define GLOBAL_INTR_CTRL		0x90f008
+#define PHY_INTR_EN		BIT(7)
+#define WOL_INTR_CTRL		0x90f010
+#define WOL_INTR_EN		BIT(0)
+
+/*SOC TLMM registers*/
+#define TLMM_BASE		0x400000
+#define TLMM_GPIO_OFFSET		0x1000
+#define TO_TLMM_CFG_REG(pin)		\
+	(TLMM_BASE + 0x1000*pin)
+#define TLMM_FUNC_MASK		GENMASK(5, 2)
+enum {
+	GPIO0_WOL_INT = 0,
+	GPIO1_PHY_INT,
+	GPIO2_LED0,
+	GPIO3_LED1,
+	GPIO4_LED3,
+	GPIO_MAX
+};
 
 static int __qca81xx_phy_debug_write(struct phy_device *phydev,
 	unsigned int reg, u16 val)
@@ -860,6 +879,36 @@ static int qca81xx_phy_afe_dac_config_init(struct phy_device *phydev)
 	return ret;
 }
 
+static int qca81xx_sec_ctrl_init(struct phy_device *phydev)
+{
+	int ret = 0;
+
+	ret = qca81xx_soc_modify(phydev, GLOBAL_INTR_CTRL,
+		PHY_INTR_EN, PHY_INTR_EN);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_soc_modify(phydev, WOL_INTR_CTRL,
+		WOL_INTR_EN, WOL_INTR_EN);
+
+	return ret;
+}
+
+static int qca81xx_tlmm_init(struct phy_device *phydev)
+{
+	int ret = 0, pin_id = 0;
+
+	/* the GPIO function bit2~5 is set 1 means the expected function */
+	/* such as GPIO0 is WOL INT function and GPIO2 is LED0 function */
+	for (pin_id  = GPIO0_WOL_INT; pin_id < GPIO_MAX; pin_id++) {
+		ret = qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
+			TLMM_FUNC_MASK, BIT(2));
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
 static int qca81xx_phy_config_init(struct phy_device *phydev)
 {
 	int ret = 0;
@@ -882,6 +931,12 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 	/* so only need disable 2.5G 5G eee */
 	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_AN,
 		MDIO_AN_EEE_ADV2, GENMASK(1, 0), 0);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_sec_ctrl_init(phydev);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_tlmm_init(phydev);
 	if (ret < 0)
 		return ret;
 
