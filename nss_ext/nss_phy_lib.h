@@ -85,6 +85,7 @@ int nss_phy_package_read_mmd(struct nss_phy_device *nss_phydev,
 int nss_phy_package_modify_mmd(struct nss_phy_device *nss_phydev,
 	unsigned int addr_offset, int devad, u32 regnum, u16 mask, u16 set);
 bool nss_phy_support_2500(struct nss_phy_device *nss_phydev);
+bool nss_phy_support_10g(struct nss_phy_device *nss_phydev);
 bool nss_phy_is_fiber(struct nss_phy_device *nss_phydev);
 u32 __nss_phy_read_soc(struct nss_phy_device *nss_phydev, u32 reg);
 int __nss_phy_write_soc(struct nss_phy_device *nss_phydev, u32 reg, u32 val);
