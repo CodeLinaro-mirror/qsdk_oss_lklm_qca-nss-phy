@@ -111,9 +111,6 @@ static int nss_phy_base_addr_init(struct phy_device *phydev)
 		devm_phy_package_join(&phydev->mdio.dev, phydev,
 			base_addr, 0);
 
-	phydev_info(phydev, "phydev->shared->addr:0x%x\n",
-		phydev->shared->addr);
-
 	return 0;
 }
 
@@ -197,12 +194,9 @@ static int nss_phy_match_phy_device(struct phy_device *phydev)
 	if (!QCA_PHY_MATCH(nss_phydev_id_get(phydev)))
 		return false;
 
-	if (phydev->drv == NULL) {
-		phydev_info(phydev, "nss phy driver is used\n");
+	if (phydev->drv == NULL)
 		return true;
-	}
 
-	phydev_info(phydev, "nss phy driver is used as extended driver only\n");
 	/*init nss phy ops*/
 	nss_phy_ops_init(phydev);
 	/**

@@ -393,7 +393,6 @@ int qca8084_phy_fixup(struct nss_phy_device *nss_phydev)
 	ret = qca8084_phy_cdt_thresh_init(nss_phydev);
 	if (ret < 0)
 		return ret;
-	nss_phy_info(nss_phydev, "qca8084 hw init fixup successfully\n");
 
 	return 0;
 }

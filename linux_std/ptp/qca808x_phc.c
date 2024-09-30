@@ -1189,8 +1189,6 @@ static int qca808x_ptp_register(struct qca808x_ptp_info *ptp_info)
 	if (IS_ERR(ptp_info->ptp_clock))
 		return PTR_ERR(ptp_info->ptp_clock);
 
-	phydev_info(phydev, "PHC registered\n");
-
 	return 0;
 }
 

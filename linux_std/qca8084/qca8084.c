@@ -646,8 +646,6 @@ static int qca8084_probe(struct phy_device *phydev)
 	struct qca8084_priv *priv;
 	struct device *dev = &phydev->mdio.dev;
 
-	phydev_info(phydev, "qca8084 PHY driver was probed\n");
-
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;

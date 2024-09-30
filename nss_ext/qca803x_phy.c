@@ -177,8 +177,6 @@ int qca803x_phy_fixup(struct nss_phy_device *nss_phydev)
 	if (ret < 0)
 		return ret;
 
-	nss_phy_info(nss_phydev, "qca803x hw init fixup successfully\n");
-
 	return 0;
 }
 
