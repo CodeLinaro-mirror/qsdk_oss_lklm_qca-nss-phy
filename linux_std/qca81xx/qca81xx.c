@@ -490,25 +490,6 @@ static int qca81xx_phy_clk_reset(struct phy_device *phydev)
 	return qca81xx_phy_clk_reset_update(phydev, false);
 }
 
-static int qca81xx_phy_sysclk_reset_update(struct phy_device *phydev,
-	bool assert)
-{
-	return qca81xx_soc_modify(phydev, GCC_GEPHY_SYS_CBCR, GCC_CLK_ARES,
-		assert ? GCC_CLK_ARES : 0);
-}
-
-static int qca81xx_phy_sysclk_reset(struct phy_device *phydev)
-{
-	int ret;
-
-	ret = qca81xx_phy_sysclk_reset_update(phydev, true);
-	if (ret < 0)
-		return ret;
-	mdelay(1);
-
-	return qca81xx_phy_sysclk_reset_update(phydev, false);
-}
-
 static int qca81xx_phy_speed_clk_set(struct phy_device *phydev)
 {
 	int ret, div0, div1;
@@ -813,11 +794,6 @@ static int qca81xx_phy_gcc_pre_init(struct phy_device *phydev)
 {
 	int ret;
 
-	/* gephy system reset and release */
-	/* gephy system clock is enabled in default */
-	ret = qca81xx_phy_sysclk_reset(phydev);
-	if (ret < 0)
-		return ret;
 	/* enable efuse loading into analog circuit */
 	ret = qca81xx_soc_modify(phydev, EPHY_CFG, EPHY_LDO_CTRL, 0);
 	mdelay(10);
