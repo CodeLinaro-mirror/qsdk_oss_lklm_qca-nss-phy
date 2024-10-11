@@ -236,6 +236,8 @@ static int nss_phy_fixup(struct phy_device *phydev)
 	nss_phydev.phydev = phydev;
 	if (nss_phydev_id_compare(phydev, QCA8084_PHY, QCA_PHY_EXACT_MASK))
 		ret = qca8084_phy_fixup(&nss_phydev);
+	else if (nss_phydev_id_compare(phydev, QCA8033_PHY, QCA803X_MASK))
+		ret = qca803x_phy_fixup(&nss_phydev);
 
 	return ret;
 }

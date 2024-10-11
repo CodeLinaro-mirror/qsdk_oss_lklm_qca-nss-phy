@@ -36,11 +36,16 @@ extern "C"
 #define QCA803X_PHY_RUN_CDT		0x1
 #define QCA803X_PHY_CDT_PAIR_MASK		0x0300
 
+/* DEBUG registers */
+#define QCA803X_PHY_DEBUG_MSE_OVER_THRESH_TIMES		28
+#define QCA803X_PHY_MSE_OVER_THRESH_TIMES_MAX		0x7000
+
 enum qca803x_phy_cfg_type {
 	QCA803X_CHIP_CFG_SET,
 	QCA803X_CHIP_CFG_STAT
 };
 
+int qca803x_phy_fixup(struct nss_phy_device *nss_phydev);
 int qca803x_phy_ops_init(struct nss_phy_ops *ops);
 #ifdef __cplusplus
 }

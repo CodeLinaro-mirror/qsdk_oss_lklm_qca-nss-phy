@@ -160,6 +160,28 @@ static int qca803x_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 	return 0;
 }
 
+int qca803x_phy_fixup(struct nss_phy_device *nss_phydev)
+{
+	int ret = 0;
+
+	/* config the times that MSE is over threshold as max value */
+	ret = nss_phy_modify_debug(nss_phydev,
+		QCA803X_PHY_DEBUG_MSE_OVER_THRESH_TIMES,
+		QCA803X_PHY_MSE_OVER_THRESH_TIMES_MAX,
+		QCA803X_PHY_MSE_OVER_THRESH_TIMES_MAX);
+	if (ret < 0)
+		return ret;
+	/* disable Extended next page s*/
+	ret = nss_phy_modify(nss_phydev, NSS_PHY_AUTONEG_ADV,
+		NSS_PHY_EXTENDED_NEXT_PAGE_EN, 0);
+	if (ret < 0)
+		return ret;
+
+	nss_phy_info(nss_phydev, "qca803x hw init fixup successfully\n");
+
+	return 0;
+}
+
 int qca803x_phy_ops_init(struct nss_phy_ops *ops)
 {
 	ops->hibernation_set = nss_phy_common_hibernation_set;
