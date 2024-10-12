@@ -238,6 +238,8 @@ static int nss_phy_fixup(struct phy_device *phydev)
 		ret = qca8084_phy_fixup(&nss_phydev);
 	else if (nss_phydev_id_compare(phydev, QCA8033_PHY, QCA803X_MASK))
 		ret = qca803x_phy_fixup(&nss_phydev);
+	else if (nss_phydev_id_compare(phydev, QCA8075_PHY, QCA807X_MASK))
+		ret = qca807x_phy_fixup(&nss_phydev);
 
 	return ret;
 }

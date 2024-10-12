@@ -354,6 +354,52 @@ qca807x_phy_led_ctrl_source_get(struct nss_phy_device *nss_phydev,
 	return ret;
 }
 
+int qca807x_phy_fixup(struct nss_phy_device *nss_phydev)
+{
+	int ret = 0;
+
+	/* change malibu control_dac[2:0] of MMD7 0x801A bit[9:7] */
+	/* from 111 to 101 */
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		QCA807X_PHY_MMD7_DAC_CTRL, QCA807X_PHY_MMD7_DAC_CTRL_MASK,
+		QCA807X_PHY_MMD7_DAC_CTRL_VALUE);
+	if (ret < 0)
+		return ret;
+
+	/*disable Extended next page*/
+	ret = nss_phy_modify(nss_phydev, NSS_PHY_AUTONEG_ADV,
+		NSS_PHY_EXTENDED_NEXT_PAGE_EN, 0);
+	if (ret < 0)
+		return ret;
+
+	/* workaround to enable AZ transmitting ability */
+	ret = nss_phy_package_modify_mmd(nss_phydev, QCA807X_PHY_SERDES_ADDR,
+		NSS_PHY_MMD1_NUM, QCA807X_PHY_MMD1_PSGMII_MODE_CTRL,
+		QCA807X_PHY_MMD1_PSGMII_MODE_CTRL_VALUE,
+		QCA807X_PHY_MMD1_PSGMII_MODE_CTRL_VALUE);
+	if (ret < 0)
+		return ret;
+
+	/* adjust psgmii serdes tx amp */
+	ret = nss_phy_write_package(nss_phydev, QCA807X_PHY_SERDES_ADDR,
+		QCA807X_PHY_PSGMII_TX_DRIVER_1_CTRL,
+		QCA807X_PHY_PSGMII_REDUCE_SERDES_TX_AMP);
+	if (ret < 0)
+		return ret;
+
+	/* to avoid psgmii module goes into hibernation, */
+	/* work with psgmii self test */
+	ret = nss_phy_package_modify_mmd(nss_phydev, QCA807X_PHY_COMBO_ADDR,
+		NSS_PHY_MMD3_NUM, NSS_PHY_MMD3_REMOTE_LOOPBACK_CTRL,
+		NSS_BIT(1), 0);
+	if (ret < 0)
+		return ret;
+
+	nss_phy_info(nss_phydev, "qca807x hw init fixup successfully\n");
+
+	return 0;
+}
+
 int qca807x_phy_ops_init(struct nss_phy_ops *ops)
 {
 	ops->hibernation_set = nss_phy_common_hibernation_set;

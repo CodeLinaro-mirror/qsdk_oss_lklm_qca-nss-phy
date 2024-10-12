@@ -29,6 +29,7 @@ enum qca807x_phy_addr_offset {
 /*mii registers*/
 #define QCA807X_PHY_MEDIUM_SELECT_STATUS		0x1a
 #define QCA807X_PHY_SERDES_RESET_REG		0x0
+#define QCA807X_PHY_PSGMII_TX_DRIVER_1_CTRL		0xb
 
 /*mii registers field*/
 #define QCA807X_PHY_INTERFACE_MASK		0xf
@@ -42,8 +43,10 @@ enum qca807x_phy_addr_offset {
 #define QCA807X_PHY_AUTO_100FX		0x8
 #define QCA807X_PHY_SERDES_RESET		0
 #define QCA807X_PHY_SERDES_RELEASE		0x5f
+#define QCA807X_PHY_PSGMII_REDUCE_SERDES_TX_AMP		0x8a
 
 /*mmd registers*/
+#define QCA807X_PHY_MMD1_PSGMII_MODE_CTRL		0x6d
 #define QCA807X_PHY_MMD3_ADDR_8023AZ_TIMER_CTRL		0x804e
 #define QCA807X_PHY_MMD3_ADDR_CLD_CTRL5		0x8005
 #define QCA807X_PHY_MMD3_ADDR_CLD_CTRL3		0x8003
@@ -52,13 +55,19 @@ enum qca807x_phy_addr_offset {
 #define QCA807X_PHY_MMD7_LED_100_N_FORCE_CTRL		0x8075
 #define QCA807X_PHY_MMD7_LED_1000_N_FORCE_CTRL		0x8077
 #define QCA807X_PHY_MMD7_FIBER_MODE_AUTO_DETECTION		0x807e
+#define QCA807X_PHY_MMD7_DAC_CTRL		0x801a
 
 /*mmd registers field*/
+#define QCA807X_PHY_MMD1_PSGMII_MODE_CTRL_VALUE		0x220c
 #define QCA807X_PHY_MMD3_DAC_AT_BIAS_EN		0x4000
 #define QCA807X_PHY_MMD3_VD_HALF_BIAS_EN		0x4000
 #define QCA807X_PHY_MMD3_AFE_TX_FULL_AMPLITUDE_EN		0x8000
 #define QCA807X_PHY_MMD7_AUTO_DETECTION_EN		1
 #define QCA807X_PHY_MMD7_AUTO_DETECTION_1000BX		0x8
+#define QCA807X_PHY_MMD7_DAC_CTRL_MASK		0x380
+#define QCA807X_PHY_MMD7_DAC_CTRL_VALUE  0x280
+
+int qca807x_phy_fixup(struct nss_phy_device *nss_phydev);
 
 int qca807x_phy_ops_init(struct nss_phy_ops *ops);
 #ifdef __cplusplus
