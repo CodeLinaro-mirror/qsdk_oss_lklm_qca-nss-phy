@@ -204,6 +204,8 @@ int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 	ops->intr_mask_set = nss_phy_c45_common_intr_mask_set;
 	ops->intr_mask_get = nss_phy_c45_common_intr_mask_get;
 	ops->intr_status_get = nss_phy_c45_common_intr_status_get;
+	ops->led_ctrl_source_set = nss_phy_c45_common_led_ctrl_source_set;
+	ops->led_ctrl_source_get = nss_phy_c45_common_led_ctrl_source_get;
 
 	return 0;
 }

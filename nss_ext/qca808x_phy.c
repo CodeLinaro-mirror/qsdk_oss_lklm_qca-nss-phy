@@ -230,77 +230,6 @@ qca808x_phy_local_loopback_set(struct nss_phy_device *nss_phydev,
 	return nss_phy_common_autoneg_set(nss_phydev, autoneg);
 }
 
-static int qca808x_phy_led_from_phy(struct nss_phy_device *nss_phydev,
-	u32 *status_bmap, u16 phy_data)
-{
-	if (nss_phy_support_2500(nss_phydev)) {
-		if (phy_data & QCA808X_PHY_MMD7_LINK_2500M_LIGHT_EN)
-			*status_bmap |= NSS_BIT(LED_LINK_2500M_LIGHT_EN);
-	}
-
-	return nss_phy_common_led_from_phy(nss_phydev, status_bmap, phy_data);
-}
-
-static int qca808x_phy_led_to_phy(struct nss_phy_device *nss_phydev,
-	u32 status_bmap, u16 *phy_data)
-{
-	if (nss_phy_support_2500(nss_phydev)) {
-		if (status_bmap & NSS_BIT(LED_LINK_2500M_LIGHT_EN))
-			*phy_data |=  QCA808X_PHY_MMD7_LINK_2500M_LIGHT_EN;
-	}
-
-	return nss_phy_common_led_to_phy(nss_phydev, status_bmap, phy_data);
-}
-
-static u32 qca808x_phy_led_source_mmd_reg_get
-	(struct nss_phy_device *nss_phydev, u32 source_id)
-{
-	u16 mmd_reg = 0;
-
-	switch (source_id) {
-	case NSS_PHY_LED_SOURCE0:
-		mmd_reg = QCA808X_PHY_MMD7_LED0_CTRL;
-		break;
-	case NSS_PHY_LED_SOURCE1:
-		mmd_reg = QCA808X_PHY_MMD7_LED1_CTRL;
-		break;
-	case NSS_PHY_LED_SOURCE2:
-		mmd_reg = QCA808X_PHY_MMD7_LED2_CTRL;
-		break;
-	default:
-		nss_phy_err(nss_phydev, "source %d is not support\n",
-			source_id);
-		break;
-	}
-
-	return mmd_reg;
-}
-
-static u32
-qca808x_phy_led_source_force_mmd_reg_get
-	(struct nss_phy_device *nss_phydev, u32 source_id)
-{
-	u16 mmd_reg = 0;
-
-	switch (source_id) {
-	case NSS_PHY_LED_SOURCE0:
-		mmd_reg = QCA808X_PHY_MMD7_LED0_FORCE_CTRL;
-		break;
-	case NSS_PHY_LED_SOURCE1:
-		mmd_reg = QCA808X_PHY_MMD7_LED1_FORCE_CTRL;
-		break;
-	case NSS_PHY_LED_SOURCE2:
-		mmd_reg = QCA808X_PHY_MMD7_LED2_FORCE_CTRL;
-		break;
-	default:
-		nss_phy_err(nss_phydev, "source %d is not support\n",
-			source_id);
-		break;
-	}
-
-	return mmd_reg;
-}
-
 #define QCA8084_LED_FUNC(lend_func, phy_index, source_id)		\
 {		\
 	if (phy_index == 0)		\
@@ -343,96 +272,16 @@ static int qca8084_phy_led_ctrl_source_pin_cfg
 	return ret;
 }
 
-static int qca808x_phy_led_force_pattern_set
-	(struct nss_phy_device *nss_phydev, u32 source_id, u32 enable,
-	u32 force_mode)
-{
-	int ret = 0;
-	u32 mmd_reg = 0;
-	u16 phy_data = 0;
-
-	mmd_reg =
-		qca808x_phy_led_source_force_mmd_reg_get(nss_phydev,
-			source_id);
-	if (enable) {
-		ret = nss_phy_common_led_force_to_phy(nss_phydev,
-			force_mode, &phy_data);
-		if (ret < 0)
-			return ret;
-	}
-	return nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
-		mmd_reg, NSS_PHY_MMD7_LED_FORCE_EN |
-		NSS_PHY_MMD7_LED_FORCE_MASK,
-		phy_data);
-}
-
-static int qca808x_phy_led_force_pattern_get
-	(struct nss_phy_device *nss_phydev, u32 source_id, u32 *enable,
-	u32 *force_mode)
-{
-	int ret = 0;
-	u32 mmd_reg = 0;
-	u16 phy_data = 0;
-
-	mmd_reg =
-		qca808x_phy_led_source_force_mmd_reg_get(nss_phydev,
-			source_id);
-	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
-		mmd_reg);
-	if (phy_data & NSS_PHY_MMD7_LED_FORCE_EN) {
-		*enable = true;
-		ret = nss_phy_common_led_force_from_phy(nss_phydev,
-			force_mode, phy_data);
-		if (ret < 0)
-			return ret;
-	} else {
-		*enable = false;
-	}
-
-	return ret;
-}
-
 static int
 qca808x_phy_led_ctrl_source_set(struct nss_phy_device *nss_phydev,
 	u32 source_id, struct nss_phy_led_pattern_ctrl *pattern)
 {
 	int ret = 0;
-	u32 mmd_reg = 0;
-	u16 phy_data = 0;
 
-	if (source_id > NSS_PHY_LED_SOURCE2)
-		return NSS_PHY_EOPNOTSUPP;
-
-	ret = nss_phy_common_led_active_set(nss_phydev,
-		pattern->active_level);
+	ret = nss_phy_2500m_led_ctrl_source_set(nss_phydev, source_id,
+		pattern);
 	if (ret < 0)
 		return ret;
-	/*set blink frequency*/
-	ret = nss_phy_common_led_blink_freq_set(nss_phydev, pattern->mode,
-		pattern->freq);
-	if (ret < 0)
-		return ret;
-	if (pattern->mode == ACT_PHY_STATUS) {
-		ret = qca808x_phy_led_force_pattern_set(nss_phydev, source_id,
-			false, pattern->mode);
-		if (ret < 0)
-			return ret;
-		ret = qca808x_phy_led_to_phy(nss_phydev,
-			pattern->phy_status_bmap, &phy_data);
-		if (ret < 0)
-			return ret;
-		mmd_reg = qca808x_phy_led_source_mmd_reg_get(nss_phydev,
-			source_id);
-		ret = nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD7_NUM, mmd_reg,
-			phy_data);
-		if (ret < 0)
-			return ret;
-	} else {
-		ret = qca808x_phy_led_force_pattern_set(nss_phydev, source_id,
-			true, pattern->mode);
-		if (ret < 0)
-			return ret;
-	}
 	if (nss_phy_id_check(nss_phydev, QCA8084_PHY, QCA_PHY_EXACT_MASK)) {
 		ret = qca8084_phy_led_ctrl_source_pin_cfg(nss_phydev,
 			source_id);
@@ -441,43 +290,6 @@ qca808x_phy_led_ctrl_source_set(struct nss_phy_device *nss_phydev,
 	}
 
 	return 0;
-}
-
-static int
-qca808x_phy_led_ctrl_source_get(struct nss_phy_device *nss_phydev,
-	u32 source_id, struct nss_phy_led_pattern_ctrl *pattern)
-{
-	int ret = 0;
-	u32 mmd_reg = 0, force_enable = NSS_PHY_FALSE;
-	u16 phy_data = 0;
-
-	if (source_id > NSS_PHY_LED_SOURCE2)
-		return -NSS_PHY_EOPNOTSUPP;
-
-	ret = nss_phy_common_led_active_get(nss_phydev,
-		&(pattern->active_level));
-	if (ret < 0)
-		return ret;
-	pattern->phy_status_bmap = 0;
-	ret = qca808x_phy_led_force_pattern_get(nss_phydev, source_id,
-		&force_enable, &(pattern->mode));
-	if (ret < 0)
-		return ret;
-	if (!force_enable) {
-		pattern->mode = ACT_PHY_STATUS;
-		mmd_reg = qca808x_phy_led_source_mmd_reg_get(nss_phydev,
-			source_id);
-		phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
-			mmd_reg);
-		ret = qca808x_phy_led_from_phy(nss_phydev,
-			&(pattern->phy_status_bmap), phy_data);
-		if (ret < 0)
-			return ret;
-	}
-	ret = nss_phy_common_led_blink_freq_get(nss_phydev, pattern->mode,
-		&(pattern->freq));
-
-	return ret;
 }
 
 static int qca808x_phy_pll_on(struct nss_phy_device *nss_phydev)
@@ -720,7 +532,7 @@ int qca808x_phy_ops_init(struct nss_phy_ops *ops)
 	ops->remote_loopback_set = nss_phy_common_remote_loopback_set;
 	ops->remote_loopback_get = nss_phy_common_remote_loopback_get;
 	ops->led_ctrl_source_set = qca808x_phy_led_ctrl_source_set;
-	ops->led_ctrl_source_get = qca808x_phy_led_ctrl_source_get;
+	ops->led_ctrl_source_get = nss_phy_2500m_led_ctrl_source_get;
 	ops->pll_on = qca808x_phy_pll_on;
 	ops->pll_off = qca808x_phy_pll_off;
 	ops->cdt = qca808x_phy_cdt;

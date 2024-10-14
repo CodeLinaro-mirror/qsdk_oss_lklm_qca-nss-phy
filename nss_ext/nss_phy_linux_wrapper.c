@@ -383,9 +383,13 @@ int nss_phy_package_modify_mmd(struct nss_phy_device *nss_phydev,
 bool nss_phy_support_2500(struct nss_phy_device *nss_phydev)
 {
 	return (linkmode_test_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT,
-		nss_phydev->phydev->advertising) &&
-		(linkmode_test_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT,
-		nss_phydev->phydev->supported)));
+		nss_phydev->phydev->supported));
+}
+
+bool nss_phy_support_10g(struct nss_phy_device *nss_phydev)
+{
+	return (linkmode_test_bit(ETHTOOL_LINK_MODE_10000baseT_Full_BIT,
+		nss_phydev->phydev->supported));
 }
 
 bool nss_phy_is_fiber(struct nss_phy_device *nss_phydev)
