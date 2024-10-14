@@ -80,6 +80,13 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_MMD3_CDT_THRESH_CTRL14_VAL		0x9cb0
 #define QCA81XX_MMD3_DEBUG5		0xa015
 #define QCA81XX_MMD3_DEBUG5_VAL		0xce80
+#define QCA81XX_MMD3_AZ_1G_AFE_CTRL		0x8007
+#define QCA81XX_MMD3_AZ_1G_AFE_CTRL_MASK		GENMASK(8, 4)
+#define QCA81XX_MMD3_AZ_1G_DAC_EN	BIT(4)
+#define QCA81XX_MMD3_AZ_1G_VGA_EN	BIT(5)
+#define QCA81XX_MMD3_AZ_1G_ADC_EN	BIT(6)
+#define QCA81XX_MMD3_AZ_1G_ECHO_EN		BIT(7)
+#define QCA81XX_MMD3_AZ_1G_FULL_ECHO_EN		BIT(8)
 
 /*PHY MMD31 registers*/
 #define QCA81XX_FIFO_CONTROL		0x19
@@ -885,6 +892,19 @@ static int qca81xx_tlmm_init(struct phy_device *phydev)
 	return 0;
 }
 
+static int qca81xx_phy_eee_config_init(struct phy_device *phydev)
+{
+	int ret;
+
+	/* disable AFE control for 1G EEE to keep FULLECHO, ECHO, ADC, VGA */
+	/* and DAC always on */
+	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_PCS,
+		QCA81XX_MMD3_AZ_1G_AFE_CTRL,
+		QCA81XX_MMD3_AZ_1G_AFE_CTRL_MASK, 0);
+
+	return ret;
+}
+
 static int qca81xx_phy_config_init(struct phy_device *phydev)
 {
 	int ret = 0;
@@ -903,10 +923,7 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 	ret = qca81xx_phy_gcc_post_init(phydev);
 	if (ret < 0)
 		return ret;
-	/* configure the eee as disable, 100M, 1G, 10G is disable in default */
-	/* so only need disable 2.5G 5G eee */
-	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_AN,
-		MDIO_AN_EEE_ADV2, GENMASK(1, 0), 0);
+	ret = qca81xx_phy_eee_config_init(phydev);
 	if (ret < 0)
 		return ret;
 	ret = qca81xx_sec_ctrl_init(phydev);
