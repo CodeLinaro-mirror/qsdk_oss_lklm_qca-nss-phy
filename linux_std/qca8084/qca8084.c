@@ -77,6 +77,9 @@
 #define QCA8084_WORK_MODE_SWITCH		BIT(4)
 #define QCA8084_WORK_MODE_SWITCH_PORT4_SGMII	BIT(5)
 
+#define QCA8084_DEBUG_AFE25_CMN_2_MII		0x180
+#define QCA8084_DEBUG_AFE25_LDO_EN		BIT(13)
+
 struct qca8084_shared_priv {
 	int work_mode;
 	int (*phy_qusgmii_mode_set)(u32 dev_id);
@@ -498,7 +501,7 @@ static int qca8084_ability_fix_up(struct phy_device *phydev)
 
 static int qca8084_config_init(struct phy_device *phydev)
 {
-	int ret;
+	int ret, index;
 
 	if (phy_package_init_once(phydev)) {
 		ret = qca8084_phy_package_config_init_once(phydev);
@@ -506,6 +509,13 @@ static int qca8084_config_init(struct phy_device *phydev)
 			return ret;
 	}
 
+	/* Disable the LDO2 and LDO3 which are not used */
+	index = qca8084_phy_index_get(phydev);
+	if (index == 2 || index == 3) {
+		qca8084_debug_reg_mask(phydev,
+			QCA8084_DEBUG_AFE25_CMN_2_MII,
+			QCA8084_DEBUG_AFE25_LDO_EN, 0);
+	}
 	/* Configure the ADC to convert the signal using falling edge
 	 * instead of the default rising edge.
 	 */
