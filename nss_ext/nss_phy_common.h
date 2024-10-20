@@ -30,6 +30,7 @@ extern "C" {
 
 /*mii register*/
 #define NSS_PHY_CONTROL		0
+#define NSS_PHY_AUTONEG_ADV		0x4
 #define NSS_PHY_SPEC_CONTROL		0x10
 #define NSS_PHY_SPEC_STATUS		0x11
 #define NSS_PHY_INTR_MASK		0x12
@@ -68,6 +69,8 @@ extern "C" {
 #define NSS_PHY_INTR_BX_FX_LINK_UP		0x0080
 #define NSS_PHY_INTR_POE		0x0002
 #define NSS_PHY_INTR_WOL		0x0001
+
+#define NSS_PHY_EXTENDED_NEXT_PAGE_EN		0x1000
 
 /*MMD number*/
 #define NSS_PHY_MMD1_NUM		0x1
