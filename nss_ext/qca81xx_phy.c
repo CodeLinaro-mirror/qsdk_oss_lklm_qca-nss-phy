@@ -74,6 +74,28 @@ static int qca81xx_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 	enum nss_phy_cable_status *status, u32 *cable_len)
 {
 	int ret;
+	u16 dac8_tmp, dac9_tmp;
+
+	/* if PHY link up, cdt status is noarmal and cable length is 0 */
+	if (nss_phydev_link_get(nss_phydev) != NSS_PHY_FALSE) {
+		*status = CABLE_NORMAL;
+		*cable_len = 0;
+		return 0;
+	}
+
+	dac8_tmp = nss_phy_read_debug(nss_phydev,
+		QCA81XX_PHY_DEBUG_AFE_DAC8_DP);
+	dac9_tmp = nss_phy_read_debug(nss_phydev,
+		QCA81XX_PHY_DEBUG_AFE_DAC9_DP);
+
+	ret = nss_phy_write_debug(nss_phydev,
+		QCA81XX_PHY_DEBUG_AFE_DAC8_DP, 0);
+	if (ret < 0)
+		return ret;
+	ret = nss_phy_write_debug(nss_phydev,
+		QCA81XX_PHY_DEBUG_AFE_DAC9_DP, 0);
+	if (ret < 0)
+		return ret;
 
 	ret = nss_phy_c45_common_cdt_start(nss_phydev);
 	if (ret < 0)
@@ -82,6 +104,14 @@ static int qca81xx_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 	/* Get cable status */
 	ret = nss_phy_common_cdt_status_get(nss_phydev, mdi_pair, status,
 		cable_len);
+
+	/* recover the analog AFE DAC value */
+	ret = nss_phy_write_debug(nss_phydev,
+		QCA81XX_PHY_DEBUG_AFE_DAC8_DP, dac8_tmp);
+	if (ret < 0)
+		return ret;
+	ret = nss_phy_write_debug(nss_phydev,
+		QCA81XX_PHY_DEBUG_AFE_DAC9_DP, dac9_tmp);
 
 	return ret;
 }
@@ -153,7 +183,7 @@ int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 	ops->eee_adv_get = nss_phy_c45_common_eee_adv_get;
 	ops->eee_partner_adv_get = nss_phy_c45_common_eee_partner_adv_get;
 	ops->eee_cap_get = nss_phy_c45_common_eee_cap_get;
-	ops->eee_status_get = nss_phy_common_eee_status_get;
+	ops->eee_status_get = nss_phy_c45_common_eee_status_get;
 	ops->ieee_8023az_set = nss_phy_c45_common_8023az_set;
 	ops->ieee_8023az_get = nss_phy_c45_common_8023az_get;
 	ops->local_loopback_set = nss_phy_c45_common_local_loopback_set;
@@ -174,6 +204,8 @@ int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 	ops->intr_mask_set = nss_phy_c45_common_intr_mask_set;
 	ops->intr_mask_get = nss_phy_c45_common_intr_mask_get;
 	ops->intr_status_get = nss_phy_c45_common_intr_status_get;
+	ops->led_ctrl_source_set = nss_phy_c45_common_led_ctrl_source_set;
+	ops->led_ctrl_source_get = nss_phy_c45_common_led_ctrl_source_get;
 
 	return 0;
 }

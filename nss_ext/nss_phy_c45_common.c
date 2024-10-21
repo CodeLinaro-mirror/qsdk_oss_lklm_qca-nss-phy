@@ -43,7 +43,7 @@ int nss_phy_c45_common_eee_adv_set(struct nss_phy_device *nss_phydev,
 		NSS_PHY_MMD7_8023AZ_EEE_CTRL1, NSS_PHY_MMD7_EEE_MASK1,
 		phy_data);
 
-	nss_phydev_eee_update(nss_phydev, ALL_SPEED_EEE);
+	nss_phydev_eee_update(nss_phydev, adv);
 
 	return nss_phy_c45_common_autoneg_restart(nss_phydev);
 }
@@ -439,7 +439,7 @@ int nss_phy_c45_common_stats_get(struct nss_phy_device *nss_phydev,
 		NSS_PHY_MMD3_10G_EGRESS_COUNTER_MIDDLE);
 	cnt_l = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
 		NSS_PHY_MMD3_10G_EGRESS_COUNTER_LOW);
-	stats_info->TxGoodFrame = (cnt_h << 32) | (cnt_m << 1) |
+	stats_info->TxGoodFrame = (cnt_h << 32) | (cnt_m << 16) |
 		cnt_l;
 	stats_info->TxFcsErr = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
 		NSS_PHY_MMD3_10G_EGRESS_ERROR_COUNTER);
@@ -554,3 +554,273 @@ int nss_phy_c45_common_intr_status_get(struct nss_phy_device *nss_phydev,
 	return 0;
 }
 
+static u32 nss_phy_c45_led_force_reg_get
+	(struct nss_phy_device *nss_phydev, u32 source_id)
+{
+	u16 led_ctrl[3] = {NSS_PHY_MMD7_LED0_FORCE_CTRL,
+		NSS_PHY_MMD7_LED1_FORCE_CTRL,
+		NSS_PHY_MMD7_LED2_FORCE_CTRL
+	};
+
+	if (source_id > NSS_PHY_LED_SOURCE2) {
+		nss_phy_err(nss_phydev, "source %d is not support\n",
+			source_id);
+		return NSS_PHY_INVALID_REG;
+	}
+
+	return led_ctrl[source_id];
+}
+
+int nss_phy_c45_common_led_force_set(struct nss_phy_device *nss_phydev,
+	u32 source_id, u32 enable, u32 force_mode)
+{
+	int ret = 0;
+	u32 mmd_reg = 0;
+	u16 phy_data = 0;
+
+	mmd_reg = nss_phy_c45_led_force_reg_get(nss_phydev,
+		source_id);
+	if (mmd_reg == NSS_PHY_INVALID_REG)
+		return -NSS_PHY_EOPNOTSUPP;
+
+	if (enable) {
+		ret = nss_phy_common_led_force_to_phy(nss_phydev,
+			force_mode, &phy_data);
+		if (ret < 0)
+			return ret;
+	}
+	return nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		mmd_reg, NSS_PHY_MMD7_LED_FORCE_EN |
+		NSS_PHY_MMD7_LED_FORCE_MASK,
+		phy_data);
+}
+
+int nss_phy_c45_common_led_force_get(struct nss_phy_device *nss_phydev,
+	u32 source_id, u32 *enable, u32 *force_mode)
+{
+	int ret = 0;
+	u32 mmd_reg = 0;
+	u16 phy_data = 0;
+
+	mmd_reg = nss_phy_c45_led_force_reg_get(nss_phydev,
+		source_id);
+	if (mmd_reg == NSS_PHY_INVALID_REG)
+		return -NSS_PHY_EOPNOTSUPP;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		mmd_reg);
+	if (phy_data & NSS_PHY_MMD7_LED_FORCE_EN) {
+		*enable = !NSS_PHY_FALSE;
+		ret = nss_phy_common_led_force_from_phy(nss_phydev,
+			force_mode, phy_data);
+		if (ret < 0)
+			return ret;
+	} else {
+		*enable = NSS_PHY_FALSE;
+	}
+
+	return ret;
+}
+
+static u32 nss_phy_2500m_led_reg_get(struct nss_phy_device *nss_phydev,
+	u32 source_id)
+{
+	u16 led_ctrl[3] = {NSS_PHY_MMD7_LED0_CTRL,
+		NSS_PHY_MMD7_LED1_CTRL,
+		NSS_PHY_MMD7_LED2_CTRL
+	};
+
+	if (source_id > NSS_PHY_LED_SOURCE2) {
+		nss_phy_err(nss_phydev, "source %d is not support\n",
+			source_id);
+		return NSS_PHY_INVALID_REG;
+	}
+
+	return led_ctrl[source_id];
+}
+
+static int nss_phy_2500m_led_from_phy(struct nss_phy_device *nss_phydev,
+	u32 *status_bmap, u16 phy_data)
+{
+	if (nss_phy_support_2500(nss_phydev)) {
+		if (phy_data & NSS_PHY_MMD7_LINK_2500M_LIGHT_EN)
+			*status_bmap |= NSS_BIT(LED_LINK_2500M_LIGHT_EN);
+	}
+
+	return nss_phy_common_led_from_phy(nss_phydev, status_bmap, phy_data);
+}
+
+static int nss_phy_2500m_led_to_phy(struct nss_phy_device *nss_phydev,
+	u32 status_bmap, u16 *phy_data)
+{
+	if (nss_phy_support_2500(nss_phydev)) {
+		if (status_bmap & NSS_BIT(LED_LINK_2500M_LIGHT_EN))
+			*phy_data |=  NSS_PHY_MMD7_LINK_2500M_LIGHT_EN;
+	}
+
+	return nss_phy_common_led_to_phy(nss_phydev, status_bmap, phy_data);
+}
+
+int nss_phy_2500m_led_ctrl_source_set(struct nss_phy_device *nss_phydev,
+	u32 source_id, struct nss_phy_led_pattern_ctrl *pattern)
+{
+	int ret = 0;
+	u32 mmd_reg = 0;
+	u16 phy_data = 0;
+
+	if (source_id > NSS_PHY_LED_SOURCE2)
+		return -NSS_PHY_EOPNOTSUPP;
+
+	ret = nss_phy_common_led_active_set(nss_phydev,
+		pattern->active_level);
+	if (ret < 0)
+		return ret;
+	ret = nss_phy_common_led_blink_freq_set(nss_phydev, pattern->mode,
+		pattern->freq);
+	if (ret < 0)
+		return ret;
+	if (pattern->mode == ACT_PHY_STATUS) {
+		ret = nss_phy_c45_common_led_force_set(nss_phydev,
+			source_id, NSS_PHY_FALSE, pattern->mode);
+		if (ret < 0)
+			return ret;
+		ret = nss_phy_2500m_led_to_phy(nss_phydev,
+			pattern->phy_status_bmap, &phy_data);
+		if (ret < 0)
+			return ret;
+		mmd_reg = nss_phy_2500m_led_reg_get(nss_phydev,
+			source_id);
+		if (mmd_reg == NSS_PHY_INVALID_REG)
+			return -NSS_PHY_EOPNOTSUPP;
+		ret = nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD7_NUM, mmd_reg,
+			phy_data);
+		if (ret < 0)
+			return ret;
+	} else {
+		ret = nss_phy_c45_common_led_force_set(nss_phydev, source_id,
+			!NSS_PHY_FALSE, pattern->mode);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
+int nss_phy_2500m_led_ctrl_source_get(struct nss_phy_device *nss_phydev,
+	u32 source_id, struct nss_phy_led_pattern_ctrl *pattern)
+{
+	int ret = 0;
+	u32 mmd_reg = 0, force_enable = NSS_PHY_FALSE;
+	u16 phy_data = 0;
+
+	if (source_id > NSS_PHY_LED_SOURCE2)
+		return -NSS_PHY_EOPNOTSUPP;
+
+	ret = nss_phy_common_led_active_get(nss_phydev,
+		&(pattern->active_level));
+	if (ret < 0)
+		return ret;
+	pattern->phy_status_bmap = 0;
+	ret = nss_phy_c45_common_led_force_get(nss_phydev, source_id,
+		&force_enable, &(pattern->mode));
+	if (ret < 0)
+		return ret;
+	if (!force_enable) {
+		pattern->mode = ACT_PHY_STATUS;
+		mmd_reg = nss_phy_2500m_led_reg_get(nss_phydev,
+			source_id);
+		if (mmd_reg == NSS_PHY_INVALID_REG)
+			return -NSS_PHY_EOPNOTSUPP;
+		phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+			mmd_reg);
+		ret = nss_phy_2500m_led_from_phy(nss_phydev,
+			&(pattern->phy_status_bmap), phy_data);
+		if (ret < 0)
+			return ret;
+	}
+	ret = nss_phy_common_led_blink_freq_get(nss_phydev, pattern->mode,
+		&(pattern->freq));
+
+	return ret;
+}
+
+static int nss_phy_10g_led_ctrl_set(struct nss_phy_device *nss_phydev,
+	u32 source_id, struct nss_phy_led_pattern_ctrl *pattern)
+{
+	u16 phy_data = 0, mask = 0;
+
+	mask = NSS_BIT(NSS_PHY_MMD7_10G_SRC0_OFFSET + source_id * 2) |
+		NSS_BIT(NSS_PHY_MMD7_5G_SRC0_OFFSET + source_id * 2);
+
+	if (nss_phy_support_10g(nss_phydev)) {
+		if (pattern->phy_status_bmap &
+				NSS_BIT(LED_LINK_10000M_LIGHT_EN))
+			phy_data |= NSS_BIT(NSS_PHY_MMD7_10G_SRC0_OFFSET +
+				source_id * 2);
+	}
+	if (pattern->phy_status_bmap &
+		NSS_BIT(LED_LINK_5000M_LIGHT_EN))
+		phy_data |= NSS_BIT(NSS_PHY_MMD7_5G_SRC0_OFFSET +
+			source_id * 2);
+
+	return nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_LED_10G_CTRL, mask, phy_data);
+}
+
+static int nss_phy_10g_led_ctrl_get(struct nss_phy_device *nss_phydev,
+	u32 source_id, struct nss_phy_led_pattern_ctrl *pattern)
+{
+	u16 phy_data = 0;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_LED_10G_CTRL);
+	if (nss_phy_support_10g(nss_phydev)) {
+		if (phy_data & NSS_BIT(NSS_PHY_MMD7_10G_SRC0_OFFSET +
+			source_id * 2))
+			pattern->phy_status_bmap
+				|= NSS_BIT(LED_LINK_10000M_LIGHT_EN);
+	}
+	if (phy_data & NSS_BIT(NSS_PHY_MMD7_5G_SRC0_OFFSET +
+		source_id * 2))
+		pattern->phy_status_bmap
+			|= NSS_BIT(LED_LINK_5000M_LIGHT_EN);
+
+	return 0;
+}
+
+int nss_phy_c45_common_led_ctrl_source_set(struct nss_phy_device *nss_phydev,
+	u32 source_id, struct nss_phy_led_pattern_ctrl *pattern)
+{
+	int ret;
+
+	ret = nss_phy_2500m_led_ctrl_source_set(nss_phydev, source_id,
+		pattern);
+	if (ret < 0)
+		return ret;
+	if (pattern->mode == ACT_PHY_STATUS) {
+		ret = nss_phy_10g_led_ctrl_set(nss_phydev, source_id, pattern);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
+int nss_phy_c45_common_led_ctrl_source_get(struct nss_phy_device *nss_phydev,
+	u32 source_id, struct nss_phy_led_pattern_ctrl *pattern)
+{
+	int ret = 0;
+
+	ret = nss_phy_2500m_led_ctrl_source_get(nss_phydev, source_id,
+		pattern);
+	if (ret < 0)
+		return ret;
+
+	if (pattern->mode == ACT_PHY_STATUS) {
+		ret = nss_phy_10g_led_ctrl_get(nss_phydev, source_id, pattern);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}

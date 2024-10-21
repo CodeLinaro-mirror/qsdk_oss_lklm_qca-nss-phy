@@ -22,6 +22,10 @@ extern "C"
 {
 #endif				/* __cplusplus */
 
+/*Debug registers*/
+#define QCA81XX_PHY_DEBUG_AFE_DAC8_DP		0x2f80
+#define QCA81XX_PHY_DEBUG_AFE_DAC9_DP		0x3080
+
 /*MMD registers*/
 #define QCA81XX_PHY_MMD31_SMART_SPEED		0x14
 

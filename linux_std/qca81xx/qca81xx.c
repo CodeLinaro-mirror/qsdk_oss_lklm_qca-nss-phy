@@ -51,7 +51,13 @@ struct qca81xx_phy_mdio_data {
 
 /*PHY DEBUG registers*/
 #define QCA81XX_ANA_DEBUG_AFE_DAC8_DP		0x2f80
+#define QCA81XX_ANA_DEBUG_AFE_DAC8_DP_VAL		0x5b56
 #define QCA81XX_ANA_DEBUG_AFE_DAC9_DP		0x3080
+#define QCA81XX_ANA_DEBUG_AFE_DAC9_DP_VAL		0x5b57
+#define QCA81XX_ANA_DEBUG_AFE_DAC38_DP		0x4d80
+#define QCA81XX_ANA_DEBUG_AFE_DAC38_DP_VAL		0x2a2a
+#define QCA81XX_ANA_DEBUG_AFE_DAC39_DP		0x4e80
+#define QCA81XX_ANA_DEBUG_AFE_DAC39_DP_VAL		0x2a2a
 
 /*PHY MMD3 registers*/
 #define QCA81XX_MMD3_CDT_THRESH_CTRL2		0x8073
@@ -71,7 +77,9 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_MMD3_CDT_THRESH_CTRL13		0x807e
 #define QCA81XX_MMD3_CDT_THRESH_CTRL13_VAL		0xb060
 #define QCA81XX_MMD3_CDT_THRESH_CTRL14		0x807f
-#define QCA81XX_MMD3_CDT_THRESH_CTRL14_VAL		0xb8b0
+#define QCA81XX_MMD3_CDT_THRESH_CTRL14_VAL		0x9cb0
+#define QCA81XX_MMD3_DEBUG5		0xa015
+#define QCA81XX_MMD3_DEBUG5_VAL		0xce80
 
 /*PHY MMD31 registers*/
 #define QCA81XX_FIFO_CONTROL		0x19
@@ -217,6 +225,25 @@ struct qca81xx_phy_mdio_data {
 /*SOC SEC_TCSR registers*/
 #define EPHY_CFG		0x90F018
 #define EPHY_LDO_CTRL		BIT(20)
+#define GLOBAL_INTR_CTRL		0x90f008
+#define PHY_INTR_EN		BIT(7)
+#define WOL_INTR_CTRL		0x90f010
+#define WOL_INTR_EN		BIT(0)
+
+/*SOC TLMM registers*/
+#define TLMM_BASE		0x400000
+#define TLMM_GPIO_OFFSET		0x1000
+#define TO_TLMM_CFG_REG(pin)		\
+	(TLMM_BASE + 0x1000*pin)
+#define TLMM_FUNC_MASK		GENMASK(5, 2)
+enum {
+	GPIO0_WOL_INT = 0,
+	GPIO1_PHY_INT,
+	GPIO2_LED0,
+	GPIO3_LED1,
+	GPIO4_LED3,
+	GPIO_MAX
+};
 
 static int __qca81xx_phy_debug_write(struct phy_device *phydev,
 	unsigned int reg, u16 val)
@@ -463,25 +490,6 @@ static int qca81xx_phy_clk_reset(struct phy_device *phydev)
 	return qca81xx_phy_clk_reset_update(phydev, false);
 }
 
-static int qca81xx_phy_sysclk_reset_update(struct phy_device *phydev,
-	bool assert)
-{
-	return qca81xx_soc_modify(phydev, GCC_GEPHY_SYS_CBCR, GCC_CLK_ARES,
-		assert ? GCC_CLK_ARES : 0);
-}
-
-static int qca81xx_phy_sysclk_reset(struct phy_device *phydev)
-{
-	int ret;
-
-	ret = qca81xx_phy_sysclk_reset_update(phydev, true);
-	if (ret < 0)
-		return ret;
-	mdelay(1);
-
-	return qca81xx_phy_sysclk_reset_update(phydev, false);
-}
-
 static int qca81xx_phy_speed_clk_set(struct phy_device *phydev)
 {
 	int ret, div0, div1;
@@ -589,6 +597,24 @@ static int qca81xx_pcs_eee_enable(struct phy_device *phydev)
 	return ret;
 }
 
+static int qca81xx_phy_soft_reset(struct phy_device *phydev)
+{
+	int ret;
+
+	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_VEND2,
+		QCA81XX_SMART_SPEED,
+		QCA81XX_AUTO_SOFT_RESET,
+		QCA81XX_AUTO_SOFT_RESET);
+	if (ret < 0)
+		return ret;
+
+	genphy_c45_pma_suspend(phydev);
+	mdelay(10);
+	genphy_c45_pma_resume(phydev);
+
+	return 0;
+}
+
 static int qca81xx_pcs_usxgmii_init(struct phy_device *phydev)
 {
 	int ret = 0;
@@ -654,8 +680,7 @@ static int qca81xx_pcs_usxgmii_init(struct phy_device *phydev)
 	ret = qca81xx_xpcs_clk_reset_update(phydev, false);
 	if (ret < 0)
 		return ret;
-	ret = phy_modify_mmd(phydev, MDIO_MMD_PMAPMD,
-		MDIO_CTRL1, MDIO_CTRL1_RESET, MDIO_CTRL1_RESET);
+	ret = qca81xx_phy_soft_reset(phydev);
 	if (ret < 0)
 		return ret;
 	ret = qca81xx_pcs_modify_mmd(phydev,
@@ -720,14 +745,6 @@ static int qca81xx_phy_cdt_thresh_init(struct phy_device *phydev)
 {
 	int ret = 0;
 
-	ret = qca81xx_phy_debug_write(phydev,
-		QCA81XX_ANA_DEBUG_AFE_DAC8_DP, 0);
-	if (ret < 0)
-		return ret;
-	ret = qca81xx_phy_debug_write(phydev,
-		QCA81XX_ANA_DEBUG_AFE_DAC9_DP, 0);
-	if (ret < 0)
-		return ret;
 	ret = phy_write_mmd(phydev, MDIO_MMD_PCS,
 		QCA81XX_MMD3_CDT_THRESH_CTRL2,
 		QCA81XX_MMD3_CDT_THRESH_CTRL2_VAL);
@@ -766,8 +783,6 @@ static int qca81xx_phy_cdt_thresh_init(struct phy_device *phydev)
 		QCA81XX_MMD3_CDT_THRESH_CTRL13_VAL);
 	if (ret < 0)
 		return ret;
-	/* for asic, read mmd3 0x808b and got the value, */
-	/* and program the value+1 to 0x807f threshold */
 	ret = phy_write_mmd(phydev, MDIO_MMD_PCS,
 		QCA81XX_MMD3_CDT_THRESH_CTRL14,
 		QCA81XX_MMD3_CDT_THRESH_CTRL14_VAL);
@@ -779,12 +794,7 @@ static int qca81xx_phy_gcc_pre_init(struct phy_device *phydev)
 {
 	int ret;
 
-	/*gephy system reset and release*/
-	/* gephy system clock is enabled in default */
-	ret = qca81xx_phy_sysclk_reset(phydev);
-	if (ret < 0)
-		return ret;
-	/*enable efuse loading into analog circuit*/
+	/* enable efuse loading into analog circuit */
 	ret = qca81xx_soc_modify(phydev, EPHY_CFG, EPHY_LDO_CTRL, 0);
 	mdelay(10);
 
@@ -795,14 +805,6 @@ static int qca81xx_phy_gcc_post_init(struct phy_device *phydev)
 {
 	int ret;
 
-	/* ahb clock use srds_txclk and switch to 312.5M/3 */
-	ret = qca81xx_soc_modify(phydev, GCC_AHB_CFG_RCGR,
-		GCC_E2S_SRC_MASK | SRC_DIV_MASK,
-		(GCC_E2S_SRC3_SRDS_TXCLK << 8) | 0x5);
-	if (ret < 0)
-		return ret;
-	ret = qca81xx_soc_modify(phydev, GCC_AHB_CMD_RCGR,
-		CLK_CMD_UPDATE, CLK_CMD_UPDATE);
 	/* security control clock switch as 25M */
 	ret = qca81xx_soc_modify(phydev, GCC_SEC_CTRL_CFG_RCGR,
 		GCC_E2S_SRC_MASK | SRC_DIV_MASK, 0x3);
@@ -826,11 +828,71 @@ static int qca81xx_phy_gcc_post_init(struct phy_device *phydev)
 	return ret;
 }
 
+/* Fix some chip can not link to 10G automatically with long cable */
+static int qca81xx_phy_afe_dac_config_init(struct phy_device *phydev)
+{
+	int ret = 0;
+
+	ret = qca81xx_phy_debug_write(phydev, QCA81XX_ANA_DEBUG_AFE_DAC8_DP,
+		QCA81XX_ANA_DEBUG_AFE_DAC8_DP_VAL);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_debug_write(phydev, QCA81XX_ANA_DEBUG_AFE_DAC9_DP,
+		QCA81XX_ANA_DEBUG_AFE_DAC9_DP_VAL);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_debug_write(phydev, QCA81XX_ANA_DEBUG_AFE_DAC38_DP,
+		QCA81XX_ANA_DEBUG_AFE_DAC38_DP_VAL);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_debug_write(phydev, QCA81XX_ANA_DEBUG_AFE_DAC39_DP,
+		QCA81XX_ANA_DEBUG_AFE_DAC39_DP_VAL);
+	if (ret < 0)
+		return ret;
+	ret = phy_write_mmd(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_DEBUG5,
+		QCA81XX_MMD3_DEBUG5_VAL);
+
+	return ret;
+}
+
+static int qca81xx_sec_ctrl_init(struct phy_device *phydev)
+{
+	int ret = 0;
+
+	ret = qca81xx_soc_modify(phydev, GLOBAL_INTR_CTRL,
+		PHY_INTR_EN, PHY_INTR_EN);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_soc_modify(phydev, WOL_INTR_CTRL,
+		WOL_INTR_EN, WOL_INTR_EN);
+
+	return ret;
+}
+
+static int qca81xx_tlmm_init(struct phy_device *phydev)
+{
+	int ret = 0, pin_id = 0;
+
+	/* the GPIO function bit2~5 is set 1 means the expected function */
+	/* such as GPIO0 is WOL INT function and GPIO2 is LED0 function */
+	for (pin_id  = GPIO0_WOL_INT; pin_id < GPIO_MAX; pin_id++) {
+		ret = qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
+			TLMM_FUNC_MASK, BIT(2));
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
 static int qca81xx_phy_config_init(struct phy_device *phydev)
 {
 	int ret = 0;
 
 	ret = qca81xx_phy_gcc_pre_init(phydev);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_afe_dac_config_init(phydev);
 	if (ret < 0)
 		return ret;
 	ret = qca81xx_pcs_usxgmii_init(phydev);
@@ -839,6 +901,18 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 	phydev->interface = PHY_INTERFACE_MODE_USXGMII;
 
 	ret = qca81xx_phy_gcc_post_init(phydev);
+	if (ret < 0)
+		return ret;
+	/* configure the eee as disable, 100M, 1G, 10G is disable in default */
+	/* so only need disable 2.5G 5G eee */
+	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_AN,
+		MDIO_AN_EEE_ADV2, GENMASK(1, 0), 0);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_sec_ctrl_init(phydev);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_tlmm_init(phydev);
 	if (ret < 0)
 		return ret;
 
@@ -859,24 +933,6 @@ static int qca81xx_phy_get_features(struct phy_device *phydev)
 		phydev->advertising);
 	linkmode_clear_bit(ETHTOOL_LINK_MODE_100baseT_Half_BIT,
 		phydev->supported);
-
-	return 0;
-}
-
-static int qca81xx_phy_soft_reset(struct phy_device *phydev)
-{
-	int ret;
-
-	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_VEND2,
-		QCA81XX_SMART_SPEED,
-		QCA81XX_AUTO_SOFT_RESET,
-		QCA81XX_AUTO_SOFT_RESET);
-	if (ret < 0)
-		return ret;
-
-	genphy_c45_pma_suspend(phydev);
-	mdelay(10);
-	genphy_c45_pma_resume(phydev);
 
 	return 0;
 }
@@ -930,14 +986,10 @@ static int qca81xx_phy_speed_fixup(struct phy_device *phydev)
 	bool port_clock_en = false;
 	u16 phy_data = 0;
 
-	ret = read_poll_timeout(qca81xx_pcs_read_mmd, phy_data,
+	read_poll_timeout(qca81xx_pcs_read_mmd, phy_data,
 		((phy_data & QCA81XX_PCS_MMD31_MII_AN_COMPLETE_INT)),
 		1000, 500000, true, phydev, MDIO_MMD_VEND2,
 		QCA81XX_PCS_MMD31_MII_ERR_SEL);
-	if (ret < 0) {
-		phydev_err(phydev, "!!!autoneg complete timeout!!!\n");
-		return ret;
-	}
 	ret = qca81xx_pcs_modify_mmd(phydev,
 		MDIO_MMD_VEND2, QCA81XX_PCS_MMD31_MII_ERR_SEL,
 		QCA81XX_PCS_MMD31_MII_AN_COMPLETE_INT, 0);

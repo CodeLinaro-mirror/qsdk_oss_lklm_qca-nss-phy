@@ -22,6 +22,7 @@ extern "C" {
 #endif				/* __cplusplus */
 #include "nss_phy_common.h"
 
+#define NSS_PHY_INVALID_REG		0xffff
 /*MMD registers*/
 #define NSS_PHY_MMD1_PMA_CONTROL		0x0
 #define NSS_PHY_MMD1_PMA_TTYPE		0x7
@@ -38,6 +39,13 @@ extern "C" {
 #define NSS_PHY_MMD7_AN_CONTROL		0x0
 #define NSS_PHY_MMD7_8023AZ_EEE_CTRL1		0x3e
 #define NSS_PHY_MMD7_8023AZ_EEE_PARTNER1		0x3f
+#define NSS_PHY_MMD7_LED0_CTRL		0x8078
+#define NSS_PHY_MMD7_LED1_CTRL		0x8074
+#define NSS_PHY_MMD7_LED2_CTRL		0x8076
+#define NSS_PHY_MMD7_LED0_FORCE_CTRL		0x8079
+#define NSS_PHY_MMD7_LED1_FORCE_CTRL		0x8075
+#define NSS_PHY_MMD7_LED2_FORCE_CTRL		0x8077
+#define NSS_PHY_MMD7_LED_10G_CTRL		0x807a
 
 /*MMD registers field*/
 #define NSS_PHY_MMD1_PMA_SPEED_MASK		0x207c
@@ -64,6 +72,12 @@ extern "C" {
 #define NSS_PHY_MMD7_EEE_ADV_5000M		0x0002
 #define NSS_PHY_MMD7_EEE_PARTNER_ADV_2500M		0x0001
 #define NSS_PHY_MMD7_EEE_PARTNER_ADV_5000M		0x0002
+#define NSS_PHY_MMD7_LINK_2500M_LIGHT_EN		0x8000
+#define NSS_PHY_MMD7_10G_SRC0_OFFSET		0x7
+#define NSS_PHY_MMD7_5G_SRC0_OFFSET		0x1
+
+#define NSS_PHY_MMD7_LINK_5000M_LIGHT_EN		0x2
+#define NSS_PHY_MMD7_LINK_10000M_LIGHT_EN		0x80
 
 #define NSS_PHY_MMD31_INTR_FAST_LINK_DOWN		0x8000
 #define NSS_PHY_MMD31_INTR_SEC_ENA		0x2000
@@ -84,6 +98,8 @@ int nss_phy_c45_common_eee_partner_adv_get(struct nss_phy_device *nss_phydev,
 	u32 *adv);
 int nss_phy_c45_common_eee_cap_get(struct nss_phy_device *nss_phydev,
 	u32 *cap);
+int nss_phy_c45_common_eee_status_get(struct nss_phy_device *nss_phydev,
+	u32 *status);
 int nss_phy_c45_common_8023az_set(struct nss_phy_device *nss_phydev,
 	u32 enable);
 int nss_phy_c45_common_8023az_get(struct nss_phy_device *nss_phydev,
@@ -125,6 +141,24 @@ nss_phy_c45_common_intr_mask_get(struct nss_phy_device *nss_phydev,
 int
 nss_phy_c45_common_intr_status_get(struct nss_phy_device *nss_phydev,
 	u32 *intr_status);
+int nss_phy_c45_common_led_force_set
+	(struct nss_phy_device *nss_phydev, u32 source_id, u32 enable,
+	u32 force_mode);
+int nss_phy_c45_common_led_force_get
+	(struct nss_phy_device *nss_phydev, u32 source_id, u32 *enable,
+	u32 *force_mode);
+int nss_phy_2500m_led_ctrl_source_set
+	(struct nss_phy_device *nss_phydev, u32 source_id,
+	struct nss_phy_led_pattern_ctrl *pattern);
+int nss_phy_2500m_led_ctrl_source_get
+	(struct nss_phy_device *nss_phydev, u32 source_id,
+	struct nss_phy_led_pattern_ctrl *pattern);
+int nss_phy_c45_common_led_ctrl_source_set
+	(struct nss_phy_device *nss_phydev, u32 source_id,
+	struct nss_phy_led_pattern_ctrl *pattern);
+int nss_phy_c45_common_led_ctrl_source_get
+	(struct nss_phy_device *nss_phydev, u32 source_id,
+	struct nss_phy_led_pattern_ctrl *pattern);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

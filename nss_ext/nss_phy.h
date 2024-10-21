@@ -65,23 +65,12 @@ extern "C" {
 #define LED_COLLISION_BLINK_EN		6
 #define LED_RX_TRAFFIC_BLINK_EN		7
 #define LED_TX_TRAFFIC_BLINK_EN		8
-#define LED_LINK_2500M_LIGHT_EN		9
-#define LED_TRAFFIC_EN		\
-	(NSS_BIT(LED_RX_TRAFFIC_BLINK_EN) | NSS_BIT(LED_TX_TRAFFIC_BLINK_EN))
-#define LED_TRAFFIC_COLLISION_EN		\
-	(LED_TRAFFIC_EN | NSS_BIT(LED_COLLISION_BLINK_EN))
+#define LED_LINKUP_OVERRIDE_EN		9
+#define LED_LINK_2500M_LIGHT_EN		10
+#define LED_LINK_5000M_LIGHT_EN		11
+#define LED_LINK_10000M_LIGHT_EN		12
 #define LED_ACTIVE_HIGH		1
 #define LED_ACTIVE_LOW		0
-#define LED_MAP_10M		\
-	(NSS_BIT(LED_LINK_10M_LIGHT_EN) | LED_TRAFFIC_COLLISION_EN)
-#define LED_MAP_100M		\
-	(NSS_BIT(LED_LINK_10M_LIGHT_EN) | LED_TRAFFIC_COLLISION_EN)
-#define LED_MAP_1000M		\
-	(NSS_BIT(LED_LINK_1000M_LIGHT_EN) | LED_TRAFFIC_EN)
-#define LED_MAP_2500M		\
-	(NSS_BIT(LED_LINK_2500M_LIGHT_EN) | LED_TRAFFIC_EN)
-#define LED_MAP_ALL		\
-	(LED_MAP_10M | LED_MAP_100M | LED_MAP_1000M | LED_MAP_2500M)
 
 #define INTR_SPEED		0x1
 #define INTR_DUPLEX		0x2
@@ -323,9 +312,10 @@ struct nss_phy_ops {
 	int (*reset)(struct nss_phy_device *nss_phydev);
 	int (*power_on)(struct nss_phy_device *nss_phydev);
 	int (*power_off)(struct nss_phy_device *nss_phydev);
-	int (*interface_mode_status_get)(struct nss_phy_device *nss_phydev, u32 status);
+	int (*interface_mode_status_get)(struct nss_phy_device *nss_phydev,
+		u32 *status);
 	int (*phyid_get)(struct nss_phy_device *nss_phydev, u16 *org_id, u16 *rev_id);
-	int (*link_status_get)(struct nss_phy_device *nss_phydev, u32 status);
+	int (*link_status_get)(struct nss_phy_device *nss_phydev, u32 *status);
 };
 #ifdef __cplusplus
 }
