@@ -35,6 +35,8 @@
 
 #define QCA8084_DEBUG_ADDR			0x1D
 #define QCA8084_DEBUG_DATA			0x1E
+#define QCA8084_PHY_DEBUG_ANA_ICC		0x280
+#define QCA8084_PHY_DEBUG_ANA_ICC_MASK		0x1f
 
 /* QCA8084 ADC clock edge */
 #define QCA8084_ADC_CLK_SEL			0x8b80
@@ -80,6 +82,12 @@
 #define QCA8084_DEBUG_AFE25_CMN_2_MII		0x180
 #define QCA8084_DEBUG_AFE25_LDO_EN		BIT(13)
 
+#define QCA8084_CALIBRATION_PHY1_EFUSE	0xC900048
+#define QCA8084_CALIBRATION_PHY2_EFUSE		0xC90005C
+#define QCA8084_CALIBRATION_PHY3_EFUSE		0xC900060
+#define QCA8084_CALIBRATION_PHY4_EFUSE		0xC900068
+#define QCA8084_PTE_EFUSE		0xC900014
+
 struct qca8084_shared_priv {
 	int work_mode;
 	int (*phy_qusgmii_mode_set)(u32 dev_id);
@@ -91,6 +99,10 @@ struct qca8084_shared_priv {
 	int (*phy_clk_reset)(u32 dev_id, u32 phy_index, u8 mask);
 	int (*phy_xpcs_function_reset)(u32 dev_id, u32 phy_index);
 	int (*phy_sgmii_function_reset)(u32 dev_id, u32 uphy_index);
+};
+
+struct qca8084_priv {
+	u32 icc_value;
 };
 
 static int qca8084_debug_reg_read(struct phy_device *phydev, u16 reg)
@@ -294,9 +306,32 @@ static int qca8084_interface_fix_up(struct phy_device *phydev,
 	return 0;
 }
 
+static int qca8084_phy_icc_fix_up(struct phy_device *phydev)
+{
+	int ret = 0;
+	u32 icc_value = 0;
+	struct qca8084_priv *priv = phydev->priv;
+
+	/* retrim icc value for link up 100M, and set orginal icc value */
+	/* for link down and other speeds to fix 100M template issue and */
+	if (phydev->speed == SPEED_100) {
+		if (priv->icc_value < (0x1f - 3))
+			icc_value = priv->icc_value + 3;
+		else
+			icc_value = 0x1f;
+	} else {
+		icc_value = priv->icc_value;
+	}
+	ret = qca8084_debug_reg_mask(phydev, QCA8084_PHY_DEBUG_ANA_ICC,
+		QCA8084_PHY_DEBUG_ANA_ICC_MASK, icc_value);
+	mdelay(10);
+
+	return ret;
+}
+
 static int qca8084_link_change(struct phy_device *phydev)
 {
-	int phy_index;
+	int ret, phy_index;
 	struct qca8084_shared_priv *shared_priv;
 
 	shared_priv = phydev->shared->priv;
@@ -304,6 +339,10 @@ static int qca8084_link_change(struct phy_device *phydev)
 		return -EINVAL;
 
 	phydev_dbg(phydev, "qca8084 would be fix up when link changed\n");
+
+	ret = qca8084_phy_icc_fix_up(phydev);
+	if (ret < 0)
+		return ret;
 
 	switch (shared_priv->work_mode) {
 	case QCA8084_WORK_MODE_QXGMII:
@@ -499,6 +538,66 @@ static int qca8084_ability_fix_up(struct phy_device *phydev)
 	return 0;
 }
 
+static int qca8084_icc_efuse_init(struct phy_device *phydev)
+{
+	int ret = 0;
+	u32 data = 0, otp_ver = 0, phy_index = 0, icc_value = 0;
+	struct qca8084_priv *priv = phydev->priv;
+
+	phy_index = qca8084_phy_index_get(phydev);
+
+	switch (phy_index) {
+	case 1:
+		ret = qca8084_mii_read(phydev,
+			QCA8084_CALIBRATION_PHY1_EFUSE, &data);
+		if (ret < 0)
+			return ret;
+		icc_value = FIELD_GET(GENMASK(26, 22), data);
+		break;
+	case 2:
+		ret = qca8084_mii_read(phydev,
+			QCA8084_CALIBRATION_PHY2_EFUSE, &data);
+		if (ret < 0)
+			return ret;
+		icc_value = FIELD_GET(GENMASK(31, 27), data);
+		break;
+	case 3:
+		ret = qca8084_mii_read(phydev,
+			QCA8084_CALIBRATION_PHY3_EFUSE, &data);
+		if (ret < 0)
+			return ret;
+		icc_value = FIELD_GET(GENMASK(31, 27), data);
+		break;
+	case 4:
+		ret = qca8084_mii_read(phydev,
+			QCA8084_CALIBRATION_PHY4_EFUSE, &data);
+		if (ret < 0)
+			return ret;
+		icc_value = FIELD_GET(GENMASK(22, 18), data);
+		break;
+	default:
+		return -EOPNOTSUPP;
+	}
+	ret = qca8084_mii_read(phydev, QCA8084_PTE_EFUSE,
+		&data);
+	if (ret < 0)
+		return ret;
+	otp_ver = FIELD_GET(GENMASK(23, 16), data);
+	/* the bit 4 of OTP version 1 and OTP version 2 is correct, */
+	/* so no need below fixup, other OTP version is incorrect, */
+	/* may be 0 or 1, so need to get the opposite value */
+	if (otp_ver != 1 && otp_ver != 2) {
+		if (icc_value & BIT(4))
+			icc_value &= ~BIT(4);
+		else
+			icc_value |= BIT(4);
+	}
+
+	priv->icc_value = icc_value;
+
+	return ret;
+}
+
 static int qca8084_config_init(struct phy_device *phydev)
 {
 	int ret, index;
@@ -535,6 +634,11 @@ static int qca8084_config_init(struct phy_device *phydev)
 	if (ret < 0)
 		return ret;
 
+	/* initialize the icc value */
+	ret = qca8084_icc_efuse_init(phydev);
+	if (ret < 0)
+		return ret;
+
 	return qca8084_ability_fix_up(phydev);
 }
 
@@ -542,8 +646,16 @@ static int qca8084_probe(struct phy_device *phydev)
 {
 	u32 val;
 	int ret;
+	struct qca8084_priv *priv;
+	struct device *dev = &phydev->mdio.dev;
 
 	phydev_info(phydev, "qca8084 PHY driver was probed\n");
+
+	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
+	if (!priv)
+		return -ENOMEM;
+	phydev->priv = priv;
+
 	ret = qca8084_mii_read(phydev, QCA8084_EPHY_CFG, &val);
 	if (ret < 0)
 		return ret;
