@@ -14,17 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <linux/kernel.h>
-#include <linux/module.h>
-#include <linux/delay.h>
-#include <linux/phy.h>
-#include <linux/bitfield.h>
-
-#define QCA8111_PHY		0x004dd1c0
-/* in QCOM MDIO bus driver, bit29~31 is for soc type, 2 is for laguna */
-/* and bit24~28 is for phy address, 0~23 is for soc address */
-#define TO_QCA81XX_PHY_SOC_ADDR(addr, reg)		\
-	((BIT(30) | reg) | (addr << 24))
+#include "qca81xx.h"
 
 enum qca81xx_addr_offset {
 	PCS_ADDR_OFFSET = 1,
@@ -252,7 +242,7 @@ enum {
 	GPIO_MAX
 };
 
-static int __qca81xx_phy_debug_write(struct phy_device *phydev,
+int __qca81xx_phy_debug_write(struct phy_device *phydev,
 	unsigned int reg, u16 val)
 {
 	int ret;
@@ -267,7 +257,7 @@ static int __qca81xx_phy_debug_write(struct phy_device *phydev,
 	return ret;
 }
 
-static int qca81xx_phy_debug_write(struct phy_device *phydev,
+int qca81xx_phy_debug_write(struct phy_device *phydev,
 	unsigned int reg, u16 val)
 {
 	int ret;
@@ -315,7 +305,7 @@ static u32 qca81xx_soc_address(struct phy_device *phydev)
 	return phydev->mdio.addr + SOC_ADDR_OFFSET;
 }
 
-static u32 __qca81xx_soc_read(struct phy_device *phydev, u32 reg)
+u32 __qca81xx_soc_read(struct phy_device *phydev, u32 reg)
 {
 	u32 reg_e, val;
 	int addr;
@@ -330,7 +320,7 @@ static u32 __qca81xx_soc_read(struct phy_device *phydev, u32 reg)
 	return val;
 }
 
-static int __qca81xx_soc_write(struct phy_device *phydev,
+int __qca81xx_soc_write(struct phy_device *phydev,
 	u32 reg, u32 val)
 {
 	u32 reg_e;
@@ -346,7 +336,7 @@ static int __qca81xx_soc_write(struct phy_device *phydev,
 	return 0;
 }
 
-static int qca81xx_soc_modify(struct phy_device *phydev, u32 reg,
+int qca81xx_soc_modify(struct phy_device *phydev, u32 reg,
 	u32 mask, u32 set)
 {
 	u32 val;
