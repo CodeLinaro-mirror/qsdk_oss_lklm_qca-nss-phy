@@ -35,7 +35,7 @@ static int qca803x_phy_chip_config_get(struct nss_phy_device *nss_phydev,
 static int qca803x_phy_interface_set(struct nss_phy_device *nss_phydev,
 	u32 interface)
 {
-	u16 phy_data;
+	u16 phy_data = 0;
 
 	switch (interface) {
 	case NSS_PHY_INTERFACE_MODE_RGMII:

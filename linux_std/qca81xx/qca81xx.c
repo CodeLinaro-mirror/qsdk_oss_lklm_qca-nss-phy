@@ -307,7 +307,7 @@ static u32 qca81xx_soc_address(struct phy_device *phydev)
 
 u32 __qca81xx_soc_read(struct phy_device *phydev, u32 reg)
 {
-	u32 reg_e, val;
+	u32 reg_e, val = 0;
 	int addr;
 	struct qca81xx_phy_mdio_data *mdio_priv = phydev->mdio.bus->priv;
 
@@ -489,7 +489,7 @@ static int qca81xx_phy_clk_reset(struct phy_device *phydev)
 
 static int qca81xx_phy_speed_clk_set(struct phy_device *phydev)
 {
-	int ret, div0, div1;
+	int ret, div0 = 0, div1 = 0;
 
 	switch (phydev->speed) {
 	case SPEED_100:
