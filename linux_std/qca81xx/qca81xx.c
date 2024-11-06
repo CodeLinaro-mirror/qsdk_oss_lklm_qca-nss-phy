@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+
 #include "qca81xx.h"
 
 enum qca81xx_addr_offset {
@@ -924,8 +925,14 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 		return ret;
 
 	ret = qca81xx_phy_cdt_thresh_init(phydev);
-
-	return ret;
+	if (ret < 0)
+		return ret;
+#if IS_ENABLED(CONFIG_MACSEC)
+	ret = qca81xx_macsec_init(phydev);
+	if (ret)
+		return ret;
+#endif
+	return 0;
 }
 
 static int qca81xx_phy_get_features(struct phy_device *phydev)
@@ -1143,11 +1150,22 @@ static int qca81xx_phy_config_intr(struct phy_device *phydev)
 	return ret;
 }
 
+static int qca81xx_phy_probe(struct phy_device *phydev)
+{
+	phydev->priv = devm_kzalloc(&phydev->mdio.dev,
+			sizeof(struct qca81xx_private), GFP_KERNEL);
+	if (!phydev->priv)
+		return -ENOMEM;
+
+	return 0;
+}
+
 static struct phy_driver qca81xx_phy_driver[] = {
 {
 	PHY_ID_MATCH_EXACT(QCA8111_PHY),
 	.name = "Qualcomm QCA81xx",
 	.flags = PHY_POLL_CABLE_TEST,
+	.probe = qca81xx_phy_probe,
 	.config_init = qca81xx_phy_config_init,
 	.get_features = qca81xx_phy_get_features,
 	.config_aneg = qca81xx_phy_config_aneg,

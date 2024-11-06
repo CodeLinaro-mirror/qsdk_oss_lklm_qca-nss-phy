@@ -18,6 +18,9 @@
 #define _QCA81XX_H_
 
 #include <linux/phy.h>
+#if IS_ENABLED(CONFIG_MACSEC)
+#include "qca81xx_macsec.h"
+#endif
 
 #define QCA8111_PHY		0x004dd1c0
 /* in QCOM MDIO bus driver, bit29~31 is for soc type, 2 is for laguna */
@@ -34,4 +37,12 @@ int __qca81xx_soc_write(struct phy_device *phydev,
 	u32 reg, u32 val);
 int qca81xx_soc_modify(struct phy_device *phydev, u32 reg,
 	u32 mask, u32 set);
+
+struct qca81xx_private {
+
+#if IS_ENABLED(CONFIG_MACSEC)
+	struct qca_macsec_cfg_t macsec_cfg;
+#endif
+};
+
 #endif /* _QCA81XX_H_ */
