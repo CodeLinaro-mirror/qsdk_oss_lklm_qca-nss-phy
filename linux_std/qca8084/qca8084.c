@@ -285,23 +285,20 @@ static int qca8084_sgmii_speed_fix_up(struct phy_device *phydev,
 static int qca8084_interface_fix_up(struct phy_device *phydev,
 	struct qca8084_shared_priv *shared_priv)
 {
-	u32 interface_old, interface_tmp;
+	u32 interface_old;
 
 	interface_old = phydev->interface;
-	if (phydev->link && phydev->speed == SPEED_2500) {
+	if (phydev->link && phydev->speed == SPEED_2500)
 		phydev->interface = PHY_INTERFACE_MODE_2500BASEX;
-		interface_tmp = 6;
-	} else {
+	else
 		phydev->interface = PHY_INTERFACE_MODE_SGMII;
-		interface_tmp = 4;
-	}
 
 	if (phydev->interface == interface_old)
 		return 0;
 
 	if (!shared_priv->phy_sgmii_mode_set)
 		return -EINVAL;
-	shared_priv->phy_sgmii_mode_set(0, interface_tmp);
+	shared_priv->phy_sgmii_mode_set(0, phydev->interface);
 
 	return 0;
 }
