@@ -50,6 +50,9 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_ANA_DEBUG_AFE_DAC39_DP		0x4e80
 #define QCA81XX_ANA_DEBUG_AFE_DAC39_DP_VAL		0x2a2a
 
+/*PHY MMD1 registers*/
+#define QCA81XX_MMD1_2P5G_VGA_BW_CTRL		0x8108
+#define QCA81XX_MMD1_2P5G_VGA_BW_VAL		0x1b
 /*PHY MMD3 registers*/
 #define QCA81XX_MMD3_CDT_THRESH_CTRL2		0x8073
 #define QCA81XX_MMD3_CDT_THRESH_CTRL2_VAL		0xb03f
@@ -917,6 +920,11 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 	ret = qca81xx_phy_eee_config_init(phydev);
 	if (ret < 0)
 		return ret;
+	/* update 2.5G VGA(Variable-Gain Amplifier)bandwidth */
+	/* to improve channel anti-interference ability */
+	phy_write_mmd(phydev, MDIO_MMD_PMAPMD,
+		QCA81XX_MMD1_2P5G_VGA_BW_CTRL,
+		QCA81XX_MMD1_2P5G_VGA_BW_VAL);
 	ret = qca81xx_sec_ctrl_init(phydev);
 	if (ret < 0)
 		return ret;
