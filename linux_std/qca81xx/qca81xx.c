@@ -231,21 +231,6 @@ struct qca81xx_phy_mdio_data {
 #define WOL_INTR_CTRL		0x90f010
 #define WOL_INTR_EN		BIT(0)
 
-/*SOC TLMM registers*/
-#define TLMM_BASE		0x400000
-#define TLMM_GPIO_OFFSET		0x1000
-#define TO_TLMM_CFG_REG(pin)		\
-	(TLMM_BASE + 0x1000*pin)
-#define TLMM_FUNC_MASK		GENMASK(5, 2)
-enum {
-	GPIO0_WOL_INT = 0,
-	GPIO1_PHY_INT,
-	GPIO2_LED0,
-	GPIO3_LED1,
-	GPIO4_LED3,
-	GPIO_MAX
-};
-
 int __qca81xx_phy_debug_write(struct phy_device *phydev,
 	unsigned int reg, u16 val)
 {
@@ -272,6 +257,25 @@ int qca81xx_phy_debug_write(struct phy_device *phydev,
 
 	return ret;
 }
+
+int qca81xx_phy_debug_modify(struct phy_device *phydev,
+			     unsigned int reg, u16 clear, u16 set)
+{
+	int ret;
+
+	phy_lock_mdio_bus(phydev);
+	ret = __phy_write_mmd(phydev, MDIO_MMD_VEND2, QCA81XX_DEBUG_ADDR, reg);
+	if (ret) {
+		phy_unlock_mdio_bus(phydev);
+		return ret;
+	}
+
+	ret = __phy_modify_mmd(phydev, MDIO_MMD_VEND2, QCA81XX_DEBUG_DATA, clear, set);
+	phy_unlock_mdio_bus(phydev);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(qca81xx_phy_debug_modify);
 
 static int qca81xx_pcs_address(struct phy_device *phydev)
 {
@@ -354,6 +358,7 @@ int qca81xx_soc_modify(struct phy_device *phydev, u32 reg,
 	return 0;
 
 }
+EXPORT_SYMBOL_GPL(qca81xx_soc_modify);
 
 static int qca81xx_pcs_txclk_en_set(struct phy_device *phydev,
 	bool enable)
@@ -876,7 +881,7 @@ static int qca81xx_tlmm_init(struct phy_device *phydev)
 
 	/* the GPIO function bit2~5 is set 1 means the expected function */
 	/* such as GPIO0 is WOL INT function and GPIO2 is LED0 function */
-	for (pin_id  = GPIO0_WOL_INT; pin_id < GPIO_MAX; pin_id++) {
+	for (pin_id  = GPIO0_WOL_INT; pin_id <= GPIO4_LED3; pin_id++) {
 		ret = qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
 			TLMM_FUNC_MASK, BIT(2));
 		if (ret < 0)
