@@ -119,6 +119,7 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_LP_ADVERTISE_1000FULL		0x2000
 
 #define QCA81XX_SPEC_STATUS		0x11
+#define QCA81XX_SS_LINK_STATUS		0x400
 #define QCA81XX_INTR_DOWNSHIFT		0x20
 #define QCA81XX_SS_DUPLEX_FULL		0x2000
 #define QCA81XX_SS_SPEED_MASK		0x380
@@ -1230,6 +1231,39 @@ static int qca81xx_phy_probe(struct phy_device *phydev)
 	return 0;
 }
 
+static int qca81xx_phy_suspend(struct phy_device *phydev)
+{
+	int ret;
+
+	ret = phy_read_mmd(phydev, MDIO_MMD_VEND2,
+		QCA81XX_SPEC_STATUS);
+	if (!(ret & QCA81XX_SS_LINK_STATUS)) {
+		ret = qca81xx_pcs_modify(phydev,
+			QCA81XX_PCS_PLL_POWER_ON_AND_RESET,
+			QCA81XX_PCS_ANA_SOFT_RESET_MASK,
+			QCA81XX_PCS_ANA_SOFT_RESET);
+		if (ret < 0)
+			return ret;
+	}
+
+	return genphy_c45_pma_suspend(phydev);
+}
+
+static int qca81xx_phy_resume(struct phy_device *phydev)
+{
+	int ret;
+
+	/* make sure the PHY PCS is enabled */
+	ret = qca81xx_pcs_modify(phydev,
+		QCA81XX_PCS_PLL_POWER_ON_AND_RESET,
+		QCA81XX_PCS_ANA_SOFT_RESET_MASK,
+		QCA81XX_PCS_ANA_SOFT_RELEASE);
+	if (ret < 0)
+		return ret;
+
+	return genphy_c45_pma_resume(phydev);
+}
+
 static struct phy_driver qca81xx_phy_driver[] = {
 {
 	PHY_ID_MATCH_EXACT(QCA8111_PHY),
@@ -1241,8 +1275,8 @@ static struct phy_driver qca81xx_phy_driver[] = {
 	.config_aneg = qca81xx_phy_config_aneg,
 	.config_intr = qca81xx_phy_config_intr,
 	.read_status = qca81xx_phy_read_status,
-	.suspend = genphy_c45_pma_suspend,
-	.resume = genphy_c45_pma_resume,
+	.suspend = qca81xx_phy_suspend,
+	.resume = qca81xx_phy_resume,
 	.soft_reset = qca81xx_phy_soft_reset,
 },
 };

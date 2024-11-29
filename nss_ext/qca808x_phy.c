@@ -24,7 +24,7 @@ static int qca8081_phy_fifo_reset(struct nss_phy_device *nss_phydev)
 {
 	int ret;
 
-	ret = nss_phy_package_modify_mmd(nss_phydev,
+	ret = nss_phy_pcs_modify_mmd(nss_phydev,
 		QCA808X_SERDES_ADDR_OFFSET,
 		NSS_PHY_MMD1_NUM, QCA808X_PHY_MMD1_FIFO_REST_REG,
 		QCA808X_PHY_MMD1_FIFO_RESET,
@@ -32,7 +32,7 @@ static int qca8081_phy_fifo_reset(struct nss_phy_device *nss_phydev)
 	if (ret < 0)
 		return ret;
 	nss_phy_mdelay(50);
-	ret = nss_phy_package_modify_mmd(nss_phydev,
+	ret = nss_phy_pcs_modify_mmd(nss_phydev,
 		QCA808X_SERDES_ADDR_OFFSET,
 		NSS_PHY_MMD1_NUM, QCA808X_PHY_MMD1_FIFO_REST_REG,
 		QCA808X_PHY_MMD1_FIFO_RESET,

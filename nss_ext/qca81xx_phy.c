@@ -174,6 +174,23 @@ static int qca81xx_phy_stats_get(struct nss_phy_device *nss_phydev,
 	return ret;
 }
 
+static int qca81xx_phy_adjust_link_post(struct nss_phy_device *nss_phydev)
+{
+	int ret = 0;
+
+	/* disable PHY PCS if PHY is suspended and link is down */
+	if (nss_phy_is_suspended(nss_phydev) &&
+		nss_phydev_link_get(nss_phydev) == NSS_PHY_FALSE) {
+		ret = nss_phy_modify_pcs(nss_phydev, QCA81XX_PHY_SERDES_ADDR_OFFSET,
+			QCA81XX_PHY_PCS_PLL_POWER_ON_AND_RESET,
+			QCA81XX_PHY_PCS_ANA_SOFT_RESET_MASK, QCA81XX_PHY_PCS_ANA_SOFT_RESET);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
 int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 {
 	ops->hibernation_set = nss_phy_common_hibernation_set;
@@ -206,6 +223,7 @@ int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 	ops->intr_status_get = nss_phy_c45_common_intr_status_get;
 	ops->led_ctrl_source_set = nss_phy_c45_common_led_ctrl_source_set;
 	ops->led_ctrl_source_get = nss_phy_c45_common_led_ctrl_source_get;
+	ops->adjust_link_post = qca81xx_phy_adjust_link_post;
 
 	return 0;
 }

@@ -32,6 +32,16 @@ extern "C"
 /*MMD registers field*/
 #define QCA81XX_PHY_MMD31_AUTO_SOFT_RESET		0x8000
 
+/*SERDES registers*/
+#define QCA81XX_PHY_PCS_PLL_POWER_ON_AND_RESET		0
+#define QCA81XX_PHY_PCS_ANA_SOFT_RESET_MASK		0x40
+#define QCA81XX_PHY_PCS_ANA_SOFT_RELEASE		0x40
+#define QCA81XX_PHY_PCS_ANA_SOFT_RESET		0
+
+enum qca81xx_phy_addr_offset {
+	QCA81XX_PHY_SERDES_ADDR_OFFSET = 1,
+};
+
 int qca81xx_phy_ops_init(struct nss_phy_ops *ops);
 #ifdef __cplusplus
 }

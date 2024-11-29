@@ -85,12 +85,12 @@ static int qca807x_phy_function_reset(struct nss_phy_device *nss_phydev,
 
 	switch (reset_type) {
 	case SERDES_RESET:
-		ret = nss_phy_write_package(nss_phydev, QCA807X_PHY_SERDES_ADDR,
+		ret = nss_phy_write_pcs(nss_phydev, QCA807X_PHY_SERDES_ADDR,
 			QCA807X_PHY_SERDES_RESET_REG, QCA807X_PHY_SERDES_RESET);
 		if (ret < 0)
 			return ret;
 		nss_phy_mdelay(100);
-		ret = nss_phy_write_package(nss_phydev, QCA807X_PHY_SERDES_ADDR,
+		ret = nss_phy_write_pcs(nss_phydev, QCA807X_PHY_SERDES_ADDR,
 			QCA807X_PHY_SERDES_RESET_REG,
 			QCA807X_PHY_SERDES_RELEASE);
 		if (ret < 0)
@@ -131,7 +131,7 @@ static int qca807x_phy_interface_set(struct nss_phy_device *nss_phydev,
 	default:
 		return -NSS_PHY_EOPNOTSUPP;
 	}
-	ret = nss_phy_modify_package(nss_phydev,
+	ret = nss_phy_modify_pcs(nss_phydev,
 		QCA807X_PHY_COMBO_ADDR,
 		NSS_PHY_CHIP_CONFIGURATION,
 		QCA807X_PHY_INTERFACE_MASK,
@@ -157,7 +157,7 @@ static int qca807x_phy_interface_get(struct nss_phy_device *nss_phydev,
 	int ret = 0;
 	u16 phy_data = 0;
 
-	ret = nss_phy_read_package(nss_phydev, QCA807X_PHY_COMBO_ADDR,
+	ret = nss_phy_read_pcs(nss_phydev, QCA807X_PHY_COMBO_ADDR,
 		NSS_PHY_CHIP_CONFIGURATION);
 	if (ret < 0)
 		return ret;
@@ -373,7 +373,7 @@ int qca807x_phy_fixup(struct nss_phy_device *nss_phydev)
 		return ret;
 
 	/* workaround to enable AZ transmitting ability */
-	ret = nss_phy_package_modify_mmd(nss_phydev, QCA807X_PHY_SERDES_ADDR,
+	ret = nss_phy_pcs_modify_mmd(nss_phydev, QCA807X_PHY_SERDES_ADDR,
 		NSS_PHY_MMD1_NUM, QCA807X_PHY_MMD1_PSGMII_MODE_CTRL,
 		QCA807X_PHY_MMD1_PSGMII_MODE_CTRL_VALUE,
 		QCA807X_PHY_MMD1_PSGMII_MODE_CTRL_VALUE);
@@ -381,7 +381,7 @@ int qca807x_phy_fixup(struct nss_phy_device *nss_phydev)
 		return ret;
 
 	/* adjust psgmii serdes tx amp */
-	ret = nss_phy_write_package(nss_phydev, QCA807X_PHY_SERDES_ADDR,
+	ret = nss_phy_write_pcs(nss_phydev, QCA807X_PHY_SERDES_ADDR,
 		QCA807X_PHY_PSGMII_TX_DRIVER_1_CTRL,
 		QCA807X_PHY_PSGMII_REDUCE_SERDES_TX_AMP);
 	if (ret < 0)
@@ -389,7 +389,7 @@ int qca807x_phy_fixup(struct nss_phy_device *nss_phydev)
 
 	/* to avoid psgmii module goes into hibernation, */
 	/* work with psgmii self test */
-	ret = nss_phy_package_modify_mmd(nss_phydev, QCA807X_PHY_COMBO_ADDR,
+	ret = nss_phy_pcs_modify_mmd(nss_phydev, QCA807X_PHY_COMBO_ADDR,
 		NSS_PHY_MMD3_NUM, NSS_PHY_MMD3_REMOTE_LOOPBACK_CTRL,
 		NSS_BIT(1), 0);
 	if (ret < 0)

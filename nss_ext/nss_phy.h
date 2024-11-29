@@ -317,6 +317,7 @@ struct nss_phy_ops {
 		u32 *status);
 	int (*phyid_get)(struct nss_phy_device *nss_phydev, u16 *org_id, u16 *rev_id);
 	int (*link_status_get)(struct nss_phy_device *nss_phydev, u32 *status);
+	int (*adjust_link_post)(struct nss_phy_device *nss_phydev);
 	struct nss_phy_ptp_ops *ptp_ops;
 };
 #ifdef __cplusplus

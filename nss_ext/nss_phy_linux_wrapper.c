@@ -239,7 +239,7 @@ int nss_phy_share_addr_get(struct nss_phy_device *nss_phydev)
 	return 0;
 }
 
-int __nss_phy_read_package(struct nss_phy_device *nss_phydev,
+int __nss_phy_read_pcs(struct nss_phy_device *nss_phydev,
 	int addr_offset, u16 reg)
 {
 	int addr = 0;
@@ -248,7 +248,7 @@ int __nss_phy_read_package(struct nss_phy_device *nss_phydev,
 	return __mdiobus_read(nss_phydev->phydev->mdio.bus, addr, reg);
 }
 
-int __nss_phy_write_package(struct nss_phy_device *nss_phydev,
+int __nss_phy_write_pcs(struct nss_phy_device *nss_phydev,
 	int addr_offset, u16 reg, u16 data)
 {
 	int addr = 0;
@@ -258,7 +258,7 @@ int __nss_phy_write_package(struct nss_phy_device *nss_phydev,
 		reg, data);
 }
 
-int __nss_phy_modify_package(struct nss_phy_device *nss_phydev,
+int __nss_phy_modify_pcs(struct nss_phy_device *nss_phydev,
 	int addr_offset, u16 reg, u16 mask, u16 set)
 {
 	int addr = 0;
@@ -268,38 +268,38 @@ int __nss_phy_modify_package(struct nss_phy_device *nss_phydev,
 		reg, mask, set);
 }
 
-int nss_phy_read_package(struct nss_phy_device *nss_phydev,
+int nss_phy_read_pcs(struct nss_phy_device *nss_phydev,
 	int addr_offset, u16 reg)
 {
 	int ret;
 
 	phy_lock_mdio_bus(nss_phydev->phydev);
-	ret = __nss_phy_read_package(nss_phydev, addr_offset, reg);
+	ret = __nss_phy_read_pcs(nss_phydev, addr_offset, reg);
 	phy_unlock_mdio_bus(nss_phydev->phydev);
 
 	return ret;
 }
 
-int nss_phy_write_package(struct nss_phy_device *nss_phydev,
+int nss_phy_write_pcs(struct nss_phy_device *nss_phydev,
 	int addr_offset, u16 reg, u16 data)
 {
 	int ret;
 
 	phy_lock_mdio_bus(nss_phydev->phydev);
-	ret = __nss_phy_write_package(nss_phydev, addr_offset,
+	ret = __nss_phy_write_pcs(nss_phydev, addr_offset,
 		reg, data);
 	phy_unlock_mdio_bus(nss_phydev->phydev);
 
 	return ret;
 }
 
-int nss_phy_modify_package(struct nss_phy_device *nss_phydev,
+int nss_phy_modify_pcs(struct nss_phy_device *nss_phydev,
 	int addr_offset, u16 reg, u16 mask, u16 set)
 {
 	int ret;
 
 	phy_lock_mdio_bus(nss_phydev->phydev);
-	ret = __nss_phy_modify_package(nss_phydev, addr_offset, reg,
+	ret = __nss_phy_modify_pcs(nss_phydev, addr_offset, reg,
 		mask, set);
 	phy_unlock_mdio_bus(nss_phydev->phydev);
 
@@ -346,7 +346,7 @@ int nss_phydev_eee_update(struct nss_phy_device *nss_phydev, u32 adv)
 	return 0;
 }
 
-int nss_phy_package_read_mmd(struct nss_phy_device *nss_phydev,
+int nss_phy_pcs_read_mmd(struct nss_phy_device *nss_phydev,
 	unsigned int addr_offset, int devad, u32 regnum)
 {
 	int addr = 0;
@@ -361,7 +361,7 @@ int nss_phy_package_read_mmd(struct nss_phy_device *nss_phydev,
 
 }
 
-int nss_phy_package_modify_mmd(struct nss_phy_device *nss_phydev,
+int nss_phy_pcs_modify_mmd(struct nss_phy_device *nss_phydev,
 	unsigned int addr_offset, int devad, u32 regnum, u16 mask, u16 set)
 {
 	int new, ret;
@@ -460,4 +460,9 @@ int nss_phy_modify_soc(struct nss_phy_device *nss_phydev, u32 reg,
 	phy_unlock_mdio_bus(nss_phydev->phydev);
 
 	return ret;
+}
+
+bool nss_phy_is_suspended(struct nss_phy_device *nss_phydev)
+{
+	return (nss_phydev->phydev->suspended);
 }
