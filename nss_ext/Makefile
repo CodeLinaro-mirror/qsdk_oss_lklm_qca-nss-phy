@@ -1,6 +1,7 @@
 ###################################################
 # Makefile for the QCA NSS PHY EXT driver
 ###################################################
+ccflags-y += -Werror -Wall
 TARGET := qca-nss-phy
 obj-m += $(TARGET).o
 
