@@ -118,10 +118,9 @@ static int nss_phy_base_addr_init(struct phy_device *phydev)
 }
 
 #if defined(NSS_PHY_PTP)
-static int nss_phy_ptp_ops_add(struct phy_device *phydev)
+static int nss_phy_ptp_ops_add(struct phy_device *phydev, struct nss_phy_ops *phy_ops)
 {
 	struct nss_phy_ptp_ops *ptp_ops;
-	struct nss_phy_ops *phy_ops;
 	int ret;
 
 	if (!phy_ops)
@@ -132,7 +131,7 @@ static int nss_phy_ptp_ops_add(struct phy_device *phydev)
 	    nss_phydev_id_compare(phydev, QCA8081_PHY, GENMASK(31, 0))))
 		return 0;
 
-	ptp_ops = nss_phy_kzalloc(sizeof(*ptp_ops));
+	ptp_ops = devm_kzalloc(&phydev->mdio.dev, sizeof(*ptp_ops), GFP_KERNEL);
 	if (!ptp_ops) {
 		phydev_err(phydev, "nss phy ptp ops kzalloc failed!\n");
 		return -NSS_PHY_ENOSPC;
@@ -142,7 +141,6 @@ static int nss_phy_ptp_ops_add(struct phy_device *phydev)
 	if (ret)
 		return ret;
 
-	phy_ops = phydev->drv->driver_data;
 	phy_ops->ptp_ops = ptp_ops;
 
 	return 0;
@@ -184,13 +182,12 @@ static int nss_phy_ops_init(struct phy_device *phydev)
 		return ret;
 	}
 
-	phydev->drv->driver_data = ops;
-
 #if defined(NSS_PHY_PTP)
-	ret = nss_phy_ptp_ops_add(phydev);
+	ret = nss_phy_ptp_ops_add(phydev, ops);
 	if (ret)
 		return ret;
 #endif
+	phydev->drv->driver_data = ops;
 
 	return nss_phy_ops_add(ops);
 }
