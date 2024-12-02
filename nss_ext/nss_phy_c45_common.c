@@ -226,7 +226,13 @@ int nss_phy_c45_common_force_speed_set(struct nss_phy_device *nss_phydev)
 		phy_speed_type = NSS_PHY_MMD1_PMA_TYPE_10000M;
 		break;
 	default:
-		return -NSS_PHY_EOPNOTSUPP;
+		if (nss_phy_support_10m(nss_phydev)) {
+			phy_speed_ctrl = NSS_PHY_MMD1_PMA_CONTROL_10M;
+			phy_speed_type = NSS_PHY_MMD1_PMA_TYPE_10M;
+		} else {
+			phy_speed_ctrl = NSS_PHY_MMD1_PMA_CONTROL_100M;
+			phy_speed_type = NSS_PHY_MMD1_PMA_TYPE_100M;
+		}
 	}
 	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD1_NUM,
 		NSS_PHY_MMD1_PMA_CONTROL, NSS_PHY_MMD1_PMA_SPEED_MASK,
@@ -239,8 +245,7 @@ int nss_phy_c45_common_force_speed_set(struct nss_phy_device *nss_phydev)
 		phy_speed_type);
 }
 
-int
-nss_phy_c45_common_local_loopback_set(struct nss_phy_device *nss_phydev,
+int nss_phy_c45_common_pma_local_loopback_set(struct nss_phy_device *nss_phydev,
 	u32 enable)
 {
 	u16 phy_data = 0;
@@ -264,12 +269,49 @@ nss_phy_c45_common_local_loopback_set(struct nss_phy_device *nss_phydev,
 	return nss_phy_c45_common_autoneg_set(nss_phydev, autoneg);
 }
 
-int nss_phy_c45_common_local_loopback_get(struct nss_phy_device *nss_phydev,
+int nss_phy_c45_common_pma_local_loopback_get(struct nss_phy_device *nss_phydev,
 	u32 *enable)
 {
 	u16 phy_data = 0;
 
 	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD31_NUM,
+		NSS_PHY_CONTROL);
+
+	if (phy_data & NSS_PHY_LOCAL_LOOPBACK_EN)
+		*enable = !NSS_PHY_FALSE;
+	else
+		*enable = NSS_PHY_FALSE;
+
+	return 0;
+}
+
+int nss_phy_c45_common_pcs_local_loopback_set(struct nss_phy_device *nss_phydev,
+	u32 enable)
+{
+	int ret;
+
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM, NSS_PHY_CONTROL,
+		NSS_PHY_LOCAL_LOOPBACK_EN, enable ? NSS_PHY_LOCAL_LOOPBACK_EN : 0);
+	if (ret < 0)
+		return ret;
+	ret = nss_phy_c45_common_autoneg_set(nss_phydev, !enable);
+	if (ret < 0)
+		return ret;
+	if (enable) {
+		ret = nss_phy_c45_common_force_speed_set(nss_phydev);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
+int nss_phy_c45_common_pcs_local_loopback_get(struct nss_phy_device *nss_phydev,
+	u32 *enable)
+{
+	u16 phy_data = 0;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
 		NSS_PHY_CONTROL);
 
 	if (phy_data & NSS_PHY_LOCAL_LOOPBACK_EN)

@@ -86,6 +86,7 @@ int nss_phy_pcs_modify_mmd(struct nss_phy_device *nss_phydev,
 	unsigned int addr_offset, int devad, u32 regnum, u16 mask, u16 set);
 bool nss_phy_support_2500(struct nss_phy_device *nss_phydev);
 bool nss_phy_support_10g(struct nss_phy_device *nss_phydev);
+bool nss_phy_support_10m(struct nss_phy_device *nss_phydev);
 bool nss_phy_is_fiber(struct nss_phy_device *nss_phydev);
 u32 __nss_phy_read_soc(struct nss_phy_device *nss_phydev, u32 reg);
 int __nss_phy_write_soc(struct nss_phy_device *nss_phydev, u32 reg, u32 val);
@@ -96,6 +97,8 @@ int nss_phy_write_soc(struct nss_phy_device *nss_phydev, u32 reg, u32 val);
 int nss_phy_modify_soc(struct nss_phy_device *nss_phydev, u32 reg,
 	u32 mask, u32 set);
 bool nss_phy_is_suspended(struct nss_phy_device *nss_phydev);
+int nss_phydev_loopback_update(struct nss_phy_device *nss_phydev,
+	u32 enable);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

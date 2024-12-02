@@ -107,10 +107,13 @@ int nss_phy_c45_common_8023az_get(struct nss_phy_device *nss_phydev,
 int nss_phy_c45_common_autoneg_set(struct nss_phy_device *nss_phydev,
 	u32 enable);
 int nss_phy_c45_common_force_speed_set(struct nss_phy_device *nss_phydev);
-int
-nss_phy_c45_common_local_loopback_set(struct nss_phy_device *nss_phydev,
+int nss_phy_c45_common_pma_local_loopback_set(struct nss_phy_device *nss_phydev,
 	u32 enable);
-int nss_phy_c45_common_local_loopback_get(struct nss_phy_device *nss_phydev,
+int nss_phy_c45_common_pma_local_loopback_get(struct nss_phy_device *nss_phydev,
+	u32 *enable);
+int nss_phy_c45_common_pcs_local_loopback_set(struct nss_phy_device *nss_phydev,
+	u32 enable);
+int nss_phy_c45_common_pcs_local_loopback_get(struct nss_phy_device *nss_phydev,
 	u32 *enable);
 int nss_phy_c45_common_fifo_reset(struct nss_phy_device *nss_phydev,
 	u32 enable);

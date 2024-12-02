@@ -392,6 +392,14 @@ bool nss_phy_support_10g(struct nss_phy_device *nss_phydev)
 		nss_phydev->phydev->supported));
 }
 
+bool nss_phy_support_10m(struct nss_phy_device *nss_phydev)
+{
+	return (linkmode_test_bit(ETHTOOL_LINK_MODE_10baseT_Half_BIT,
+		nss_phydev->phydev->supported) &&
+		linkmode_test_bit(ETHTOOL_LINK_MODE_10baseT_Full_BIT,
+		nss_phydev->phydev->supported));
+}
+
 bool nss_phy_is_fiber(struct nss_phy_device *nss_phydev)
 {
 	return (nss_phydev->phydev->port == PORT_FIBRE);
@@ -465,4 +473,12 @@ int nss_phy_modify_soc(struct nss_phy_device *nss_phydev, u32 reg,
 bool nss_phy_is_suspended(struct nss_phy_device *nss_phydev)
 {
 	return (nss_phydev->phydev->suspended);
+}
+
+int nss_phydev_loopback_update(struct nss_phy_device *nss_phydev,
+	u32 enable)
+{
+	nss_phydev->phydev->loopback_enabled = enable;
+
+	return 0;
 }

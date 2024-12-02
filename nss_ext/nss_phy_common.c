@@ -254,7 +254,7 @@ int nss_phy_common_local_loopback_set(struct nss_phy_device *nss_phydev,
 			phy_data = NSS_PHY_LOOPBACK_1000M;
 		else if (cur_speed == NSS_PHY_SPEED_100)
 			phy_data = NSS_PHY_LOOPBACK_100M;
-		else if (cur_speed == NSS_PHY_SPEED_10)
+		else
 			phy_data = NSS_PHY_LOOPBACK_10M;
 	} else {
 		phy_data = NSS_PHY_COMMON_CTRL;

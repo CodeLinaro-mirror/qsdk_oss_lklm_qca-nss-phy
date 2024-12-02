@@ -43,6 +43,59 @@ static int qca81xx_phy_soft_reset(struct nss_phy_device *nss_phydev)
 		NSS_PHY_POWER_UP);
 }
 
+static int qca81xx_phy_local_loopback_set(struct nss_phy_device *nss_phydev,
+	u32 enable)
+{
+	int ret;
+
+	/* there may be packets lost when enable PMA loopback of 2.5G/5G/10G, */
+	/* so enable PCS loopback instead of PMA loopback */
+	if (nss_phydev_speed_get(nss_phydev) < NSS_PHY_SPEED_2500) {
+		ret = nss_phy_c45_common_pma_local_loopback_set(nss_phydev, enable);
+		if (ret < 0)
+			return ret;
+	} else {
+		/* the link would drop when enable PCS loopback, so need special */
+		/* sequence to work around it */
+		nss_phydev_loopback_update(nss_phydev, enable);
+		ret = nss_phy_common_hibernation_set(nss_phydev, !enable);
+		if (ret  < 0)
+			return ret;
+		ret = nss_phy_c45_common_pcs_local_loopback_set(nss_phydev, enable);
+		if (ret < 0)
+			return ret;
+		ret = qca81xx_phy_soft_reset(nss_phydev);
+		if (ret < 0)
+			return ret;
+		/* the autoneg would be enabled after software reset, */
+		/* so need to configure it again */
+		ret = nss_phy_c45_common_autoneg_set(nss_phydev, !enable);
+		if (ret < 0)
+			return ret;
+		ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+			QCA81XX_PHY_MMD3_BYPASS_SIGNAL,
+			QCA81XX_PHY_MMD3_PCS_BYPASS_LINK,
+			enable ? QCA81XX_PHY_MMD3_PCS_BYPASS_LINK : 0);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
+int qca81xx_phy_local_loopback_get(struct nss_phy_device *nss_phydev,
+	u32 *enable)
+{
+	int ret;
+
+	if (nss_phydev_speed_get(nss_phydev) < NSS_PHY_SPEED_2500)
+		ret = nss_phy_c45_common_pma_local_loopback_get(nss_phydev, enable);
+	else
+		ret = nss_phy_c45_common_pcs_local_loopback_get(nss_phydev, enable);
+
+	return ret;
+}
+
 static int qca81xx_phy_function_reset(struct nss_phy_device *nss_phydev,
 	enum nss_phy_reset reset_type)
 {
@@ -203,8 +256,8 @@ int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 	ops->eee_status_get = nss_phy_c45_common_eee_status_get;
 	ops->ieee_8023az_set = nss_phy_c45_common_8023az_set;
 	ops->ieee_8023az_get = nss_phy_c45_common_8023az_get;
-	ops->local_loopback_set = nss_phy_c45_common_local_loopback_set;
-	ops->local_loopback_get = nss_phy_c45_common_local_loopback_get;
+	ops->local_loopback_set = qca81xx_phy_local_loopback_set;
+	ops->local_loopback_get = qca81xx_phy_local_loopback_get;
 	ops->remote_loopback_set = nss_phy_common_remote_loopback_set;
 	ops->remote_loopback_get = nss_phy_common_remote_loopback_get;
 	ops->cdt = qca81xx_phy_cdt;
