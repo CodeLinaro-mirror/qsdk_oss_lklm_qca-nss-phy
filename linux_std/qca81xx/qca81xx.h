@@ -28,10 +28,32 @@
 #define TO_QCA81XX_PHY_SOC_ADDR(addr, reg)		\
 	((BIT(30) | reg) | (addr << 24))
 
+/*SOC TLMM registers*/
+#define TLMM_BASE		0x400000
+#define TLMM_GPIO_OFFSET	0x1000
+#define TO_TLMM_CFG_REG(pin)	(TLMM_BASE + TLMM_GPIO_OFFSET * pin)
+#define TLMM_FUNC_MASK		GENMASK(5, 2)
+enum {
+	GPIO0_WOL_INT = 0,
+	GPIO1_PHY_INT,
+	GPIO2_LED0,
+	GPIO3_LED1,
+	GPIO4_LED3,
+	GPIO5_PPS_IN = 5,
+	GPIO6_TOD_IN = 6,
+	GPIO7_REFCLK_IN = 7,
+	GPIO10_PPS_OUT = 10,
+	GPIO11_TOD_OUT = 11,
+	GPIO12_CLK125_TDI = 12,
+	GPIO_MAX
+};
+
 int __qca81xx_phy_debug_write(struct phy_device *phydev,
 	unsigned int reg, u16 val);
 int qca81xx_phy_debug_write(struct phy_device *phydev,
 	unsigned int reg, u16 val);
+int qca81xx_phy_debug_modify(struct phy_device *phydev,
+			     unsigned int reg, u16 clear, u16 set);
 u32 __qca81xx_soc_read(struct phy_device *phydev, u32 reg);
 int __qca81xx_soc_write(struct phy_device *phydev,
 	u32 reg, u32 val);

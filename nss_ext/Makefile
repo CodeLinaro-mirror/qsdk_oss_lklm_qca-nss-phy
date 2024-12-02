@@ -15,3 +15,8 @@ $(TARGET)-objs := \
 	qca8084_pinctrl.o	\
 	qca803x_phy.o	\
 	qca833x_phy.o
+
+ifeq ($(nss-phy-ptp), y)
+$(TARGET)-objs += nss_phy_ptp.o nss_phy_ptp_api.o
+ccflags-y += -DNSS_PHY_PTP
+endif

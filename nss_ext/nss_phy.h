@@ -22,6 +22,10 @@ extern "C" {
 #endif				/* __cplusplus */
 #include "nss_phy_lib.h"
 
+#if defined(NSS_PHY_PTP)
+#include "nss_phy_ptp.h"
+#endif
+
 #define QCA_PHY_EXACT_MASK		0xffffffff
 #define QCA_PHY_ID		0x004dd000
 #define QCA_PHY_MASK		0xfffff000
@@ -316,6 +320,9 @@ struct nss_phy_ops {
 		u32 *status);
 	int (*phyid_get)(struct nss_phy_device *nss_phydev, u16 *org_id, u16 *rev_id);
 	int (*link_status_get)(struct nss_phy_device *nss_phydev, u32 *status);
+#if defined(NSS_PHY_PTP)
+	struct nss_phy_ptp_ops *ptp_ops;
+#endif
 };
 #ifdef __cplusplus
 }
