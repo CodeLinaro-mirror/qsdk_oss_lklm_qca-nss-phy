@@ -41,18 +41,27 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_DEBUG_DATA		0x1e
 
 /*PHY DEBUG registers*/
-#define QCA81XX_ANA_DEBUG_AFE_DAC8_DP		0x2f80
-#define QCA81XX_ANA_DEBUG_AFE_DAC8_DP_VAL		0x5b56
-#define QCA81XX_ANA_DEBUG_AFE_DAC9_DP		0x3080
-#define QCA81XX_ANA_DEBUG_AFE_DAC9_DP_VAL		0x5b57
-#define QCA81XX_ANA_DEBUG_AFE_DAC38_DP		0x4d80
-#define QCA81XX_ANA_DEBUG_AFE_DAC38_DP_VAL		0x2a2a
-#define QCA81XX_ANA_DEBUG_AFE_DAC39_DP		0x4e80
-#define QCA81XX_ANA_DEBUG_AFE_DAC39_DP_VAL		0x2a2a
+#define QCA81XX_DEBUG_ANA_PLL_JITTER0_CTRL		0x580
+#define QCA81XX_DEBUG_ANA_PLL_JITTER0_VAL		0x40
+#define QCA81XX_DEBUG_ANA_PLL_JITTER1_CTRL		0x2180
+#define QCA81XX_DEBUG_ANA_PLL_JITTER1_VAL		0x1132
+#define QCA81XX_DEBUG_ANA_PLL_JITTER2_CTRL		0x2280
+#define QCA81XX_DEBUG_ANA_PLL_JITTER2_VAL		0x2136
+#define QCA81XX_DEBUG_ANA_RESISTOR0_CTRL		0x2f80
+#define QCA81XX_DEBUG_ANA_RESISTOR0_VAL		0x6878
+#define QCA81XX_DEBUG_ANA_RESISTOR1_CTRL		0x3080
+#define QCA81XX_DEBUG_ANA_RESISTOR1_VAL		0x6868
+#define QCA81XX_DEBUG_ANA_CAP0_CTRL		0x4d80
+#define QCA81XX_DEBUG_ANA_CAP0_VAL		0x2023
+#define QCA81XX_DEBUG_ANA_CAP1_CTRL		0x4e80
+#define QCA81XX_DEBUG_ANA_CAP1_VAL		0x2020
 
 /*PHY MMD1 registers*/
 #define QCA81XX_MMD1_2P5G_VGA_BW_CTRL		0x8108
 #define QCA81XX_MMD1_2P5G_VGA_BW_VAL		0x1b
+#define QCA81XX_MMD1_FFE_COEF1_CTRL		0x801B
+#define QCA81XX_MMD1_FFE_COEF1_VAL		BIT(3)
+
 /*PHY MMD3 registers*/
 #define QCA81XX_MMD3_CDT_THRESH_CTRL2		0x8073
 #define QCA81XX_MMD3_CDT_THRESH_CTRL2_VAL		0xb03f
@@ -72,8 +81,6 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_MMD3_CDT_THRESH_CTRL13_VAL		0xb060
 #define QCA81XX_MMD3_CDT_THRESH_CTRL14		0x807f
 #define QCA81XX_MMD3_CDT_THRESH_CTRL14_VAL		0x9cb0
-#define QCA81XX_MMD3_DEBUG5		0xa015
-#define QCA81XX_MMD3_DEBUG5_VAL		0xce80
 #define QCA81XX_MMD3_AZ_1G_AFE_CTRL		0x8007
 #define QCA81XX_MMD3_AZ_1G_AFE_CTRL_MASK		GENMASK(8, 4)
 #define QCA81XX_MMD3_AZ_1G_DAC_EN	BIT(4)
@@ -81,6 +88,26 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_MMD3_AZ_1G_ADC_EN	BIT(6)
 #define QCA81XX_MMD3_AZ_1G_ECHO_EN		BIT(7)
 #define QCA81XX_MMD3_AZ_1G_FULL_ECHO_EN		BIT(8)
+#define QCA81XX_MMD3_NOISE_SMOOTH_CTRL_H		0xa04a
+#define QCA81XX_MMD3_NOISE_AVERAGE_CNT_SEL0		BIT(2)
+#define QCA81XX_MMD3_NOISE_SMOOTH_CTRL_L		0xa056
+#define QCA81XX_MMD3_NOISE_AVERAGE_CNT_SEL1		BIT(7)
+#define QCA81XX_MMD3_REDUCE_NOISE_CTRL		0xa016
+#define QCA81XX_MMD3_REDUCE_NOISE_EN		BIT(13)
+#define QCA81XX_MMD3_10G_EEE_CFG		0xa04b
+#define QCA81XX_MMD3_10G_EEE_CFG_MASK		GENMASK(15, 8)
+#define QCA81XX_MMD3_10G_EEE_MST_CFG		0x9300
+#define QCA81XX_MMD3_10G_EEE_SLV_CFG		0x5500
+#define QCA81XX_MMD3_ROTCLK_CTRL		0xa034
+#define QCA81XX_MMD3_ROTCLK_SEL		BIT(14)
+#define QCA81XX_MMD3_CDR_TRACING_CTRL		0xa101
+#define QCA81XX_MMD3_CDR_TRACING_ACCEL		BIT(14)
+#define QCA81XX_MMD3_FFE_COEF0_CTRL		0xa02a
+#define QCA81XX_MMD3_FFE_COEF0_VAL		BIT(2)
+#define QCA81XX_MMD3_FFE_COEF2_CTRL		0xa015
+#define QCA81XX_MMD3_FFE_COEF2_VAL		BIT(5)
+#define QCA81XX_MMD3_FFE_A2D_FIFO_DELAY_MASK		GENMASK(15, 13)
+#define QCA81XX_MMD3_FFE_A2D_FIFO_DELAY_SEL		0xc000
 
 /*PHY MMD31 registers*/
 #define QCA81XX_FIFO_CONTROL		0x19
@@ -834,31 +861,50 @@ static int qca81xx_phy_gcc_post_init(struct phy_device *phydev)
 	return ret;
 }
 
-/* Fix some chip can not link to 10G automatically with long cable */
-static int qca81xx_phy_afe_dac_config_init(struct phy_device *phydev)
+/* improve the performance of link and traffic especially for 10G speed with long cable */
+static int qca81xx_phy_ana_config_init(struct phy_device *phydev)
 {
-	int ret = 0;
+	/* smooth the noise */
+	phy_modify_mmd_changed(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_NOISE_SMOOTH_CTRL_H,
+		QCA81XX_MMD3_NOISE_AVERAGE_CNT_SEL0, 0);
+	phy_modify_mmd_changed(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_NOISE_SMOOTH_CTRL_L,
+		QCA81XX_MMD3_NOISE_AVERAGE_CNT_SEL1, QCA81XX_MMD3_NOISE_AVERAGE_CNT_SEL1);
+	/* reduce noise */
+	phy_modify_mmd_changed(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_REDUCE_NOISE_CTRL,
+		QCA81XX_MMD3_REDUCE_NOISE_EN, QCA81XX_MMD3_REDUCE_NOISE_EN);
+	/* reduce rotate clock */
+	phy_modify_mmd_changed(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_ROTCLK_CTRL,
+		QCA81XX_MMD3_ROTCLK_SEL, 0);
+	/* enable acceleration tracing */
+	phy_modify_mmd_changed(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_CDR_TRACING_CTRL,
+		QCA81XX_MMD3_CDR_TRACING_ACCEL, 0);
+	/* slow FFE(Feed-Forward Equalizer) coefficient */
+	phy_modify_mmd_changed(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_FFE_COEF0_CTRL,
+		QCA81XX_MMD3_FFE_COEF0_VAL, QCA81XX_MMD3_FFE_COEF0_VAL);
+	phy_modify_mmd_changed(phydev, MDIO_MMD_PMAPMD, QCA81XX_MMD1_FFE_COEF1_CTRL,
+		QCA81XX_MMD1_FFE_COEF1_VAL, QCA81XX_MMD1_FFE_COEF1_VAL);
+	phy_modify_mmd_changed(phydev, MDIO_MMD_PCS,QCA81XX_MMD3_FFE_COEF2_CTRL,
+		QCA81XX_MMD3_FFE_COEF2_VAL | QCA81XX_MMD3_FFE_A2D_FIFO_DELAY_MASK,
+		QCA81XX_MMD3_FFE_COEF2_VAL | QCA81XX_MMD3_FFE_A2D_FIFO_DELAY_SEL);
+	/* optimize analog PLL jitter */
+	qca81xx_phy_debug_write(phydev, QCA81XX_DEBUG_ANA_PLL_JITTER0_CTRL,
+		QCA81XX_DEBUG_ANA_PLL_JITTER0_VAL);
+	qca81xx_phy_debug_write(phydev, QCA81XX_DEBUG_ANA_PLL_JITTER1_CTRL,
+		QCA81XX_DEBUG_ANA_PLL_JITTER1_VAL);
+	qca81xx_phy_debug_write(phydev, QCA81XX_DEBUG_ANA_PLL_JITTER2_CTRL,
+		QCA81XX_DEBUG_ANA_PLL_JITTER2_VAL);
+	/* update analog edac resistor value */
+	qca81xx_phy_debug_write(phydev, QCA81XX_DEBUG_ANA_RESISTOR0_CTRL,
+		QCA81XX_DEBUG_ANA_RESISTOR0_VAL);
+	qca81xx_phy_debug_write(phydev, QCA81XX_DEBUG_ANA_RESISTOR1_CTRL,
+		QCA81XX_DEBUG_ANA_RESISTOR1_VAL);
+	/* update analog capacitance value */
+	qca81xx_phy_debug_write(phydev, QCA81XX_DEBUG_ANA_CAP0_CTRL,
+		QCA81XX_DEBUG_ANA_CAP0_VAL);
+	qca81xx_phy_debug_write(phydev, QCA81XX_DEBUG_ANA_CAP1_CTRL,
+		QCA81XX_DEBUG_ANA_CAP1_VAL);
 
-	ret = qca81xx_phy_debug_write(phydev, QCA81XX_ANA_DEBUG_AFE_DAC8_DP,
-		QCA81XX_ANA_DEBUG_AFE_DAC8_DP_VAL);
-	if (ret < 0)
-		return ret;
-	ret = qca81xx_phy_debug_write(phydev, QCA81XX_ANA_DEBUG_AFE_DAC9_DP,
-		QCA81XX_ANA_DEBUG_AFE_DAC9_DP_VAL);
-	if (ret < 0)
-		return ret;
-	ret = qca81xx_phy_debug_write(phydev, QCA81XX_ANA_DEBUG_AFE_DAC38_DP,
-		QCA81XX_ANA_DEBUG_AFE_DAC38_DP_VAL);
-	if (ret < 0)
-		return ret;
-	ret = qca81xx_phy_debug_write(phydev, QCA81XX_ANA_DEBUG_AFE_DAC39_DP,
-		QCA81XX_ANA_DEBUG_AFE_DAC39_DP_VAL);
-	if (ret < 0)
-		return ret;
-	ret = phy_write_mmd(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_DEBUG5,
-		QCA81XX_MMD3_DEBUG5_VAL);
-
-	return ret;
+	return 0;
 }
 
 static int qca81xx_sec_ctrl_init(struct phy_device *phydev)
@@ -911,7 +957,7 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 	ret = qca81xx_phy_gcc_pre_init(phydev);
 	if (ret < 0)
 		return ret;
-	ret = qca81xx_phy_afe_dac_config_init(phydev);
+	ret = qca81xx_phy_ana_config_init(phydev);
 	if (ret < 0)
 		return ret;
 	ret = qca81xx_pcs_usxgmii_init(phydev);
@@ -1012,6 +1058,17 @@ static int qca81xx_phy_speed_fixup(struct phy_device *phydev)
 	int ret = 0;
 	bool port_clock_en = false;
 	u16 phy_data = 0;
+
+	/* adjust 10G EEE analog setting for master and slave */
+	if (phydev->link && phydev->speed == SPEED_10000) {
+		phy_data = phy_read_mmd(phydev, MDIO_MMD_AN,
+			MDIO_AN_10GBT_STAT);
+		phy_modify_mmd_changed(phydev, MDIO_MMD_PCS,
+			QCA81XX_MMD3_10G_EEE_CFG,
+			QCA81XX_MMD3_10G_EEE_CFG_MASK,
+			(phy_data & MDIO_AN_10GBT_STAT_MS) ?
+			QCA81XX_MMD3_10G_EEE_MST_CFG : QCA81XX_MMD3_10G_EEE_SLV_CFG);
+	}
 
 	read_poll_timeout(qca81xx_pcs_read_mmd, phy_data,
 		((phy_data & QCA81XX_PCS_MMD31_MII_AN_COMPLETE_INT)),
