@@ -22,10 +22,11 @@ static int qca81xx_phy_soft_reset(struct nss_phy_device *nss_phydev)
 {
 	int ret;
 
+	/* enable auto soft reset when power on */
 	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD31_NUM,
-		QCA81XX_PHY_MMD31_SMART_SPEED,
-		QCA81XX_PHY_MMD31_AUTO_SOFT_RESET,
-		QCA81XX_PHY_MMD31_AUTO_SOFT_RESET);
+		NSS_PHY_SPEC_CONTROL,
+		QCA81XX_PHY_MMD31_AUTO_SOFT_RESET_EN,
+		QCA81XX_PHY_MMD31_AUTO_SOFT_RESET_EN);
 	if (ret < 0)
 		return ret;
 
@@ -36,11 +37,18 @@ static int qca81xx_phy_soft_reset(struct nss_phy_device *nss_phydev)
 	if (ret < 0)
 		return ret;
 	nss_phy_mdelay(10);
-
-	return nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD1_NUM,
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD1_NUM,
 		NSS_PHY_MMD1_PMA_CONTROL,
 		NSS_PHY_POWER_DOWN,
 		NSS_PHY_POWER_UP);
+	if (ret < 0)
+		return ret;
+	nss_phy_mdelay(1);
+
+	/* disable auto soft reset when power on */
+	return nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD31_NUM,
+		NSS_PHY_SPEC_CONTROL,
+		QCA81XX_PHY_MMD31_AUTO_SOFT_RESET_EN, 0);
 }
 
 static int qca81xx_phy_local_loopback_set(struct nss_phy_device *nss_phydev,

@@ -134,8 +134,8 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_INTR_STATUS_DOWN		0x800
 #define QCA81XX_INTR_STATUS_UP		0x400
 
-#define QCA81XX_SMART_SPEED		0x14
-#define QCA81XX_AUTO_SOFT_RESET		0x8000
+#define QCA81XX_SPEC_CONTROL		0x10
+#define QCA81XX_AUTO_SOFT_RESET_EN		0x8
 
 /*PCS MII registers*/
 #define QCA81XX_PCS_PLL_POWER_ON_AND_RESET		0
@@ -635,16 +635,23 @@ static int qca81xx_phy_soft_reset(struct phy_device *phydev)
 {
 	int ret;
 
-	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_VEND2,
-		QCA81XX_SMART_SPEED,
-		QCA81XX_AUTO_SOFT_RESET,
-		QCA81XX_AUTO_SOFT_RESET);
+	/* enable auto soft reset when power on */
+	ret = phy_modify_mmd(phydev, MDIO_MMD_VEND2,
+		QCA81XX_SPEC_CONTROL,
+		QCA81XX_AUTO_SOFT_RESET_EN,
+		QCA81XX_AUTO_SOFT_RESET_EN);
 	if (ret < 0)
 		return ret;
 
 	genphy_c45_pma_suspend(phydev);
 	mdelay(10);
 	genphy_c45_pma_resume(phydev);
+	mdelay(1);
+
+	/* disable auto soft reset when power on */
+	ret = phy_modify_mmd(phydev, MDIO_MMD_VEND2,
+		QCA81XX_SPEC_CONTROL,
+		QCA81XX_AUTO_SOFT_RESET_EN, 0);
 
 	return 0;
 }
