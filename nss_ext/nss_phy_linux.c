@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -158,20 +158,30 @@ static int nss_phy_ops_init(struct phy_device *phydev)
 		return -NSS_PHY_ENOSPC;
 	}
 
-	if (nss_phydev_id_compare(phydev, QCA8075_PHY, QCA807X_MASK))
+	if (nss_phydev_id_compare(phydev, QCA8075_PHY, QCA807X_MASK)) {
+#if defined(CONFIG_NSSPHY_QCA807X)
 		ret = qca807x_phy_ops_init(ops);
-	else if (nss_phydev_id_compare(phydev, QCA8111_PHY, QCA81XX_MASK))
+#endif
+	} else if (nss_phydev_id_compare(phydev, QCA8111_PHY, QCA81XX_MASK)) {
+#if defined(CONFIG_NSSPHY_QCA81XX)
 		ret = qca81xx_phy_ops_init(ops);
-	else if (nss_phydev_id_compare(phydev, QCA8084_PHY, QCA808X_MASK))
+#endif
+	} else if (nss_phydev_id_compare(phydev, QCA8084_PHY, QCA808X_MASK)) {
+#if defined(CONFIG_NSSPHY_QCA808X)
 		ret = qca808x_phy_ops_init(ops);
-	else if (nss_phydev_id_compare(phydev, QCA8033_PHY, QCA803X_MASK))
+#endif
+	} else if (nss_phydev_id_compare(phydev, QCA8033_PHY, QCA803X_MASK)) {
+#if defined(CONFIG_NSSPHY_QCA803X)
 		ret = qca803x_phy_ops_init(ops);
-	else if (nss_phydev_id_compare(phydev, QCA8337_PHY_V4,
-				       QCA8337_PHY_MASK))
+#endif
+	} else if (nss_phydev_id_compare(phydev, QCA8337_PHY_V4,
+				       QCA8337_PHY_MASK)) {
+#if defined(CONFIG_NSSPHY_QCA833X)
 		ret = qca833x_phy_ops_init(ops);
-	else
+#endif
+	} else {
 		ret = -NSS_PHY_EOPNOTSUPP;
-
+	}
 	if (ret < 0) {
 		phydev_err(phydev, "nss phy ops init failed\n");
 		kfree(ops);
@@ -266,12 +276,19 @@ static int nss_phy_fixup(struct phy_device *phydev)
 	int ret = 0;
 
 	nss_phydev.phydev = phydev;
-	if (nss_phydev_id_compare(phydev, QCA8084_PHY, QCA_PHY_EXACT_MASK))
+	if (nss_phydev_id_compare(phydev, QCA8084_PHY, QCA_PHY_EXACT_MASK)) {
+#if defined(CONFIG_NSSPHY_QCA808X)
 		ret = qca8084_phy_fixup(&nss_phydev);
-	else if (nss_phydev_id_compare(phydev, QCA8033_PHY, QCA803X_MASK))
+#endif
+	} else if (nss_phydev_id_compare(phydev, QCA8033_PHY, QCA803X_MASK)) {
+#if defined(CONFIG_NSSPHY_QCA803X)
 		ret = qca803x_phy_fixup(&nss_phydev);
-	else if (nss_phydev_id_compare(phydev, QCA8075_PHY, QCA807X_MASK))
+#endif
+	} else if (nss_phydev_id_compare(phydev, QCA8075_PHY, QCA807X_MASK)) {
+#if defined(CONFIG_NSSPHY_QCA807X)
 		ret = qca807x_phy_fixup(&nss_phydev);
+#endif
+	}
 
 	return ret;
 }
