@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -1139,6 +1139,9 @@ static int qca81xx_phy_read_status(struct phy_device *phydev)
 		return 0;
 	old_link = phydev->link;
 
+	ret = genphy_c45_read_status(phydev);
+	if (ret < 0)
+		return ret;
 	/* Clause 45 has no standardized support for 1000BaseT, */
 	/* therefore use vendor registers. */
 	if (phydev->autoneg == AUTONEG_ENABLE) {
@@ -1149,10 +1152,9 @@ static int qca81xx_phy_read_status(struct phy_device *phydev)
 		linkmode_mod_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
 			 phydev->lp_advertising,
 			 ret & QCA81XX_LP_ADVERTISE_1000FULL);
+		/* need to get speed and duplex again with new lp adv */
+		phy_resolve_aneg_linkmode(phydev);
 	}
-	ret = genphy_c45_read_status(phydev);
-	if (ret < 0)
-		return ret;
 	/* Some PHY maybe have downgrade issue and */
 	/* send incorrect advertise, then the link */
 	/* speed will be not correct, so need to read */
