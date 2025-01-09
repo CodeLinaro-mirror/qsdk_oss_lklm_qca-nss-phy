@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -48,6 +48,19 @@ enum {
 	GPIO_MAX
 };
 
+enum {
+	QCA8101 = 0x2990E1,
+	QCA8102 = 0x29A0E1,
+	QCA8111 = 0x29B0E1,
+	QCA8112 = 0x29C0E1,
+};
+
+struct qca81xx_sku_info {
+	const char *name;
+	bool ptp;
+	bool macsec;
+};
+
 int __qca81xx_phy_debug_write(struct phy_device *phydev,
 	unsigned int reg, u16 val);
 int qca81xx_phy_debug_write(struct phy_device *phydev,
@@ -57,6 +70,7 @@ int qca81xx_phy_debug_modify(struct phy_device *phydev,
 u32 __qca81xx_soc_read(struct phy_device *phydev, u32 reg);
 int __qca81xx_soc_write(struct phy_device *phydev,
 	u32 reg, u32 val);
+u32 qca81xx_soc_read(struct phy_device *phydev, u32 reg);
 int qca81xx_soc_modify(struct phy_device *phydev, u32 reg,
 	u32 mask, u32 set);
 
@@ -65,6 +79,7 @@ struct qca81xx_private {
 #if IS_ENABLED(CONFIG_MACSEC)
 	struct qca_macsec_cfg_t macsec_cfg;
 #endif
+	struct qca81xx_sku_info sku;
 };
 
 #endif /* _QCA81XX_H_ */
