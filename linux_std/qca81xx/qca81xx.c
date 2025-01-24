@@ -258,6 +258,7 @@ struct qca81xx_phy_mdio_data {
 #define PHY_INTR_EN		BIT(7)
 #define WOL_INTR_CTRL		0x90f010
 #define WOL_INTR_EN		BIT(0)
+#define SKU_REG		0x90607C
 
 int __qca81xx_phy_debug_write(struct phy_device *phydev,
 	unsigned int reg, u16 val)
@@ -352,6 +353,17 @@ u32 __qca81xx_soc_read(struct phy_device *phydev, u32 reg)
 
 	if (mdio_priv && mdio_priv->sw_read)
 		val = mdio_priv->sw_read(phydev->mdio.bus, reg_e);
+
+	return val;
+}
+
+u32 qca81xx_soc_read(struct phy_device *phydev, u32 reg)
+{
+	u32 val;
+
+	phy_lock_mdio_bus(phydev);
+	val = __qca81xx_soc_read(phydev, reg);
+	phy_unlock_mdio_bus(phydev);
 
 	return val;
 }
@@ -961,6 +973,9 @@ static int qca81xx_phy_eee_config_init(struct phy_device *phydev)
 static int qca81xx_phy_config_init(struct phy_device *phydev)
 {
 	int ret = 0;
+	struct qca81xx_private *priv = NULL;
+
+	priv = phydev->priv;
 
 	ret = qca81xx_phy_gcc_pre_init(phydev);
 	if (ret < 0)
@@ -995,9 +1010,11 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 	if (ret < 0)
 		return ret;
 #if IS_ENABLED(CONFIG_MACSEC)
-	ret = qca81xx_macsec_init(phydev);
-	if (ret)
-		return ret;
+	if(priv->sku.macsec) {
+		ret = qca81xx_macsec_init(phydev);
+		if (ret)
+			return ret;
+	}
 #endif
 	return 0;
 }
@@ -1232,12 +1249,56 @@ static int qca81xx_phy_config_intr(struct phy_device *phydev)
 	return ret;
 }
 
+/*
+|    sku    | ptp | macsec | 10g |
+|-----------|-----|--------|-----|
+|  QCA8101  | yes |   no   | no  |
+|  QCA8102  | yes |   yes  | no  |
+|  QCA8111  | yes |   no   | yes |
+|  QCA8112  | yes |   yes  | yes |
+|  NO-SKU   | yes |   yes  | yes |
+*/
+static int qca81xx_phy_sku_probe(struct phy_device *phydev)
+{
+	struct qca81xx_private *priv = phydev->priv;
+
+	priv->sku.ptp = true;
+	switch(qca81xx_soc_read(phydev, SKU_REG)) {
+	case QCA8101:
+		priv->sku.name = "QCA8101";
+		break;
+	case QCA8102:
+		priv->sku.name = "QCA8102";
+		priv->sku.macsec = true;
+		break;
+	case QCA8111:
+		priv->sku.name = "QCA8111";
+		break;
+	case QCA8112:
+		priv->sku.name = "QCA8112";
+		priv->sku.macsec = true;
+		break;
+	default:
+		priv->sku.name = "NO-SKU";
+		priv->sku.macsec = true;
+		break;
+	}
+	phydev_info(phydev, "sku:%s, ptp:%s, macsec:%s\n",
+		priv->sku.name,
+		priv->sku.ptp ? "enabled" : "disabled",
+		priv->sku.macsec ? "enabled" : "disabled"
+	);
+
+	return 0;
+}
+
 static int qca81xx_phy_probe(struct phy_device *phydev)
 {
 	phydev->priv = devm_kzalloc(&phydev->mdio.dev,
 			sizeof(struct qca81xx_private), GFP_KERNEL);
 	if (!phydev->priv)
 		return -ENOMEM;
+	qca81xx_phy_sku_probe(phydev);
 
 	return 0;
 }
