@@ -1060,12 +1060,14 @@ static int qca81xx_phy_config_aneg(struct phy_device *phydev)
 	if (linkmode_test_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
 		phydev->advertising))
 		reg |= QCA81XX_ADVERTISE_1000FULL;
-	ret = phy_modify_mmd(phydev, MDIO_MMD_VEND2,
+	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_VEND2,
 		QCA81XX_1000BASET_CONTROL,
 		QCA81XX_ADVERTISE_1000FULL,
 		reg);
 	if (ret < 0)
 		return ret;
+	if (ret > 0)
+		changed = true;
 
 	return genphy_c45_check_and_restart_aneg(phydev, changed);
 }
@@ -1099,11 +1101,6 @@ static int qca81xx_phy_speed_fixup(struct phy_device *phydev)
 			(phy_data & MDIO_AN_10GBT_STAT_MS) ?
 			QCA81XX_MMD3_10G_EEE_MST_CFG : QCA81XX_MMD3_10G_EEE_SLV_CFG);
 	}
-
-	read_poll_timeout(qca81xx_pcs_read_mmd, phy_data,
-		((phy_data & QCA81XX_PCS_MMD31_MII_AN_COMPLETE_INT)),
-		1000, 500000, true, phydev, MDIO_MMD_VEND2,
-		QCA81XX_PCS_MMD31_MII_ERR_SEL);
 	ret = qca81xx_pcs_modify_mmd(phydev,
 		MDIO_MMD_VEND2, QCA81XX_PCS_MMD31_MII_ERR_SEL,
 		QCA81XX_PCS_MMD31_MII_AN_COMPLETE_INT, 0);
