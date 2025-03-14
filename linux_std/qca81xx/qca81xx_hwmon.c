@@ -20,8 +20,6 @@
 #include "qca81xx.h"
 
 #define QCA81XX_SENSORS_NUM		3
-#define GCC_AHB_CMD_RCGR		0x80003c
-#define GCC_AHB_CFG_RCGR		0x800040
 
 #define QFPROM_RAW_CALIBRATION_ROW6_MSB	0x290005C
 #define TSENSOR_BASE_CODE_120C		GENMASK(19, 10)
@@ -153,11 +151,6 @@ int qca81xx_hwmon_hw_init(struct phy_device *phydev)
 {
 	u32 phy_data0, phy_data1, ts0_conv_ctrl, ts1_conv_ctrl, ts2_conv_ctrl;
 
-	/* switch AHB clock as 312.5/3 = 104.167M for qfproom */
-	qca81xx_soc_modify(phydev, GCC_AHB_CFG_RCGR,
-		GCC_E2S_SRC_MASK | SRC_DIV_MASK, 0x305);
-	qca81xx_soc_modify(phydev, GCC_AHB_CMD_RCGR,
-		CLK_CMD_UPDATE, CLK_CMD_UPDATE);
 	/* configure the ready time of qfproom as 10us */
 	qca81xx_soc_modify(phydev, QFPROM_BLOW_TIMER,
 		BELOW_TIMER_MASK, BELOW_TIMER_10US);
@@ -181,7 +174,7 @@ int qca81xx_hwmon_hw_init(struct phy_device *phydev)
 			if (priv->hwmon_dev)
 				hwmon_device_unregister(priv->hwmon_dev);
 			phydev_info(phydev, "qca81xx hwmon feature is not enabled\n");
-			goto hwmon_init_fail;
+			return 0;
 		}
 		base_code_diff_90c = base_code_120c - base_code_30c;
 		/* the 921600 is temp diff of 90c */
@@ -209,12 +202,6 @@ int qca81xx_hwmon_hw_init(struct phy_device *phydev)
 		CZERO_MASK | SLOPE_MASK | SHIFT_MASK, ts2_conv_ctrl);
 	qca81xx_soc_modify(phydev, VDD4BLOW_EN,
 		POWER_DOWN | POWER_EN, POWER_DOWN);
-hwmon_init_fail:
-	/* switch AHB clock back to as 50M */
-	qca81xx_soc_modify(phydev, GCC_AHB_CFG_RCGR,
-		GCC_E2S_SRC_MASK | SRC_DIV_MASK, 0);
-	qca81xx_soc_modify(phydev, GCC_AHB_CMD_RCGR,
-		CLK_CMD_UPDATE, CLK_CMD_UPDATE);
 
 	return 0;
 }
