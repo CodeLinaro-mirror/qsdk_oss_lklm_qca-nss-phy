@@ -236,12 +236,24 @@ struct qca81xx_phy_mdio_data {
 #define GCC_E2S_RX_DIV_CDIVR			0x800020
 #define GCC_E2S_SRDS_CH0_TX_CBCR		0x800028
 #define GCC_E2S_GEPHY_RX_CBCR			0x80002c
+#define GCC_AHB_CMD_RCGR			0x80003c
+#define GCC_AHB_CFG_RCGR			0x800040
 #define GCC_SRDS_SYS_CBCR			0x80007c
 #define GCC_GEPHY_SYS_CBCR			0x800080
 #define GCC_SEC_CTRL_CMD_RCGR			0x800088
 #define GCC_SEC_CTRL_CFG_RCGR			0x80008c
 #define GCC_SERDES_CTL				0x80030C
 
+#define GCC_E2S_SRC_MASK			GENMASK(10, 8)
+#define GCC_E2S_SRC0_REF_50MCLK			0
+#define GCC_E2S_SRC1_EPHY_TXCLK			1
+#define GCC_E2S_SRC2_EPHY_RXCLK			2
+#define GCC_E2S_SRC3_SRDS_TXCLK			3
+#define GCC_E2S_SRC4_SRDS_RXCLK			4
+
+#define SRC_DIV_MASK				GENMASK(4, 0)
+#define CLK_DIV_MASK				GENMASK(3, 0)
+#define CLK_CMD_UPDATE				BIT(0)
 #define GCC_CLK_ENABLE				0x1
 #define GCC_CLK_ARES				0x4
 #define XPCS_PWR_ARES				0x1
@@ -860,6 +872,16 @@ static int qca81xx_phy_gcc_post_init(struct phy_device *phydev)
 {
 	int ret;
 
+	/* switch AHB clock source as srds_txclk and */
+	/* clock frequency as 312.5/3 = 104.167M */
+	ret = qca81xx_soc_modify(phydev, GCC_AHB_CFG_RCGR,
+		GCC_E2S_SRC_MASK | SRC_DIV_MASK, 0x305);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_soc_modify(phydev, GCC_AHB_CMD_RCGR,
+		CLK_CMD_UPDATE, CLK_CMD_UPDATE);
+	if (ret < 0)
+		return ret;
 	/* security control clock switch as 25M */
 	ret = qca81xx_soc_modify(phydev, GCC_SEC_CTRL_CFG_RCGR,
 		GCC_E2S_SRC_MASK | SRC_DIV_MASK, 0x3);
