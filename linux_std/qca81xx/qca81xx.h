@@ -33,19 +33,6 @@
 #define TLMM_GPIO_OFFSET	0x1000
 #define TO_TLMM_CFG_REG(pin)	(TLMM_BASE + TLMM_GPIO_OFFSET * pin)
 #define TLMM_FUNC_MASK		GENMASK(5, 2)
-
-/* GCC registers field */
-#define GCC_E2S_SRC_MASK	GENMASK(10, 8)
-#define GCC_E2S_SRC0_REF_50MCLK	0
-#define GCC_E2S_SRC1_EPHY_TXCLK	1
-#define GCC_E2S_SRC2_EPHY_RXCLK	2
-#define GCC_E2S_SRC3_SRDS_TXCLK	3
-#define GCC_E2S_SRC4_SRDS_RXCLK	4
-
-#define SRC_DIV_MASK		GENMASK(4, 0)
-#define CLK_DIV_MASK		GENMASK(3, 0)
-#define CLK_CMD_UPDATE		BIT(0)
-
 enum {
 	GPIO0_WOL_INT = 0,
 	GPIO1_PHY_INT,
@@ -83,15 +70,10 @@ int qca81xx_phy_debug_modify(struct phy_device *phydev,
 u32 __qca81xx_soc_read(struct phy_device *phydev, u32 reg);
 int __qca81xx_soc_write(struct phy_device *phydev,
 	u32 reg, u32 val);
-int __qca81xx_soc_modify(struct phy_device *phydev, u32 reg,
-	u32 mask, u32 set);
 u32 qca81xx_soc_read(struct phy_device *phydev, u32 reg);
 int qca81xx_soc_modify(struct phy_device *phydev, u32 reg,
 	u32 mask, u32 set);
-#if IS_ENABLED(CONFIG_HWMON)
-int qca81xx_hwmon_hw_init(struct phy_device *phydev);
-int qca81xx_hwmon_probe(struct phy_device *phydev);
-#endif
+
 struct qca81xx_private {
 
 #if IS_ENABLED(CONFIG_MACSEC)
