@@ -184,6 +184,7 @@ struct qca808x_ptp_info {
 	int ptp_mode;
 	struct list_head list;
 	bool pin_active;
+	bool pps_enabled;
 	struct delayed_work pin_work;
 };
 
@@ -786,7 +787,6 @@ static void qca808x_ptp_extts_work(struct work_struct *pin_work)
 	u16 reg;
 
 	mutex_lock(&clock->tsreg_lock);
-
 	if (!clock->pin_active) {
 		mutex_unlock(&clock->tsreg_lock);
 		return;
@@ -797,10 +797,15 @@ static void qca808x_ptp_extts_work(struct work_struct *pin_work)
 		goto extts_work_out;
 
 	qca808x_ppsin_gettime(phydev, &ts);
+	if (clock->pps_enabled) {
+		event.type = PTP_CLOCK_PPSUSR;
+		event.pps_times.ts_real = ts;
+	} else {
+		event.type = PTP_CLOCK_EXTTS;
+		event.timestamp = timespec64_to_ns(&ts);
+	}
 
 	event.index = 0;
-	event.type = PTP_CLOCK_EXTTS;
-	event.timestamp = timespec64_to_ns(&ts);
 	ptp_clock_event(clock->ptp_clock, &event);
 
 extts_work_out:
@@ -823,6 +828,19 @@ static int qca808x_ptp_extts_locked(struct qca808x_ptp_info *clock, int on)
 	return 0;
 }
 
+static int qca808x_pps_configure(struct ptp_clock_info *ptp,
+				 struct ptp_clock_request *rq,
+				 int on)
+{
+	struct qca808x_ptp_info *ptp_info = container_of(ptp,
+							 struct qca808x_ptp_info,
+							 caps);
+	qca808x_ptp_extts_locked(ptp_info, on);
+	ptp_info->pps_enabled = !!on;
+
+	return 0;
+}
+
 static int qca808x_ptp_enable(struct ptp_clock_info *ptp,
 			      struct ptp_clock_request *rq, int on)
 {
@@ -840,6 +858,9 @@ static int qca808x_ptp_enable(struct ptp_clock_info *ptp,
 		break;
 	case PTP_CLK_REQ_PEROUT:
 		err = 0;
+		break;
+	case PTP_CLK_REQ_PPS:
+		err = qca808x_pps_configure(ptp, rq, on);
 		break;
 	default:
 		err = -EOPNOTSUPP;
@@ -1306,6 +1327,7 @@ static int qca808x_ptp_register(struct qca808x_ptp_info *ptp_info)
 		.n_pins		= 1,
 		.n_ext_ts	= 1,
 		.n_per_out	= 1,
+		.pps		= 1,
 		.verify		= qca808x_ptp_verify,
 		.gettime64	= qca808x_ptp_gettime,
 		.settime64	= qca808x_ptp_settime,
