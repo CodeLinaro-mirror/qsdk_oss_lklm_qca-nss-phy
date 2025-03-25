@@ -14,7 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <linux/phy.h>
+#include "../qcom_phy_lib.h"
+#include "../clock/qca8k_clk.h"
 
 #define QCA8084_PHY_ID				0x004dd180
 
@@ -28,10 +29,10 @@
 #define QCA8084_SS_DUPLEX			BIT(13)
 #define QCA8084_SS_SPEED_DUPLEX_RESOLVED		BIT(11)
 #define QCA8084_SS_MDIX				BIT(6)
-#define QCA8084_SFC_MDI_CROSSOVER_MODE_M		GENMASK(6, 5)
+#define QCA8084_SFC_MDI_CROSSOVER_MODE_M	GENMASK(6, 5)
 
-#define QCA8084_PHY_FIFO_CONTROL			0x19
-#define QCA8084_PHY_FIFO_RESET		0x3
+#define QCA8084_PHY_FIFO_CONTROL		0x19
+#define QCA8084_PHY_FIFO_RESET			0x3
 
 #define QCA8084_DEBUG_ADDR			0x1D
 #define QCA8084_DEBUG_DATA			0x1E
@@ -82,24 +83,11 @@
 #define QCA8084_DEBUG_AFE25_CMN_2_MII		0x180
 #define QCA8084_DEBUG_AFE25_LDO_EN		BIT(13)
 
-#define QCA8084_CALIBRATION_PHY1_EFUSE	0xC900048
+#define QCA8084_CALIBRATION_PHY1_EFUSE		0xC900048
 #define QCA8084_CALIBRATION_PHY2_EFUSE		0xC90005C
 #define QCA8084_CALIBRATION_PHY3_EFUSE		0xC900060
 #define QCA8084_CALIBRATION_PHY4_EFUSE		0xC900068
-#define QCA8084_PTE_EFUSE		0xC900014
-
-struct qca8084_shared_priv {
-	int work_mode;
-	int (*phy_qusgmii_mode_set)(u32 dev_id);
-	int (*phy_sgmii_mode_set)(u32 dev_id, u32 mode);
-	void (*phy_clk_init)(u32 dev_id, u32 clk_mode, u32 pbmp);
-	int (*phy_xpcs_autoneg_restart)(u32 dev_id, u32 phy_index);
-	int (*phy_speed_clk_set)(u32 dev_id, u32 phy_index, u32 speed);
-	int (*phy_clk_en_set)(u32 dev_id, u32 phy_index, u8 mask, bool enable);
-	int (*phy_clk_reset)(u32 dev_id, u32 phy_index, u8 mask);
-	int (*phy_xpcs_function_reset)(u32 dev_id, u32 phy_index);
-	int (*phy_sgmii_function_reset)(u32 dev_id, u32 uphy_index);
-};
+#define QCA8084_PTE_EFUSE			0xC900014
 
 struct qca8084_priv {
 	u32 icc_value;
@@ -190,12 +178,12 @@ qca8084_mii_read_exit:
 	return ret;
 }
 
-int qca8084_phy_index_get(struct phy_device *phydev)
+static int qca8084_phy_index_get(struct phy_device *phydev)
 {
 	return (phydev->mdio.addr - phydev->shared->addr + 1);
 }
 
-int qca8084_phy_fifo_reset(struct phy_device *phydev, bool enable)
+static int qca8084_phy_fifo_reset(struct phy_device *phydev, bool enable)
 {
 	u16 phy_data = 0;
 
@@ -206,33 +194,23 @@ int qca8084_phy_fifo_reset(struct phy_device *phydev, bool enable)
 		QCA8084_PHY_FIFO_RESET, phy_data);
 }
 
-static int qca8084_qusgmii_speed_fix_up(struct phy_device *phydev,
-	struct qca8084_shared_priv *shared_priv)
+static int qca8084_phy_qusgmii_speed_fix_up(struct phy_device *phydev)
 {
-	int phy_index;
+	u32 phy_index;
 	bool phy_clock_en = false;
 
 	phy_index = qca8084_phy_index_get(phydev);
 
-	if (!shared_priv->phy_xpcs_autoneg_restart)
-		return -EINVAL;
-	shared_priv->phy_xpcs_autoneg_restart(0, phy_index);
-	if (!shared_priv->phy_speed_clk_set)
-		return -EINVAL;
-	shared_priv->phy_speed_clk_set(0, phy_index, phydev->speed);
+	qcom_phy_xpcs_autoneg_restart(phydev, XPCS_ADDR_OFFSET, phy_index);
+	qcom_phy_pcs_speed_clock_set(phydev, phy_index, phydev->speed);
 	if (phydev->link)
 		phy_clock_en = true;
-	if (!shared_priv->phy_clk_en_set)
-		return -EINVAL;
-	shared_priv->phy_clk_en_set(0, phy_index, GENMASK(1, 0),
+	qca8k_port_clk_en_set(&phydev->mdio, phy_index, GENMASK(1, 0),
 		phy_clock_en);
 	mdelay(100);
-	if (!shared_priv->phy_clk_reset)
-		return -EINVAL;
-	shared_priv->phy_clk_reset(0, phy_index, GENMASK(1, 0));
-	if (!shared_priv->phy_xpcs_function_reset)
-		return -EINVAL;
-	shared_priv->phy_xpcs_function_reset(0, phy_index);
+	qca8k_port_clk_reset(&phydev->mdio, phy_index, GENMASK(1, 0));
+	qcom_phy_pcs_usxgmii_reset(phydev, PCS1_ADDR_OFFSET, phy_index);
+	qcom_phy_xpcs_qusgmii_function_reset(phydev, XPCS_ADDR_OFFSET, phy_index);
 	qca8084_phy_fifo_reset(phydev, true);
 	mdelay(50);
 	if (phydev->link)
@@ -246,59 +224,28 @@ static int qca8084_qusgmii_speed_fix_up(struct phy_device *phydev,
 	return 0;
 }
 
-static int qca8084_sgmii_speed_fix_up(struct phy_device *phydev,
-	struct qca8084_shared_priv *shared_priv)
+static int qca8084_phy_sgmii_speed_fix_up(struct phy_device *phydev)
 {
 	int phy_index;
 
 	phy_index = qca8084_phy_index_get(phydev);
 	if (phy_index != 4)
 		return -EOPNOTSUPP;
-	phydev_dbg(phydev, "disable ethphy3 and uniphy0 clock\n");
-	if (!shared_priv->phy_clk_en_set)
-		return -EINVAL;
-	shared_priv->phy_clk_en_set(0, phy_index, BIT(0), false);
-	shared_priv->phy_clk_en_set(0, phy_index + 1, BIT(1), false);
-	if (!shared_priv->phy_speed_clk_set)
-		return -EINVAL;
-	shared_priv->phy_speed_clk_set(0, phy_index, phydev->speed);
+
+	qca8k_port_clk_en_set(&phydev->mdio, phy_index, BIT(0), false);
+	qca8k_port_clk_en_set(&phydev->mdio, phy_index + 1, BIT(1), false);
+	qcom_phy_pcs_speed_clock_set(phydev, phy_index, phydev->speed);
 	if (phydev->link) {
-		shared_priv->phy_clk_en_set(0, phy_index,
-			BIT(0), true);
-		shared_priv->phy_clk_en_set(0, phy_index + 1,
-			BIT(1), true);
+		qca8k_port_clk_en_set(&phydev->mdio, phy_index, BIT(0), true);
+		qca8k_port_clk_en_set(&phydev->mdio, phy_index + 1, BIT(1), true);
 	}
-	if (!shared_priv->phy_clk_reset)
-		return -EINVAL;
-	shared_priv->phy_clk_reset(0, phy_index, BIT(0));
-	shared_priv->phy_clk_reset(0, phy_index+1, BIT(1));
-	if (!shared_priv->phy_sgmii_function_reset)
-		return -EINVAL;
-	shared_priv->phy_sgmii_function_reset(0, 0);
+	qca8k_port_clk_reset(&phydev->mdio, phy_index, BIT(0));
+	qca8k_port_clk_reset(&phydev->mdio, phy_index+1, BIT(1));
+	qcom_phy_pcs_sgmii_function_reset(phydev, PCS0_ADDR_OFFSET);
+	qcom_phy_pcs_ipg_tune_reset(phydev, PCS0_ADDR_OFFSET);
 	qca8084_phy_fifo_reset(phydev, true);
 	mdelay(50);
 	qca8084_phy_fifo_reset(phydev, false);
-
-	return 0;
-}
-
-static int qca8084_interface_fix_up(struct phy_device *phydev,
-	struct qca8084_shared_priv *shared_priv)
-{
-	u32 interface_old;
-
-	interface_old = phydev->interface;
-	if (phydev->link && phydev->speed == SPEED_2500)
-		phydev->interface = PHY_INTERFACE_MODE_2500BASEX;
-	else
-		phydev->interface = PHY_INTERFACE_MODE_SGMII;
-
-	if (phydev->interface == interface_old)
-		return 0;
-
-	if (!shared_priv->phy_sgmii_mode_set)
-		return -EINVAL;
-	shared_priv->phy_sgmii_mode_set(0, phydev->interface);
 
 	return 0;
 }
@@ -328,12 +275,7 @@ static int qca8084_phy_icc_fix_up(struct phy_device *phydev)
 
 static int qca8084_link_change(struct phy_device *phydev)
 {
-	int ret, phy_index;
-	struct qca8084_shared_priv *shared_priv;
-
-	shared_priv = phydev->shared->priv;
-	if (!shared_priv)
-		return -EINVAL;
+	int ret;
 
 	phydev_dbg(phydev, "qca8084 would be fix up when link changed\n");
 
@@ -341,19 +283,17 @@ static int qca8084_link_change(struct phy_device *phydev)
 	if (ret < 0)
 		return ret;
 
-	switch (shared_priv->work_mode) {
-	case QCA8084_WORK_MODE_QXGMII:
-		qca8084_qusgmii_speed_fix_up(phydev, shared_priv);
+	switch (phydev->interface) {
+	case PHY_INTERFACE_MODE_QUSGMII:
+		qca8084_phy_qusgmii_speed_fix_up(phydev);
 		break;
-	case QCA8084_WORK_MODE_SWITCH_PORT4_SGMII:
-		phy_index = qca8084_phy_index_get(phydev);
-		if (phy_index != 4)
-			return 0;
-		qca8084_interface_fix_up(phydev, shared_priv);
-		qca8084_sgmii_speed_fix_up(phydev, shared_priv);
+	case PHY_INTERFACE_MODE_SGMII:
+	case PHY_INTERFACE_MODE_2500BASEX:
+		qcom_phy_sgmii_interface_fix_up(phydev);
+		qca8084_phy_sgmii_speed_fix_up(phydev);
 		break;
 	default:
-		return -EOPNOTSUPP;
+		break;
 	}
 
 	return 0;
@@ -412,7 +352,7 @@ static int qca8084_read_status(struct phy_device *phydev)
 		phydev->lp_advertising, ret & MDIO_AN_10GBT_STAT_LP2_5G);
 
 	ret = genphy_read_status(phydev);
-	if (ret)
+	if (ret < 0)
 		return ret;
 
 	ret = qca8084_read_specific_status(phydev);
@@ -470,58 +410,14 @@ static int qca8084_config_aneg(struct phy_device *phydev)
 	return __genphy_config_aneg(phydev, ret);
 }
 
-static int qca8084_phy_package_config_init_once(struct phy_device *phydev)
-{
-	int ret;
-	u32 val;
-	struct qca8084_shared_priv *shared_priv;
-
-	shared_priv = phydev->shared->priv;
-	if (!shared_priv)
-		return -EINVAL;
-	/*get work mode and configure the interface mode*/
-	ret = qca8084_mii_read(phydev, QCA8084_WORK_MODE_CFG, &val);
-	if (ret < 0)
-		return ret;
-	if ((val & QCA8084_WORK_MODE_QXGMII) == QCA8084_WORK_MODE_QXGMII) {
-		if (!shared_priv->phy_qusgmii_mode_set)
-			return -EINVAL;
-		shared_priv->phy_qusgmii_mode_set(0);
-		if (!shared_priv->phy_clk_init)
-			return -EINVAL;
-		shared_priv->phy_clk_init(0,
-			QCA8084_WORK_MODE_QXGMII, 0);
-		shared_priv->work_mode = QCA8084_WORK_MODE_QXGMII;
-	} else if ((val & QCA8084_WORK_MODE_SWITCH)
-		== QCA8084_WORK_MODE_SWITCH) {
-		shared_priv->work_mode = QCA8084_WORK_MODE_SWITCH;
-	} else if ((val & QCA8084_WORK_MODE_SWITCH_PORT4_SGMII)
-		== QCA8084_WORK_MODE_SWITCH_PORT4_SGMII) {
-		shared_priv->work_mode
-			= QCA8084_WORK_MODE_SWITCH_PORT4_SGMII;
-	} else {
-		return -EOPNOTSUPP;
-	}
-
-	return ret;
-}
-
 static int qca8084_ability_fix_up(struct phy_device *phydev)
 {
 	int phy_index;
 
-	struct qca8084_shared_priv *shared_priv;
-
-	shared_priv = phydev->shared->priv;
-	if (!shared_priv)
-		return -EINVAL;
-
 	phy_index = qca8084_phy_index_get(phydev);
 
-	if ((shared_priv->work_mode == QCA8084_WORK_MODE_QXGMII) ||
-	((shared_priv->work_mode ==
-	QCA8084_WORK_MODE_SWITCH_PORT4_SGMII) &&
-	(phy_index == 4))) {
+	if (phydev->interface != PHY_INTERFACE_MODE_INTERNAL &&
+		phydev->interface != PHY_INTERFACE_MODE_GMII) {
 		linkmode_clear_bit(ETHTOOL_LINK_MODE_10baseT_Half_BIT,
 			phydev->supported);
 		linkmode_clear_bit(ETHTOOL_LINK_MODE_100baseT_Half_BIT,
@@ -599,10 +495,23 @@ static int qca8084_config_init(struct phy_device *phydev)
 {
 	int ret, index;
 
-	if (phy_package_init_once(phydev)) {
-		ret = qca8084_phy_package_config_init_once(phydev);
-		if (ret < 0)
-			return ret;
+	if (phydev->interface != PHY_INTERFACE_MODE_INTERNAL &&
+		phydev->interface != PHY_INTERFACE_MODE_GMII) {
+		if (phy_package_init_once(phydev)) {
+			struct qcom_phy_pcs_cfg config = {0};
+
+			config.clock_mode = CLOCK_PHY_MODE;
+			config.auto_neg = true;
+			config.type = phydev->interface;
+			if (phydev->interface == PHY_INTERFACE_MODE_QUSGMII) {
+				config.addr_offset = PCS1_ADDR_OFFSET;
+				qcom_phy_pcs_interface_set(phydev, config);
+				qca8k_gcc_clock_init(&phydev->mdio, QCA8084_WORK_MODE_QXGMII, 0);
+			} else if (phydev->interface == PHY_INTERFACE_MODE_SGMII) {
+				config.addr_offset = PCS0_ADDR_OFFSET;
+				qcom_phy_pcs_interface_set(phydev, config);
+			}
+		}
 	}
 
 	/* Disable the LDO2 and LDO3 which are not used */
@@ -656,8 +565,7 @@ static int qca8084_probe(struct phy_device *phydev)
 		return ret;
 
 	devm_phy_package_join(&phydev->mdio.dev, phydev,
-		FIELD_GET(QCA8084_EPHY_ADDR0_MASK, val),
-		sizeof(struct qca8084_shared_priv));
+		FIELD_GET(QCA8084_EPHY_ADDR0_MASK, val), 0);
 
 	return 0;
 }
