@@ -169,22 +169,13 @@ int qca81xx_hwmon_hw_init(struct phy_device *phydev)
 	phy_data1 = qca81xx_soc_read(phydev, QFPROM_RAW_CALIBRATION_ROW7_LSB);
 	if ((phy_data1 & TSENSOR_CAL_RESULT_MASK) >> 20
 		== TSENSOR_CAL_RESULT_DONE) {
-		u32 base_code_30c, base_code_120c, ts0_0c_code_offset,
+		u32 base_code_30c, ts0_0c_code_offset,
 			ts1_0c_code_offset, ts2_0c_code_offset, base_code_diff_90c,
 			ts0_0c_code, ts1_0c_code, ts2_0c_code, slope;
 
 		base_code_30c = phy_data0 & TSENSOR_BASE_CODE_30C;
-		base_code_120c = (phy_data0 & TSENSOR_BASE_CODE_120C) >> 10;
-		/* 30c code should be less than 120c code */
-		if (base_code_30c >= base_code_120c) {
-			struct qca81xx_private *priv = phydev->priv;
-			if (priv->hwmon_dev)
-				hwmon_device_unregister(priv->hwmon_dev);
-			phydev_info(phydev, "qca81xx hwmon feature is not enabled\n");
-			goto hwmon_init_fail;
-		}
-		base_code_diff_90c = base_code_120c - base_code_30c;
-		/* the 921600 is temp diff of 90c */
+		/* the 921600 is temp diff of 90c, and the 246 is the code diff of 90c */
+		base_code_diff_90c = 246;
 		slope = 921600/base_code_diff_90c;
 		ts0_0c_code_offset = (phy_data0 & TSENSOR_OFFSET_0C_0) >> 20;
 		ts1_0c_code_offset = phy_data1 & TSENSOR_OFFSET_0C_1;
@@ -209,7 +200,6 @@ int qca81xx_hwmon_hw_init(struct phy_device *phydev)
 		CZERO_MASK | SLOPE_MASK | SHIFT_MASK, ts2_conv_ctrl);
 	qca81xx_soc_modify(phydev, VDD4BLOW_EN,
 		POWER_DOWN | POWER_EN, POWER_DOWN);
-hwmon_init_fail:
 	/* switch AHB clock back to as 50M */
 	qca81xx_soc_modify(phydev, GCC_AHB_CFG_RCGR,
 		GCC_E2S_SRC_MASK | SRC_DIV_MASK, 0);
