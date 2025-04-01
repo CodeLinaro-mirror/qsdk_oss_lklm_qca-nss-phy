@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-
+#include <linux/ethtool_netlink.h>
 #include "qca81xx.h"
 
 enum qca81xx_addr_offset {
@@ -108,6 +108,13 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_MMD3_FFE_COEF2_VAL		BIT(5)
 #define QCA81XX_MMD3_FFE_A2D_FIFO_DELAY_MASK	GENMASK(15, 13)
 #define QCA81XX_MMD3_FFE_A2D_FIFO_DELAY_SEL	0xc000
+#define QCA81XX_MMD3_PHY_MISC_CTRL0		0xa010
+#define QCA81XX_MMD3_PHY_PMA_MONITOR_EN0	BIT(2)
+#define QCA81XX_MMD3_PHY_MISC_CTRL1		0xa02F
+#define QCA81XX_MMD3_PHY_PMA_MONITOR_EN1	BIT(13)
+#define QCA81XX_MMD3_PHY_SNR_MONITOR_STATUS	0xa014
+#define QCA81XX_MMD3_PHY_SNR_MONITOR_MASK	GENMASK(6, 0)
+#define QCA81XX_MMD3_PHY_SNR_MONITOR_EN		0x40
 
 /*PHY MMD31 registers*/
 #define QCA81XX_FIFO_CONTROL			0x19
@@ -1290,6 +1297,48 @@ static int qca81xx_phy_sku_probe(struct phy_device *phydev)
 	return 0;
 }
 
+static ssize_t qca81xx_phy_show_snr(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	int pair_id = 0;
+	u16 snr = 0, size = 0;
+	char pair_name[][10] = {"Pair A","Pair B","Pair C","Pair D"};
+	struct phy_device *phydev = to_phy_device(dev);
+
+	if(!phydev)
+		return 0;
+
+	/* enable the monitor of SNR */
+	phy_modify_mmd(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_PHY_MISC_CTRL0,
+		QCA81XX_MMD3_PHY_PMA_MONITOR_EN0, QCA81XX_MMD3_PHY_PMA_MONITOR_EN0);
+	phy_modify_mmd(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_PHY_MISC_CTRL1,
+		QCA81XX_MMD3_PHY_PMA_MONITOR_EN1, QCA81XX_MMD3_PHY_PMA_MONITOR_EN1);
+	phy_modify_mmd(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_PHY_SNR_MONITOR_STATUS,
+		QCA81XX_MMD3_PHY_SNR_MONITOR_MASK, QCA81XX_MMD3_PHY_SNR_MONITOR_EN);
+	usleep_range(200000, 300000);
+	/* read the SNR */
+	for (pair_id = ETHTOOL_A_CABLE_PAIR_A; pair_id <= ETHTOOL_A_CABLE_PAIR_D;
+		pair_id++) {
+		snr = phy_read_mmd(phydev, MDIO_MMD_PMAPMD,
+			MDIO_PMA_10GBT_SNR + pair_id);
+		size += snprintf(buf + size, (ssize_t)(PAGE_SIZE - size),
+			"%s SNR: 0x%x\n", pair_name[pair_id], snr);
+		if (size >= PAGE_SIZE)
+			break;
+	}
+	/* disable the monitor of SNR to save power */
+	phy_modify_mmd(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_PHY_MISC_CTRL0,
+		QCA81XX_MMD3_PHY_PMA_MONITOR_EN0, 0);
+	phy_modify_mmd(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_PHY_MISC_CTRL1,
+		QCA81XX_MMD3_PHY_PMA_MONITOR_EN1, 0);
+	phy_modify_mmd(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_PHY_SNR_MONITOR_STATUS,
+		QCA81XX_MMD3_PHY_SNR_MONITOR_MASK, 0);
+
+	return size;
+}
+
+static DEVICE_ATTR(snr, 0444, qca81xx_phy_show_snr, NULL);
+
 static int qca81xx_phy_probe(struct phy_device *phydev)
 {
 	phydev->priv = devm_kzalloc(&phydev->mdio.dev,
@@ -1300,6 +1349,8 @@ static int qca81xx_phy_probe(struct phy_device *phydev)
 #if IS_ENABLED(CONFIG_HWMON)
 	qca81xx_hwmon_probe(phydev);
 #endif
+	device_create_file(&phydev->mdio.dev, &dev_attr_snr);
+
 	return 0;
 }
 
