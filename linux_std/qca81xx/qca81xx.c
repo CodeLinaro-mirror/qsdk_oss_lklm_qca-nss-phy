@@ -349,6 +349,56 @@ static u32 qca81xx_soc_address(struct phy_device *phydev)
 	return phydev->mdio.addr + SOC_ADDR_OFFSET;
 }
 
+static inline void qca81xx_split_addr(u32 regaddr, u16 *reg_low, u16 *reg_mid,
+	u16 *reg_high)
+{
+	*reg_low = (regaddr & 0xc) << 1;
+
+	*reg_mid = regaddr >> 4 & 0xffff;
+
+	*reg_high = ((regaddr >> 20 & 0xf) << 1) | BIT(0);
+}
+
+static u32 qca81xx_mii_read(struct mii_bus *bus, u32 reg)
+{
+	u16 reg_low, reg_mid, reg_high;
+	u16 lo, hi;
+	u32 addr;
+
+	addr = FIELD_GET(GENMASK(28, 24), reg);
+	qca81xx_split_addr(reg, &reg_low, &reg_mid, &reg_high);
+	/*write ahb address bit4~bit23*/
+	__mdiobus_write(bus, addr, reg_high & 0x1f, reg_mid);
+	udelay(100);
+	/*write ahb address bit0~bit3 and read low 16bit data*/
+	lo = __mdiobus_read(bus, addr, reg_low);
+	/*write ahb address bit0~bit3 and read high 16 bit data*/
+	hi = __mdiobus_read(bus, addr, (reg_low + 4));
+
+	return (hi << 16) | lo;
+}
+
+static void qca81xx_mii_write(struct mii_bus *bus, u32 reg, u32 val)
+{
+	u16 reg_low, reg_mid, reg_high;
+	u16 lo, hi;
+	u32 addr;
+
+	addr = FIELD_GET(GENMASK(28, 24), reg);
+
+	qca81xx_split_addr(reg, &reg_low, &reg_mid, &reg_high);
+	lo = val & 0xffff;
+	hi = (u16)(val >> 16);
+
+	/*write ahb address bit4~bit23*/
+	__mdiobus_write(bus, addr, reg_high & 0x1f, reg_mid);
+	udelay(100);
+	/*write ahb address bit0~bit3 and write low 16 bit data*/
+	__mdiobus_write(bus, addr, reg_low, lo);
+	/*write ahb address bit0~bit3 and write high 16 bit data*/
+	__mdiobus_write(bus, addr, (reg_low + 4), hi);
+}
+
 u32 __qca81xx_soc_read(struct phy_device *phydev, u32 reg)
 {
 	u32 reg_e, val = 0;
@@ -358,8 +408,11 @@ u32 __qca81xx_soc_read(struct phy_device *phydev, u32 reg)
 	addr = qca81xx_soc_address(phydev);
 	reg_e = TO_QCA81XX_PHY_SOC_ADDR(addr, reg);
 
-	if (mdio_priv && mdio_priv->sw_read)
+	if(!strcmp(phydev->mdio.bus->id, "i2c") &&
+		mdio_priv && mdio_priv->sw_read)
 		val = mdio_priv->sw_read(phydev->mdio.bus, reg_e);
+	else
+		val = qca81xx_mii_read(phydev->mdio.bus, reg_e);
 
 	return val;
 }
@@ -385,8 +438,11 @@ int __qca81xx_soc_write(struct phy_device *phydev,
 	addr = qca81xx_soc_address(phydev);
 	reg_e = TO_QCA81XX_PHY_SOC_ADDR(addr, reg);
 
-	if (mdio_priv && mdio_priv->sw_write)
+	if (!strcmp(phydev->mdio.bus->id, "i2c") &&
+		mdio_priv && mdio_priv->sw_write)
 		mdio_priv->sw_write(phydev->mdio.bus, reg_e, val);
+	else
+		qca81xx_mii_write(phydev->mdio.bus, reg_e, val);
 
 	return 0;
 }
