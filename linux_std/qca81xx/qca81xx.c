@@ -401,18 +401,19 @@ static void qca81xx_mii_write(struct mii_bus *bus, u32 reg, u32 val)
 
 u32 __qca81xx_soc_read(struct phy_device *phydev, u32 reg)
 {
-	u32 reg_e, val = 0;
+	u32 reg_e, val = 0xffffffff;
 	int addr;
 	struct qca81xx_phy_mdio_data *mdio_priv = phydev->mdio.bus->priv;
 
 	addr = qca81xx_soc_address(phydev);
 	reg_e = TO_QCA81XX_PHY_SOC_ADDR(addr, reg);
 
-	if(!strcmp(phydev->mdio.bus->id, "i2c") &&
-		mdio_priv && mdio_priv->sw_read)
-		val = mdio_priv->sw_read(phydev->mdio.bus, reg_e);
-	else
+	if(strstr(phydev->mdio.bus->id, "i2c")) {
+		if (mdio_priv && mdio_priv->sw_read)
+			val = mdio_priv->sw_read(phydev->mdio.bus, reg_e);
+	} else {
 		val = qca81xx_mii_read(phydev->mdio.bus, reg_e);
+	}
 
 	return val;
 }
@@ -438,11 +439,14 @@ int __qca81xx_soc_write(struct phy_device *phydev,
 	addr = qca81xx_soc_address(phydev);
 	reg_e = TO_QCA81XX_PHY_SOC_ADDR(addr, reg);
 
-	if (!strcmp(phydev->mdio.bus->id, "i2c") &&
-		mdio_priv && mdio_priv->sw_write)
-		mdio_priv->sw_write(phydev->mdio.bus, reg_e, val);
-	else
+	if (strstr(phydev->mdio.bus->id, "i2c")) {
+		if(mdio_priv && mdio_priv->sw_write)
+			mdio_priv->sw_write(phydev->mdio.bus, reg_e, val);
+		else
+			return -EINVAL;
+	} else {
 		qca81xx_mii_write(phydev->mdio.bus, reg_e, val);
+	}
 
 	return 0;
 }
