@@ -1333,6 +1333,32 @@ static int qca81xx_phy_config_intr(struct phy_device *phydev)
 	return ret;
 }
 
+static irqreturn_t qca81xx_phy_handle_interrupt(struct phy_device *phydev)
+{
+	int irq_status, int_enabled;
+
+	irq_status = phy_read_mmd(phydev, MDIO_MMD_VEND2, QCA81XX_INTR_STATUS);
+	if (irq_status < 0) {
+		phy_error(phydev);
+		return IRQ_NONE;
+	}
+
+	/* Read the current enabled interrupts */
+	int_enabled = phy_read_mmd(phydev, MDIO_MMD_VEND2, QCA81XX_INTR_MASK);
+	if (int_enabled < 0) {
+		phy_error(phydev);
+		return IRQ_NONE;
+	}
+
+	/* See if this was one of our enabled interrupts */
+	if (!(irq_status & int_enabled))
+		return IRQ_NONE;
+
+	phy_trigger_machine(phydev);
+
+	return IRQ_HANDLED;
+}
+
 /*
 |    sku    | ptp | macsec | 10g |
 |-----------|-----|--------|-----|
@@ -1476,6 +1502,7 @@ static struct phy_driver qca81xx_phy_driver[] = {
 	.get_features = qca81xx_phy_get_features,
 	.config_aneg = qca81xx_phy_config_aneg,
 	.config_intr = qca81xx_phy_config_intr,
+	.handle_interrupt = qca81xx_phy_handle_interrupt,
 	.read_status = qca81xx_phy_read_status,
 	.suspend = qca81xx_phy_suspend,
 	.resume = qca81xx_phy_resume,
