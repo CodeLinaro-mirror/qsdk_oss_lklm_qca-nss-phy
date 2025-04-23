@@ -16,6 +16,7 @@
 
 #include <linux/ethtool_netlink.h>
 #include "qca81xx.h"
+#include <linux/etherdevice.h>
 
 enum qca81xx_addr_offset {
 	PCS_ADDR_OFFSET = 1,
@@ -140,9 +141,16 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_INTR_STATUS			0x13
 #define QCA81XX_INTR_STATUS_DOWN		0x800
 #define QCA81XX_INTR_STATUS_UP			0x400
+#define QCA81XX_INTR_ENABLE_WOL			1
 
 #define QCA81XX_SPEC_CONTROL			0x10
 #define QCA81XX_AUTO_SOFT_RESET_EN		0x8
+
+#define QCA81XX_WOL_CTRL			0x8012
+#define QCA81XX_WOL_EN				0x0020
+#define QCA81XX_MAC_ADDR_0_15			0x804C
+#define QCA81XX_MAC_ADDR_16_31			0x804B
+#define QCA81XX_MAC_ADDR_32_47			0x804A
 
 /*PCS MII registers*/
 #define QCA81XX_PCS_PLL_POWER_ON_AND_RESET	0
@@ -1492,6 +1500,93 @@ static int qca81xx_phy_resume(struct phy_device *phydev)
 	return genphy_c45_pma_resume(phydev);
 }
 
+int qca81xx_phy_set_wol(struct phy_device *phydev,
+	struct ethtool_wolinfo *wol)
+{
+	int ret, irq_enabled, i;
+	const unsigned int offsets[] = {
+		QCA81XX_MAC_ADDR_32_47,
+		QCA81XX_MAC_ADDR_16_31,
+		QCA81XX_MAC_ADDR_0_15,
+	};
+
+	if (!(wol->wolopts)) {
+		for (i = 0; i < 3; i++)
+			phy_write_mmd(phydev, MDIO_MMD_PCS, offsets[i], 0);
+		ret = phy_modify_mmd(phydev, MDIO_MMD_PCS,
+			QCA81XX_WOL_CTRL, QCA81XX_WOL_EN, 0);
+		if (ret)
+			return ret;
+		/* Disable WOL interrupt */
+		ret = phy_modify_mmd(phydev, MDIO_MMD_VEND2, QCA81XX_INTR_MASK,
+			QCA81XX_INTR_ENABLE_WOL, 0);
+		if (ret)
+			return ret;
+	} else {
+		if (wol->wolopts & WAKE_MAGIC) {
+			struct net_device *ndev = phydev->attached_dev;
+			const u8 *mac;
+
+			if (!ndev)
+				return -ENODEV;
+
+			mac = (const u8 *)ndev->dev_addr;
+
+			if (!is_valid_ether_addr(mac))
+				return -EINVAL;
+
+			for (i = 0; i < 3; i++)
+				phy_write_mmd(phydev, MDIO_MMD_PCS, offsets[i],
+					mac[(i * 2) + 1] | (mac[(i * 2)] << 8));
+			ret = phy_modify_mmd(phydev, MDIO_MMD_PCS,
+				QCA81XX_WOL_CTRL, QCA81XX_WOL_EN, QCA81XX_WOL_EN);
+			if (ret)
+				return ret;
+			/* Enable WOL interrupt */
+			ret = phy_modify_mmd(phydev, MDIO_MMD_VEND2, QCA81XX_INTR_MASK, BIT(0),
+				QCA81XX_INTR_ENABLE_WOL);
+			if (ret)
+				return ret;
+		} else {
+			return -EOPNOTSUPP;
+		}
+	}
+	/* Clear WOL status */
+	ret = phy_read_mmd(phydev, MDIO_MMD_VEND2, QCA81XX_INTR_STATUS);
+	if (ret < 0)
+		return ret;
+
+	/* Check if there are other interrupts except for WOL triggered when PHY is
+	 * in interrupt mode, only the interrupts enabled by QCA81XX_INTR_ENABLE_WOL
+	 * can be passed up to the interrupt PIN.
+	 */
+	irq_enabled = phy_read_mmd(phydev, MDIO_MMD_VEND2, QCA81XX_INTR_MASK);
+	if (irq_enabled < 0)
+		return irq_enabled;
+
+	irq_enabled &= ~QCA81XX_INTR_ENABLE_WOL;
+	if (ret & irq_enabled && !phy_polling_mode(phydev))
+		phy_trigger_machine(phydev);
+
+	return 0;
+}
+
+void qca81xx_phy_get_wol(struct phy_device *phydev,
+	struct ethtool_wolinfo *wol)
+{
+	int value;
+
+	wol->supported = WAKE_MAGIC;
+	wol->wolopts = 0;
+
+	value = phy_read_mmd(phydev, MDIO_MMD_PCS, QCA81XX_WOL_CTRL);
+	if (value < 0)
+		return;
+
+	if (value & QCA81XX_WOL_EN)
+		wol->wolopts |= WAKE_MAGIC;
+}
+
 static struct phy_driver qca81xx_phy_driver[] = {
 {
 	PHY_ID_MATCH_EXACT(QCA8111_PHY),
@@ -1507,6 +1602,8 @@ static struct phy_driver qca81xx_phy_driver[] = {
 	.suspend = qca81xx_phy_suspend,
 	.resume = qca81xx_phy_resume,
 	.soft_reset = qca81xx_phy_soft_reset,
+	.set_wol = qca81xx_phy_set_wol,
+	.get_wol = qca81xx_phy_get_wol,
 },
 };
 
