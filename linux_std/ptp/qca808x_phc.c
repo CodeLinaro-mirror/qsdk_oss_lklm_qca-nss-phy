@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2018, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -50,6 +50,8 @@
 
 #define QCA81XX_DBG_PORT31			0x1f
 #define QCA81XX_1588_EN				BIT(1)
+
+#define QCA808X_PIN_WORK_TIMEOUT		(HZ / 4)
 
 /* AFE ADC has the different clock frequency supplied on the different
  * link speed.
@@ -136,6 +138,10 @@
 #define QCA808X_RTC_OFFSET_CONF			0x8044
 #define QCA808X_RTC_OFFSET_CONF_VALID		BIT(0)
 
+#define QCA808X_PTP_INTR_STATUS			0x80f2
+#define QCA808X_INTR_PPS_IN			BIT(5)
+#define QCA808X_INTR_PPS_OUT			BIT(6)
+
 #define QCA808X_RTC_PRELOAD_SEC_HI		0x8101
 #define QCA808X_RTC_PRELOAD_SEC_MID		0x8102
 #define QCA808X_RTC_PRELOAD_SEC_LO		0x8103
@@ -144,6 +150,18 @@
 #define QCA808X_RTC_EXT_CONF			0x8100
 #define QCA808X_RTC_EXT_CONF_LOAD		BIT(0)
 #define QCA808X_RTC_EXT_CONF_INC_VALID		BIT(2)
+
+#define QCA808X_GRAND_MASTER_CTRL		0x8200
+#define QCA808X_GRAND_MASTER_MODE		BIT(6)
+#define QCA808X_GM_PPS_SYNC			BIT(5)
+#define QCA808X_GM_PLL_MODE			BIT(4)
+
+#define QCA808X_PPSIN_TS_SEC_HI			0x8202
+#define QCA808X_PPSIN_TS_SEC_MID		0x8203
+#define QCA808X_PPSIN_TS_SEC_LO			0x8204
+#define QCA808X_PPSIN_TS_NSEC_HI		0x8205
+#define QCA808X_PPSIN_TS_NSEC_LO		0x8206
+
 
 #define QCA81XX_MMD3_PTP_OPTION			0x8550
 #define QCA81XX_RX_DELAY_COMPENSATION		GENMASK(1, 0)
@@ -159,11 +177,14 @@ struct qca808x_ptp_info {
 	struct sk_buff_head rx_queue;
 	struct ptp_clock_info caps;
 	struct ptp_clock *ptp_clock;
+	struct ptp_pin_desc pin;
 	struct mutex tsreg_lock;
 	struct mii_timestamper mii_ts;
 	struct phy_device *phydev;
 	int ptp_mode;
 	struct list_head list;
+	bool pin_active;
+	struct delayed_work pin_work;
 };
 
 struct qca808x_ptp_cb {
@@ -723,16 +744,126 @@ static int qca808x_ptp_adjfine(struct ptp_clock_info *ptp, long scaled_ppm)
 	return ret;
 }
 
+static int qca808x_ppsin_gettime(struct phy_device *phydev,
+				 struct timespec64 *ts)
+{
+	time64_t sec;
+	s64 nsec;
+
+	sec = phy_read_mmd(phydev, MDIO_MMD_PCS, QCA808X_PPSIN_TS_SEC_HI);
+	sec <<= 16;
+	sec |= phy_read_mmd(phydev, MDIO_MMD_PCS, QCA808X_PPSIN_TS_SEC_MID);
+	sec <<= 16;
+	sec |= phy_read_mmd(phydev, MDIO_MMD_PCS, QCA808X_PPSIN_TS_SEC_LO);
+
+	nsec = phy_read_mmd(phydev, MDIO_MMD_PCS, QCA808X_PPSIN_TS_NSEC_HI);
+	nsec <<= 16;
+	nsec |= phy_read_mmd(phydev, MDIO_MMD_PCS, QCA808X_PPSIN_TS_NSEC_LO);
+
+	set_normalized_timespec64(ts, sec, nsec);
+
+	return 0;
+}
+
+static int qca808x_ptp_cancel_func(struct qca808x_ptp_info *clock)
+{
+	if (!clock->pin_active)
+		return 0;
+
+	clock->pin_active = false;
+	cancel_delayed_work_sync(&clock->pin_work);
+
+	return 0;
+}
+
+static void qca808x_ptp_extts_work(struct work_struct *pin_work)
+{
+	struct qca808x_ptp_info *clock = container_of(pin_work,
+					 struct qca808x_ptp_info, pin_work.work);
+	struct phy_device *phydev = clock->phydev;
+	struct ptp_clock_event event;
+	struct timespec64 ts;
+	u16 reg;
+
+	mutex_lock(&clock->tsreg_lock);
+
+	if (!clock->pin_active) {
+		mutex_unlock(&clock->tsreg_lock);
+		return;
+	}
+
+	reg = phy_read_mmd(phydev, MDIO_MMD_PCS, QCA808X_PTP_INTR_STATUS);
+	if ((reg & QCA808X_INTR_PPS_IN) == 0)
+		goto extts_work_out;
+
+	qca808x_ppsin_gettime(phydev, &ts);
+
+	event.index = 0;
+	event.type = PTP_CLOCK_EXTTS;
+	event.timestamp = timespec64_to_ns(&ts);
+	ptp_clock_event(clock->ptp_clock, &event);
+
+extts_work_out:
+	mutex_unlock(&clock->tsreg_lock);
+	schedule_delayed_work(&clock->pin_work, QCA808X_PIN_WORK_TIMEOUT);
+}
+
+static int qca808x_ptp_extts_locked(struct qca808x_ptp_info *clock, int on)
+{
+	if (!on)
+		return qca808x_ptp_cancel_func(clock);
+
+	if (clock->pin_active)
+		cancel_delayed_work_sync(&clock->pin_work);
+
+	clock->pin_active = true;
+	INIT_DELAYED_WORK(&clock->pin_work, qca808x_ptp_extts_work);
+	schedule_delayed_work(&clock->pin_work, 0);
+
+	return 0;
+}
+
 static int qca808x_ptp_enable(struct ptp_clock_info *ptp,
 			      struct ptp_clock_request *rq, int on)
 {
-	return -EOPNOTSUPP;
+	struct qca808x_ptp_info *clock = container_of(ptp,
+						      struct qca808x_ptp_info,
+						      caps);
+	int err = -EBUSY;
+
+	mutex_lock(&clock->tsreg_lock);
+
+	switch (rq->type) {
+	case PTP_CLK_REQ_EXTTS:
+		if (clock->pin.func == PTP_PF_EXTTS)
+			err = qca808x_ptp_extts_locked(clock, on);
+		break;
+	case PTP_CLK_REQ_PEROUT:
+		err = 0;
+		break;
+	default:
+		err = -EOPNOTSUPP;
+		break;
+	}
+
+	mutex_unlock(&clock->tsreg_lock);
+
+	return err;
 }
 
 static int qca808x_ptp_verify(struct ptp_clock_info *ptp, unsigned int pin,
 			      enum ptp_pin_function func, unsigned int chan)
 {
-	return 1;
+	switch (func) {
+	case PTP_PF_NONE:
+	case PTP_PF_EXTTS:
+	case PTP_PF_PEROUT:
+		break;
+	default:
+		return -EOPNOTSUPP;
+	}
+
+	return 0;
 }
 
 static void qca81xx_link_state(struct phy_device *phydev)
@@ -1172,6 +1303,7 @@ static int qca808x_ptp_register(struct qca808x_ptp_info *ptp_info)
 		.owner		= THIS_MODULE,
 		.name		= "QCA8XXX PHC",
 		.max_adj	= S32_MAX,
+		.n_pins		= 1,
 		.n_ext_ts	= 1,
 		.n_per_out	= 1,
 		.verify		= qca808x_ptp_verify,
@@ -1182,6 +1314,9 @@ static int qca808x_ptp_register(struct qca808x_ptp_info *ptp_info)
 		.enable		= qca808x_ptp_enable,
 		.do_aux_work	= qca808x_ptp_do_aux_work,
 	};
+
+	snprintf(ptp_info->pin.name, sizeof(ptp_info->pin.name), "RTC_SYNC");
+	ptp_info->caps.pin_config = &ptp_info->pin;
 
 	ptp_info->ptp_clock = ptp_clock_register(&ptp_info->caps,
 						 &phydev->mdio.dev);
