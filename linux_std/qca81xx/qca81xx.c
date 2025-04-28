@@ -126,6 +126,13 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_1000BASET_STATUS		0xa
 #define QCA81XX_LP_ADVERTISE_1000FULL		0x2000
 
+#define QCA81XX_SMART_SPEED			0x14
+#define QCA81XX_SMART_SPEED_ENABLE		0x20
+#define QCA81XX_SMART_SPEED_RETRY_LIMIT		GENMASK(4, 2)
+#define QCA81XX_DEFAULT_DOWNSHIFT		5
+#define QCA81XX_MIN_DOWNSHIFT			2
+#define QCA81XX_MAX_DOWNSHIFT			9
+
 #define QCA81XX_SPEC_STATUS			0x11
 #define QCA81XX_SS_LINK_STATUS			0x400
 #define QCA81XX_INTR_DOWNSHIFT			0x20
@@ -1587,6 +1594,78 @@ void qca81xx_phy_get_wol(struct phy_device *phydev,
 		wol->wolopts |= WAKE_MAGIC;
 }
 
+static int qca81xx_phy_get_downshift(struct phy_device *phydev, u8 *d)
+{
+	int val;
+
+	val = phy_read_mmd(phydev, MDIO_MMD_VEND2, QCA81XX_SMART_SPEED);
+	if (val < 0)
+		return val;
+
+	if (val & QCA81XX_SMART_SPEED_ENABLE)
+		*d = FIELD_GET(QCA81XX_SMART_SPEED_RETRY_LIMIT, val) + 2;
+	else
+		*d = DOWNSHIFT_DEV_DISABLE;
+
+	return 0;
+}
+
+static int qca81xx_phy_set_downshift(struct phy_device *phydev, u8 cnt)
+{
+	u16 mask, set;
+	int ret;
+
+	switch (cnt) {
+	case DOWNSHIFT_DEV_DEFAULT_COUNT:
+		cnt = QCA81XX_DEFAULT_DOWNSHIFT;
+		fallthrough;
+	case QCA81XX_MIN_DOWNSHIFT ... QCA81XX_MAX_DOWNSHIFT:
+		/* if the register value is 0, the downshift cnt is 2 */
+		set = QCA81XX_SMART_SPEED_ENABLE |
+			FIELD_PREP(QCA81XX_SMART_SPEED_RETRY_LIMIT,
+			cnt - QCA81XX_MIN_DOWNSHIFT);
+		mask = QCA81XX_SMART_SPEED_RETRY_LIMIT;
+		break;
+	case DOWNSHIFT_DEV_DISABLE:
+		set = 0;
+		mask = QCA81XX_SMART_SPEED_ENABLE;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_VEND2,
+		QCA81XX_SMART_SPEED, mask, set);
+	/* ret > 0 means the PHY register is configured again */
+	if (ret > 0)
+		ret = qca81xx_phy_soft_reset(phydev);
+
+	return ret;
+}
+
+static int qca81xx_phy_get_tunable(struct phy_device *phydev,
+	struct ethtool_tunable *tuna, void *data)
+{
+	switch (tuna->id) {
+	case ETHTOOL_PHY_DOWNSHIFT:
+		return qca81xx_phy_get_downshift(phydev, data);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
+static int qca81xx_phy_set_tunable(struct phy_device *phydev,
+	struct ethtool_tunable *tuna, const void *data)
+{
+	switch (tuna->id) {
+	case ETHTOOL_PHY_DOWNSHIFT:
+		return qca81xx_phy_set_downshift(phydev,
+			*(const u8 *)data);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
 static struct phy_driver qca81xx_phy_driver[] = {
 {
 	PHY_ID_MATCH_EXACT(QCA8111_PHY),
@@ -1604,6 +1683,8 @@ static struct phy_driver qca81xx_phy_driver[] = {
 	.soft_reset = qca81xx_phy_soft_reset,
 	.set_wol = qca81xx_phy_set_wol,
 	.get_wol = qca81xx_phy_get_wol,
+	.get_tunable = qca81xx_phy_get_tunable,
+	.set_tunable = qca81xx_phy_set_tunable,
 },
 };
 
