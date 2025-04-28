@@ -36,6 +36,8 @@ struct qca81xx_phy_mdio_data {
 	void *i2c;
 };
 
+#define INVALID_MMD_REG				0xffff
+
 /* below two registers are used to access PHY */
 /* DEBUG registers indirectly */
 #define QCA81XX_DEBUG_ADDR			0x1d
@@ -118,6 +120,27 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_MMD3_PHY_SNR_MONITOR_STATUS	0xa014
 #define QCA81XX_MMD3_PHY_SNR_MONITOR_MASK	GENMASK(6, 0)
 #define QCA81XX_MMD3_PHY_SNR_MONITOR_EN		0x40
+#define QCA81XX_MMD3_10G_FRAME_CHECK_CTRL	0xa110
+#define QCA81XX_MMD3_10G_EGRESS_COUNTER_HIGH	0xa146
+#define QCA81XX_MMD3_10G_EGRESS_COUNTER_MIDDLE	0xa115
+#define QCA81XX_MMD3_10G_EGRESS_COUNTER_LOW	0xa114
+#define QCA81XX_MMD3_10G_EGRESS_ERROR_COUNTER	0xa116
+#define QCA81XX_MMD3_10G_INGRESS_COUNTER_HIGH	0xa145
+#define QCA81XX_MMD3_10G_INGRESS_COUNTER_MIDDLE	0xa119
+#define QCA81XX_MMD3_10G_INGRESS_COUNTER_LOW	0xa118
+#define QCA81XX_MMD3_10G_INGRESS_ERROR_COUNTER	0xa11a
+#define QCA81XX_MMD3_10G_FRAME_CHECK_EN		0x80
+
+/*PHY MMD7 registers*/
+#define QCA81XX_MMD7_COUNTER_CTRL		0x8029
+#define QCA81XX_MMD7_INGRESS_COUNTER_HIGH	0x802a
+#define QCA81XX_MMD7_INGRESS_COUNTER_LOW	0x802b
+#define QCA81XX_MMD7_INGRESS_ERROR_COUNTER	0x802c
+#define QCA81XX_MMD7_EGRESS_COUNTER_HIGH	0x802d
+#define QCA81XX_MMD7_EGRESS_COUNTER_LOW		0x802e
+#define QCA81XX_MMD7_EGRESS_ERROR_COUNTER	0x802f
+#define QCA81XX_MMD7_FRAME_CHECK_EN		1
+#define QCA81XX_MMD7_CNT_SELFCLR		2
 
 /*PHY MMD31 registers*/
 #define QCA81XX_FIFO_CONTROL			0x19
@@ -1138,8 +1161,23 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 	}
 #endif
 #if IS_ENABLED(CONFIG_HWMON)
-        qca81xx_hwmon_hw_init(phydev);
+	qca81xx_hwmon_hw_init(phydev);
 #endif
+
+	/*enable phy counter check*/
+	ret = phy_modify_mmd(phydev, MDIO_MMD_PCS,
+		QCA81XX_MMD3_10G_FRAME_CHECK_CTRL,
+		QCA81XX_MMD3_10G_FRAME_CHECK_EN,
+		QCA81XX_MMD3_10G_FRAME_CHECK_EN);
+	if(ret < 0)
+		return ret;
+	ret = phy_modify_mmd(phydev, MDIO_MMD_AN,
+		QCA81XX_MMD7_COUNTER_CTRL,
+		QCA81XX_MMD7_FRAME_CHECK_EN | QCA81XX_MMD7_CNT_SELFCLR,
+		QCA81XX_MMD7_FRAME_CHECK_EN | QCA81XX_MMD7_CNT_SELFCLR);
+	if (ret < 0)
+		return ret;
+
 	return 0;
 }
 
@@ -1682,6 +1720,123 @@ static int qca81xx_phy_set_tunable(struct phy_device *phydev,
 	}
 }
 
+struct qca81xx_phy_stat {
+	const char *name;
+	u8 mmd;
+	u16 reg_32_47;
+	u16 reg_16_31;
+	u16 reg_0_15;
+};
+
+static struct qca81xx_phy_stat qca81xx_phy_gmii_stats[] = {
+	{ "RxGoodFrame", MDIO_MMD_AN,
+		INVALID_MMD_REG,
+		QCA81XX_MMD7_INGRESS_COUNTER_HIGH,
+		QCA81XX_MMD7_INGRESS_COUNTER_LOW
+	},
+	{ "RxBadCRC", MDIO_MMD_AN,
+		INVALID_MMD_REG,
+		INVALID_MMD_REG,
+		QCA81XX_MMD7_INGRESS_ERROR_COUNTER
+	},
+	{ "TxGoodFrame", MDIO_MMD_AN,
+		INVALID_MMD_REG,
+		QCA81XX_MMD7_EGRESS_COUNTER_HIGH,
+		QCA81XX_MMD7_EGRESS_COUNTER_LOW
+	},
+	{ "TxBadCRC", MDIO_MMD_AN,
+		INVALID_MMD_REG,
+		INVALID_MMD_REG,
+		QCA81XX_MMD7_EGRESS_ERROR_COUNTER
+	},
+};
+
+static struct qca81xx_phy_stat qca81xx_phy_xgmii_stats[] = {
+	{ "RxGoodFrame", MDIO_MMD_PCS,
+		QCA81XX_MMD3_10G_INGRESS_COUNTER_HIGH,
+		QCA81XX_MMD3_10G_INGRESS_COUNTER_MIDDLE,
+		QCA81XX_MMD3_10G_INGRESS_COUNTER_LOW
+	},
+	{ "RxBadCRC", MDIO_MMD_PCS,
+		INVALID_MMD_REG,
+		INVALID_MMD_REG,
+		QCA81XX_MMD3_10G_INGRESS_ERROR_COUNTER
+	},
+	{ "TxGoodFrame", MDIO_MMD_PCS,
+		QCA81XX_MMD3_10G_EGRESS_COUNTER_HIGH,
+		QCA81XX_MMD3_10G_EGRESS_COUNTER_MIDDLE,
+		QCA81XX_MMD3_10G_EGRESS_COUNTER_LOW
+	},
+	{ "TxBadCRC", MDIO_MMD_PCS,
+		INVALID_MMD_REG,
+		INVALID_MMD_REG,
+		QCA81XX_MMD3_10G_EGRESS_ERROR_COUNTER
+	},
+};
+
+static int qca81xx_phy_get_sset_count(struct phy_device *phydev)
+{
+	if(phydev->speed >= SPEED_2500)
+		return ARRAY_SIZE(qca81xx_phy_xgmii_stats);
+	else
+		return ARRAY_SIZE(qca81xx_phy_gmii_stats);
+}
+
+static void qca81xx_phy_get_strings(struct phy_device *phydev,
+	u8 *data)
+{
+	int i, size;
+
+	size = qca81xx_phy_get_sset_count(phydev);
+
+	for (i = 0; i < size; i++) {
+		if(phydev->speed >= SPEED_2500)
+			strscpy(data + i * ETH_GSTRING_LEN,
+				qca81xx_phy_xgmii_stats[i].name,
+				ETH_GSTRING_LEN);
+		else
+			strscpy(data + i * ETH_GSTRING_LEN,
+				qca81xx_phy_gmii_stats[i].name,
+				ETH_GSTRING_LEN);
+	}
+}
+
+static void qca81xx_phy_get_stats(struct phy_device *phydev,
+	struct ethtool_stats *stats, u64 *data)
+{
+	struct qca81xx_phy_stat phy_stat = {0};
+	u16 reg_32_47 = 0, reg_16_31 = 0, reg_0_15 = 0;
+	int i = 0, size = 0;
+
+	size = qca81xx_phy_get_sset_count(phydev);
+	for (i = 0; i < size; i++) {
+		reg_32_47 = reg_16_31 = reg_0_15 = 0;
+
+		if(phydev->speed >= SPEED_2500)
+			phy_stat = qca81xx_phy_xgmii_stats[i];
+		else
+			phy_stat = qca81xx_phy_gmii_stats[i];
+
+		if(phy_stat.reg_32_47 != INVALID_MMD_REG)
+			reg_32_47 = phy_read_mmd(phydev,
+			phy_stat.mmd,
+			phy_stat.reg_32_47);
+		if(phy_stat.reg_16_31 != INVALID_MMD_REG)
+			reg_16_31 = phy_read_mmd(phydev,
+			phy_stat.mmd,
+			phy_stat.reg_16_31);
+		if(phy_stat.reg_0_15 != INVALID_MMD_REG)
+			reg_0_15 = phy_read_mmd(phydev,
+			phy_stat.mmd,
+			phy_stat.reg_0_15);
+
+		data[i] = ((u64)reg_32_47 << 32) | (reg_16_31 << 16) |
+			reg_0_15;
+	}
+
+	return;
+}
+
 static struct phy_driver qca81xx_phy_driver[] = {
 {
 	PHY_ID_MATCH_EXACT(QCA8111_PHY),
@@ -1701,6 +1856,9 @@ static struct phy_driver qca81xx_phy_driver[] = {
 	.get_wol = qca81xx_phy_get_wol,
 	.get_tunable = qca81xx_phy_get_tunable,
 	.set_tunable = qca81xx_phy_set_tunable,
+	.get_sset_count = qca81xx_phy_get_sset_count,
+	.get_strings = qca81xx_phy_get_strings,
+	.get_stats = qca81xx_phy_get_stats,
 },
 };
 
