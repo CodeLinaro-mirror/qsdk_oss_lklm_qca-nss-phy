@@ -253,6 +253,8 @@ struct qca81xx_phy_mdio_data {
 #define GCC_E2S_GEPHY_RX_CBCR			0x80002c
 #define GCC_AHB_CMD_RCGR			0x80003c
 #define GCC_AHB_CFG_RCGR			0x800040
+#define AHB_CLK_50M				0
+#define AHB_CLK_104M				0x305
 #define GCC_SRDS_SYS_CBCR			0x80007c
 #define GCC_GEPHY_SYS_CBCR			0x800080
 #define GCC_SEC_CTRL_CMD_RCGR			0x800088
@@ -932,9 +934,36 @@ static int qca81xx_phy_cdt_thresh_init(struct phy_device *phydev)
 	return ret;
 }
 
+static int qca81xx_soc_ahb_clk_set(struct phy_device *phydev, u32 clk)
+{
+	int ret = 0;
+
+	ret = qca81xx_soc_read(phydev, GCC_AHB_CFG_RCGR);
+	if (ret < 0)
+		return ret;
+
+	/* if the current colck is expected, then nothing to do */
+	if ((ret & (GCC_E2S_SRC_MASK | SRC_DIV_MASK)) == clk)
+		return 0;
+
+	ret = qca81xx_soc_modify(phydev, GCC_AHB_CFG_RCGR,
+		GCC_E2S_SRC_MASK | SRC_DIV_MASK, clk);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_soc_modify(phydev, GCC_AHB_CMD_RCGR,
+		CLK_CMD_UPDATE, CLK_CMD_UPDATE);
+
+	return ret;
+}
+
 static int qca81xx_phy_gcc_pre_init(struct phy_device *phydev)
 {
 	int ret;
+
+	/* set the ahb clock as 50M */
+	ret = qca81xx_soc_ahb_clk_set(phydev, AHB_CLK_50M);
+	if (ret < 0)
+		return ret;
 
 	/* enable efuse loading into analog circuit */
 	ret = qca81xx_soc_modify(phydev, EPHY_CFG, EPHY_LDO_CTRL, 0);
@@ -947,14 +976,8 @@ static int qca81xx_phy_gcc_post_init(struct phy_device *phydev)
 {
 	int ret;
 
-	/* switch AHB clock source as srds_txclk and */
-	/* clock frequency as 312.5/3 = 104.167M */
-	ret = qca81xx_soc_modify(phydev, GCC_AHB_CFG_RCGR,
-		GCC_E2S_SRC_MASK | SRC_DIV_MASK, 0x305);
-	if (ret < 0)
-		return ret;
-	ret = qca81xx_soc_modify(phydev, GCC_AHB_CMD_RCGR,
-		CLK_CMD_UPDATE, CLK_CMD_UPDATE);
+	/* switch the ahb clock as 104M */
+	ret = qca81xx_soc_ahb_clk_set(phydev, AHB_CLK_104M);
 	if (ret < 0)
 		return ret;
 	/* security control clock switch as 25M */
