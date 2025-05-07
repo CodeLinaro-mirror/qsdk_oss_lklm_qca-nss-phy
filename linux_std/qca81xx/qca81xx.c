@@ -144,6 +144,51 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_MMD7_FRAME_CHECK_EN		1
 #define QCA81XX_MMD7_CNT_SELFCLR		2
 
+/* LED registers and constants */
+#define QCA81XX_LED_NUM				3
+#define QCA81XX_MMD7_LED_GLOBAL			0x8073
+#define QCA81XX_LED_BLINK_FREQ_MASK		GENMASK(5, 3)
+#define QCA81XX_LED_BLINK_FREQ_2HZ		FIELD_PREP(QCA81XX_LED_BLINK_FREQ_MASK, 0x0)
+#define QCA81XX_LED_BLINK_FREQ_4HZ		FIELD_PREP(QCA81XX_LED_BLINK_FREQ_MASK, 0x1)
+#define QCA81XX_LED_BLINK_FREQ_8HZ		FIELD_PREP(QCA81XX_LED_BLINK_FREQ_MASK, 0x2)
+#define QCA81XX_LED_BLINK_FREQ_16HZ		FIELD_PREP(QCA81XX_LED_BLINK_FREQ_MASK, 0x3)
+#define QCA81XX_LED_BLINK_FREQ_32HZ		FIELD_PREP(QCA81XX_LED_BLINK_FREQ_MASK, 0x4)
+#define QCA81XX_LED_BLINK_FREQ_64HZ		FIELD_PREP(QCA81XX_LED_BLINK_FREQ_MASK, 0x5)
+#define QCA81XX_LED_BLINK_FREQ_128HZ		FIELD_PREP(QCA81XX_LED_BLINK_FREQ_MASK, 0x6)
+#define QCA81XX_LED_BLINK_FREQ_256HZ		FIELD_PREP(QCA81XX_LED_BLINK_FREQ_MASK, 0x7)
+#define QCA81XX_LED_BLINK_DUTY_MASK		GENMASK(2, 0)
+#define QCA81XX_LED_BLINK_DUTY_50_50		FIELD_PREP(QCA81XX_LED_BLINK_DUTY_MASK, 0x0)
+#define QCA81XX_LED_BLINK_DUTY_75_25		FIELD_PREP(QCA81XX_LED_BLINK_DUTY_MASK, 0x1)
+#define QCA81XX_LED_BLINK_DUTY_25_75		FIELD_PREP(QCA81XX_LED_BLINK_DUTY_MASK, 0x2)
+#define QCA81XX_LED_BLINK_DUTY_33_67		FIELD_PREP(QCA81XX_LED_BLINK_DUTY_MASK, 0x3)
+#define QCA81XX_LED_BLINK_DUTY_67_33		FIELD_PREP(QCA81XX_LED_BLINK_DUTY_MASK, 0x4)
+#define QCA81XX_LED_BLINK_DUTY_17_83		FIELD_PREP(QCA81XX_LED_BLINK_DUTY_MASK, 0x5)
+#define QCA81XX_LED_BLINK_DUTY_83_17		FIELD_PREP(QCA81XX_LED_BLINK_DUTY_MASK, 0x6)
+#define QCA81XX_LED_BLINK_DUTY_8_92		FIELD_PREP(QCA81XX_LED_BLINK_DUTY_MASK, 0x7)
+
+/* LED hw control pattern is the same for every LED */
+#define QCA81XX_MMD7_LED_CTRL(index)		(0x8074 + (index * 2))
+#define QCA81XX_LED_PATTERN_MASK		GENMASK(15, 0)
+#define QCA81XX_LED_SPEED2500_ON		BIT(15)
+/* Follow blink trigger even if duplex or speed condition doesn't match */
+#define QCA81XX_LED_BLINK_CHECK_BYPASS		BIT(13)
+#define QCA81XX_LED_FULL_DUPLEX_ON		BIT(12)
+#define QCA81XX_LED_TX_BLINK			BIT(10)
+#define QCA81XX_LED_RX_BLINK			BIT(9)
+#define QCA81XX_LED_SPEED1000_ON		BIT(6)
+#define QCA81XX_LED_SPEED100_ON			BIT(5)
+
+/* LED hw force control pattern is the same for every LED */
+#define QCA81XX_MMD7_LED_FORCE_CTRL(index)		(0x8075 + (index * 2))
+#define QCA81XX_LED_FORCE_EN			BIT(15)
+#define QCA81XX_LED_FORCE_MODE_MASK		GENMASK(14, 13)
+#define QCA81XX_LED_FORCE_BLINK			FIELD_PREP(QCA81XX_LED_FORCE_MODE_MASK, 0x3)
+#define QCA81XX_LED_FORCE_ON			FIELD_PREP(QCA81XX_LED_FORCE_MODE_MASK, 0x1)
+#define QCA81XX_LED_FORCE_OFF			FIELD_PREP(QCA81XX_LED_FORCE_MODE_MASK, 0x0)
+
+#define QCA81XX_MMD7_LED_POLARITY_CTRL		0x901a
+#define QCA81XX_LED_ACTIVE_HIGH			BIT(6)
+
 /*PHY MMD31 registers*/
 #define QCA81XX_FIFO_CONTROL			0x19
 #define QCA81XX_FIFO_RESET			0x3
@@ -2199,6 +2244,241 @@ static int qca81xx_phy_cable_test_start(struct phy_device *phydev)
 	return ret;
 }
 
+static bool qca81xx_led_index_valid(struct phy_device *phydev, u8 index)
+{
+	if (index >= QCA81XX_LED_NUM)
+		return false;
+
+	return true;
+}
+
+static int qca81xx_led_parse_netdev(struct phy_device *phydev,
+	unsigned long rules, u16 *offload_trigger)
+{
+	/* Parsing specific to netdev trigger */
+	if (test_bit(TRIGGER_NETDEV_TX, &rules))
+		*offload_trigger |= QCA81XX_LED_TX_BLINK;
+	if (test_bit(TRIGGER_NETDEV_RX, &rules))
+		*offload_trigger |= QCA81XX_LED_RX_BLINK;
+	if (test_bit(TRIGGER_NETDEV_LINK_100, &rules))
+		*offload_trigger |= QCA81XX_LED_SPEED100_ON;
+	if (test_bit(TRIGGER_NETDEV_LINK_1000, &rules))
+		*offload_trigger |= QCA81XX_LED_SPEED1000_ON;
+	if (test_bit(TRIGGER_NETDEV_LINK_2500, &rules))
+		*offload_trigger |= QCA81XX_LED_SPEED2500_ON;
+	if (test_bit(TRIGGER_NETDEV_FULL_DUPLEX, &rules))
+		*offload_trigger |= QCA81XX_LED_FULL_DUPLEX_ON;
+
+	if (rules && !*offload_trigger)
+		return -EOPNOTSUPP;
+
+	/* Enable BLINK_CHECK_BYPASS by default to make the LED
+	 * blink even with duplex or speed mode not enabled.
+	 */
+	*offload_trigger |= QCA81XX_LED_BLINK_CHECK_BYPASS;
+
+	return 0;
+}
+
+static int qca81xx_led_hw_is_supported(struct phy_device *phydev, u8 index,
+	unsigned long rules)
+{
+	u16 offload_trigger = 0;
+
+	if (!qca81xx_led_index_valid(phydev, index))
+		return -EINVAL;
+
+	return qca81xx_led_parse_netdev(phydev, rules, &offload_trigger);
+}
+
+static int qca81xx_led_hw_control_set(struct phy_device *phydev, u8 index,
+	unsigned long rules)
+{
+	u16 reg, offload_trigger = 0;
+	int ret;
+
+	if (!qca81xx_led_index_valid(phydev, index))
+		return -EINVAL;
+	ret = qca81xx_led_parse_netdev(phydev, rules, &offload_trigger);
+	if (ret < 0)
+		return ret;
+	reg = QCA81XX_MMD7_LED_FORCE_CTRL(index);
+	ret = phy_clear_bits_mmd(phydev, MDIO_MMD_AN, reg,
+		QCA81XX_LED_FORCE_EN);
+	if (ret < 0)
+		return ret;
+
+	reg = QCA81XX_MMD7_LED_CTRL(index);
+
+	ret = phy_modify_mmd(phydev, MDIO_MMD_AN, reg,
+		QCA81XX_LED_PATTERN_MASK, offload_trigger);
+
+	return ret;
+}
+
+static int qca81xx_led_hw_control_get(struct phy_device *phydev, u8 index,
+	unsigned long *rules)
+{
+	u16 reg;
+	int val;
+
+	if (!qca81xx_led_index_valid(phydev, index))
+		return -EINVAL;
+
+	reg = QCA81XX_MMD7_LED_FORCE_CTRL(index);
+	val = phy_read_mmd(phydev, MDIO_MMD_AN, reg);
+	if (val < 0)
+		return val;
+	if (val & QCA81XX_LED_FORCE_EN)
+		return -EINVAL;
+
+	reg = QCA81XX_MMD7_LED_CTRL(index);
+
+	val = phy_read_mmd(phydev, MDIO_MMD_AN, reg);
+	if (val < 0)
+		return val;
+	if (val & QCA81XX_LED_TX_BLINK)
+		set_bit(TRIGGER_NETDEV_TX, rules);
+	if (val & QCA81XX_LED_RX_BLINK)
+		set_bit(TRIGGER_NETDEV_RX, rules);
+	if (val & QCA81XX_LED_SPEED100_ON)
+		set_bit(TRIGGER_NETDEV_LINK_100, rules);
+	if (val & QCA81XX_LED_SPEED1000_ON)
+		set_bit(TRIGGER_NETDEV_LINK_1000, rules);
+	if (val & QCA81XX_LED_SPEED2500_ON)
+		set_bit(TRIGGER_NETDEV_LINK_2500, rules);
+	if (val & QCA81XX_LED_FULL_DUPLEX_ON)
+		set_bit(TRIGGER_NETDEV_FULL_DUPLEX, rules);
+
+	return 0;
+}
+
+static int qca81xx_led_brightness_set(struct phy_device *phydev,
+	u8 index, enum led_brightness value)
+{
+	u16 reg;
+
+	if (!qca81xx_led_index_valid(phydev, index))
+		return -EINVAL;
+
+	reg = QCA81XX_MMD7_LED_FORCE_CTRL(index);
+	return phy_modify_mmd(phydev, MDIO_MMD_AN, reg,
+		QCA81XX_LED_FORCE_EN | QCA81XX_LED_FORCE_MODE_MASK,
+		QCA81XX_LED_FORCE_EN | (value ? QCA81XX_LED_FORCE_ON :
+		QCA81XX_LED_FORCE_OFF));
+}
+
+static int qca81xx_led_blink_set(struct phy_device *phydev, u8 index,
+	unsigned long *delay_on, unsigned long *delay_off)
+{
+	int ret;
+	unsigned long on = *delay_on, off = *delay_off, freq_hz = 4;
+	u16 freq_field = QCA81XX_LED_BLINK_FREQ_4HZ;
+	u16 duty_field = QCA81XX_LED_BLINK_DUTY_50_50;
+	u16 reg;
+	struct {
+		unsigned long period;
+		u16 freq_field;
+		unsigned long freq_hz;
+	} freq_table[] = {
+		{ 1000/2, QCA81XX_LED_BLINK_FREQ_2HZ, 2 },
+		{ 1000/4, QCA81XX_LED_BLINK_FREQ_4HZ, 4 },
+		{ 1000/8, QCA81XX_LED_BLINK_FREQ_8HZ, 8 },
+		{ 1000/16, QCA81XX_LED_BLINK_FREQ_16HZ, 16 },
+		{ 1000/32, QCA81XX_LED_BLINK_FREQ_32HZ, 32 },
+		{ 1000/64, QCA81XX_LED_BLINK_FREQ_64HZ, 64 },
+		{ 1000/128, QCA81XX_LED_BLINK_FREQ_128HZ, 128 },
+		{ 1000/256, QCA81XX_LED_BLINK_FREQ_256HZ, 256 },
+	};
+	struct {
+		unsigned long threshold;
+		u16 duty_field;
+	} duty_table[] = {
+		{ 83, QCA81XX_LED_BLINK_DUTY_83_17 },
+		{ 75, QCA81XX_LED_BLINK_DUTY_75_25 },
+		{ 67, QCA81XX_LED_BLINK_DUTY_67_33 },
+		{ 50, QCA81XX_LED_BLINK_DUTY_50_50 },
+		{ 33, QCA81XX_LED_BLINK_DUTY_33_67 },
+		{ 25, QCA81XX_LED_BLINK_DUTY_25_75 },
+		{ 17, QCA81XX_LED_BLINK_DUTY_17_83 },
+		{ 8,  QCA81XX_LED_BLINK_DUTY_8_92 },
+	};
+	int i;
+
+	if (!qca81xx_led_index_valid(phydev, index))
+		return -EINVAL;
+	reg = QCA81XX_MMD7_LED_FORCE_CTRL(index);
+	/* if both on and off are 0, then freq is 4hz, duty is 50% */
+	if (on == 0 && off == 0) {
+		*delay_on = 125;
+		*delay_off = 125;
+	} else {
+		unsigned long period = on + off;
+		unsigned long duty = 0;
+
+		/* Find appropriate frequency using lookup table */
+		for (i = 0; i < ARRAY_SIZE(freq_table); i++) {
+			if (period >= freq_table[i].period) {
+				freq_field = freq_table[i].freq_field;
+				freq_hz = freq_table[i].freq_hz;
+				break;
+			}
+		}
+		if (i == ARRAY_SIZE(freq_table))
+			return -EOPNOTSUPP;
+
+		/* calculate the duty */
+		if (period > 0)
+			duty = (on * 100) / period;
+		else
+			duty = 50;
+		/* Find appropriate duty cycle */
+		for (i = 0; i < ARRAY_SIZE(duty_table); i++) {
+			if (duty >= duty_table[i].threshold) {
+				duty_field = duty_table[i].duty_field;
+				break;
+			}
+		}
+		/* If no match, then return not support */
+		if (i == ARRAY_SIZE(duty_table))
+			return -EOPNOTSUPP;
+
+		*delay_on = (1000 / freq_hz) * duty / 100;
+		*delay_off = (1000 / freq_hz) - *delay_on;
+	}
+
+	ret = phy_modify_mmd(phydev, MDIO_MMD_AN, QCA81XX_MMD7_LED_GLOBAL,
+		QCA81XX_LED_BLINK_FREQ_MASK | QCA81XX_LED_BLINK_DUTY_MASK,
+		freq_field | duty_field);
+	if (ret)
+		return ret;
+	return phy_modify_mmd(phydev, MDIO_MMD_AN, reg,
+		QCA81XX_LED_FORCE_EN | QCA81XX_LED_FORCE_MODE_MASK,
+		QCA81XX_LED_FORCE_EN | QCA81XX_LED_FORCE_BLINK);
+}
+
+static int qca81xx_led_polarity_set(struct phy_device *phydev, int index,
+	unsigned long modes)
+{
+	bool active_low = false;
+	u32 mode;
+
+	for_each_set_bit(mode, &modes, __PHY_LED_MODES_NUM) {
+		switch (mode) {
+		case PHY_LED_ACTIVE_LOW:
+			active_low = true;
+			break;
+		default:
+			return -EINVAL;
+		}
+	}
+
+	return phy_modify_mmd(phydev, MDIO_MMD_AN,
+		QCA81XX_MMD7_LED_POLARITY_CTRL,
+		QCA81XX_LED_ACTIVE_HIGH,
+		active_low ? 0 : QCA81XX_LED_ACTIVE_HIGH);
+}
+
 static struct phy_driver qca81xx_phy_driver[] = {
 {
 	PHY_ID_MATCH_EXACT(QCA8111_PHY),
@@ -2224,6 +2504,12 @@ static struct phy_driver qca81xx_phy_driver[] = {
 	.get_stats = qca81xx_phy_get_stats,
 	.cable_test_start = qca81xx_phy_cable_test_start,
 	.cable_test_get_status = qca81xx_phy_cable_test_get_status,
+	.led_brightness_set = qca81xx_led_brightness_set,
+	.led_blink_set = qca81xx_led_blink_set,
+	.led_hw_is_supported = qca81xx_led_hw_is_supported,
+	.led_hw_control_set = qca81xx_led_hw_control_set,
+	.led_hw_control_get = qca81xx_led_hw_control_get,
+	.led_polarity_set = qca81xx_led_polarity_set,
 },
 };
 
