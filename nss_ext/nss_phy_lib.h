@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -99,6 +99,7 @@ int nss_phy_modify_soc(struct nss_phy_device *nss_phydev, u32 reg,
 bool nss_phy_is_suspended(struct nss_phy_device *nss_phydev);
 int nss_phydev_loopback_update(struct nss_phy_device *nss_phydev,
 	u32 enable);
+bool nss_phydev_eee_support(struct nss_phy_device *nss_phydev);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

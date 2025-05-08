@@ -199,6 +199,20 @@ static int nss_phy_ops_init(struct phy_device *phydev)
 	return nss_phy_ops_add(ops);
 }
 
+static int nss_phy_eee_status_init(struct phy_device *phydev)
+{
+	u32 eee_cap = linkmode_to_mii_eee_cap1_t(phydev->supported_eee);
+
+	/* for qca81xx and qca8084, the eee_enabled is enabled by phy structure, */
+	/* for qca803x and qca833x, the eee_broken will be set in DTS */
+	if (((phydev->eee_broken_modes & eee_cap) == eee_cap) ||
+		nss_phydev_id_compare(phydev, QCA8075_PHY, QCA807X_MASK) ||
+		nss_phydev_id_compare(phydev, QCA8081_PHY, QCA_PHY_EXACT_MASK))
+		phydev->eee_enabled = false;
+
+	return 0;
+}
+
 static int nss_phy_match_phy_device(struct phy_device *phydev)
 {
 	if (!QCA_PHY_MATCH(nss_phydev_id_get(phydev)))
@@ -214,6 +228,8 @@ static int nss_phy_match_phy_device(struct phy_device *phydev)
 	* will init it here
 	*/
 	nss_phy_base_addr_init(phydev);
+	/* init eee status */
+	nss_phy_eee_status_init(phydev);
 
 	return false;
 }
@@ -224,6 +240,8 @@ static int nss_phy_probe(struct phy_device *phydev)
 	nss_phy_ops_init(phydev);
 	/*init base addr*/
 	nss_phy_base_addr_init(phydev);
+	/* init eee status for i2c SFP laguna */
+	nss_phy_eee_status_init(phydev);
 
 	return 0;
 }

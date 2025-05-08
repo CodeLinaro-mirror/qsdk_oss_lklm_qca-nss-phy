@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -381,6 +381,8 @@ static int qca8084_get_features(struct phy_device *phydev)
 
 	linkmode_set_bit_array(features, ARRAY_SIZE(features),
 		phydev->supported);
+
+	genphy_c45_read_eee_abilities(phydev);
 
 	return 0;
 }

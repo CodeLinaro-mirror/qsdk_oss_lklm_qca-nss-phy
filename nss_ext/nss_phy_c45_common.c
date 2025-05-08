@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -21,6 +21,9 @@ int nss_phy_c45_common_eee_adv_set(struct nss_phy_device *nss_phydev,
 {
 	u16 phy_data = 0;
 	int ret;
+
+	if(!nss_phydev_eee_support(nss_phydev))
+		return -NSS_PHY_EOPNOTSUPP;
 
 	if (adv & EEE_100BASE_T)
 		phy_data |= NSS_PHY_MMD7_EEE_ADV_100M;
