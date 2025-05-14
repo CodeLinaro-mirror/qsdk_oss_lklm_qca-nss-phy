@@ -159,15 +159,6 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_MAC_ADDR_16_31			0x804B
 #define QCA81XX_MAC_ADDR_32_47			0x804A
 
-/*PCS MII registers*/
-#define QCA81XX_PCS_PLL_POWER_ON_AND_RESET	0
-#define QCA81XX_PCS_ANA_SOFT_RESET_MASK		0x40
-#define QCA81XX_PCS_ANA_SOFT_RESET		0
-#define QCA81XX_PCS_ANA_SOFT_RELEASE		0x40
-
-#define QCA81XX_PCS_MII_DIG_CTRL		0x8000
-#define QCA81XX_PCS_MMD3_USXG_FIFO_RESET	0x400
-
 /*PCS MMD1 registers*/
 #define QCA81XX_PCS_MMD1_MODE_CTRL		0x11b
 #define QCA81XX_PCS_MMD1_MODE_MASK		0x1f00
@@ -178,6 +169,11 @@ struct qca81xx_phy_mdio_data {
 
 #define QCA81XX_PCS_MMD1_CALIBRATION4		0x78
 #define QCA81XX_PCS_MMD1_CALIBRATION_DONE	0x80
+
+#define QCA81XX_PCS_MMD1_PLL_POWER_ON_AND_RESET	0x1e0
+#define QCA81XX_PCS_MMD1_ANA_SOFT_RESET_MASK	0x40
+#define QCA81XX_PCS_MMD1_ANA_SOFT_RESET		0
+#define QCA81XX_PCS_MMD1_ANA_SOFT_RELEASE	0x40
 
 /*PCS MMD3 registers*/
 #define QCA81XX_PCS_MMD3_AN_LP_BASE_ABL2	0x14
@@ -192,6 +188,7 @@ struct qca81xx_phy_mdio_data {
 
 #define QCA81XX_PCS_MMD3_DIG_CTRL1		0x8000
 #define QCA81XX_PCS_MMD3_USXGMII_EN		0x200
+#define QCA81XX_PCS_MMD3_USXG_FIFO_RESET	0x400
 #define QCA81XX_PCS_MMD3_XPCS_SOFT_RESET	0x8000
 
 #define QCA81XX_PCS_MMD3_AN_LP_BASE_ABL2	0x14
@@ -347,15 +344,6 @@ static int qca81xx_pcs_modify_mmd(struct phy_device *phydev,
 	int addr = qca81xx_pcs_address(phydev);
 
 	return mdiobus_c45_modify(phydev->mdio.bus, addr, devad, regnum,
-		mask, set);
-}
-
-static int qca81xx_pcs_modify(struct phy_device *phydev,
-	u32 regnum, u16 mask, u16 set)
-{
-	int addr = qca81xx_pcs_address(phydev);
-
-	return mdiobus_modify(phydev->mdio.bus, addr, regnum,
 		mask, set);
 }
 
@@ -757,6 +745,16 @@ static int qca81xx_phy_soft_reset(struct phy_device *phydev)
 	return 0;
 }
 
+static int qca81xx_phy_pcs_assert(struct phy_device *phydev,
+	bool assert)
+{
+	return qca81xx_pcs_modify_mmd(phydev, MDIO_MMD_PMAPMD,
+		QCA81XX_PCS_MMD1_PLL_POWER_ON_AND_RESET,
+		QCA81XX_PCS_MMD1_ANA_SOFT_RESET_MASK,
+		assert ? QCA81XX_PCS_MMD1_ANA_SOFT_RESET :
+		QCA81XX_PCS_MMD1_ANA_SOFT_RELEASE);
+}
+
 static int qca81xx_pcs_usxgmii_init(struct phy_device *phydev)
 {
 	int ret = 0;
@@ -791,17 +789,11 @@ static int qca81xx_pcs_usxgmii_init(struct phy_device *phydev)
 	ret = qca81xx_phy_clk_reset(phydev);
 	if (ret < 0)
 		return ret;
-	ret = qca81xx_pcs_modify(phydev,
-		QCA81XX_PCS_PLL_POWER_ON_AND_RESET,
-		QCA81XX_PCS_ANA_SOFT_RESET_MASK,
-		QCA81XX_PCS_ANA_SOFT_RESET);
+	ret = qca81xx_phy_pcs_assert(phydev, true);
 	if (ret < 0)
 		return ret;
 	mdelay(1);
-	ret |= qca81xx_pcs_modify(phydev,
-		QCA81XX_PCS_PLL_POWER_ON_AND_RESET,
-		QCA81XX_PCS_ANA_SOFT_RESET_MASK,
-		QCA81XX_PCS_ANA_SOFT_RELEASE);
+	ret = qca81xx_phy_pcs_assert(phydev, false);
 	if (ret < 0)
 		return ret;
 	ret = read_poll_timeout(qca81xx_pcs_read_mmd,
@@ -1227,7 +1219,7 @@ static int qca81xx_phy_speed_fixup(struct phy_device *phydev)
 	if (ret < 0)
 		return ret;
 	ret = qca81xx_pcs_modify_mmd(phydev,
-		MDIO_MMD_PCS, QCA81XX_PCS_MII_DIG_CTRL,
+		MDIO_MMD_PCS, QCA81XX_PCS_MMD3_DIG_CTRL1,
 		QCA81XX_PCS_MMD3_USXG_FIFO_RESET,
 		QCA81XX_PCS_MMD3_USXG_FIFO_RESET);
 	if (ret < 0)
@@ -1481,10 +1473,7 @@ static int qca81xx_phy_suspend(struct phy_device *phydev)
 	ret = phy_read_mmd(phydev, MDIO_MMD_VEND2,
 		QCA81XX_SPEC_STATUS);
 	if (!(ret & QCA81XX_SS_LINK_STATUS)) {
-		ret = qca81xx_pcs_modify(phydev,
-			QCA81XX_PCS_PLL_POWER_ON_AND_RESET,
-			QCA81XX_PCS_ANA_SOFT_RESET_MASK,
-			QCA81XX_PCS_ANA_SOFT_RESET);
+		ret = qca81xx_phy_pcs_assert(phydev, true);
 		if (ret < 0)
 			return ret;
 	}
@@ -1497,10 +1486,7 @@ static int qca81xx_phy_resume(struct phy_device *phydev)
 	int ret;
 
 	/* make sure the PHY PCS is enabled */
-	ret = qca81xx_pcs_modify(phydev,
-		QCA81XX_PCS_PLL_POWER_ON_AND_RESET,
-		QCA81XX_PCS_ANA_SOFT_RESET_MASK,
-		QCA81XX_PCS_ANA_SOFT_RELEASE);
+	ret = qca81xx_phy_pcs_assert(phydev, false);
 	if (ret < 0)
 		return ret;
 
