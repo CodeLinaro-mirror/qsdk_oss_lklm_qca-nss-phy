@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -242,8 +242,8 @@ static int qca81xx_phy_adjust_link_post(struct nss_phy_device *nss_phydev)
 	/* disable PHY PCS if PHY is suspended and link is down */
 	if (nss_phy_is_suspended(nss_phydev) &&
 		nss_phydev_link_get(nss_phydev) == NSS_PHY_FALSE) {
-		ret = nss_phy_modify_pcs(nss_phydev, QCA81XX_PHY_SERDES_ADDR_OFFSET,
-			QCA81XX_PHY_PCS_PLL_POWER_ON_AND_RESET,
+		ret = nss_phy_pcs_modify_mmd(nss_phydev, QCA81XX_PHY_SERDES_ADDR_OFFSET,
+			NSS_PHY_MMD1_NUM, QCA81XX_PHY_PCS_PLL_POWER_ON_AND_RESET,
 			QCA81XX_PHY_PCS_ANA_SOFT_RESET_MASK, QCA81XX_PHY_PCS_ANA_SOFT_RESET);
 		if (ret < 0)
 			return ret;
