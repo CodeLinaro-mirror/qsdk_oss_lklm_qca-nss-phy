@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -34,7 +34,7 @@ extern "C"
 #define QCA81XX_PHY_MMD31_AUTO_SOFT_RESET_EN		0x8
 
 /*SERDES registers*/
-#define QCA81XX_PHY_PCS_PLL_POWER_ON_AND_RESET		0
+#define QCA81XX_PHY_PCS_PLL_POWER_ON_AND_RESET		0x1e0
 #define QCA81XX_PHY_PCS_ANA_SOFT_RESET_MASK		0x40
 #define QCA81XX_PHY_PCS_ANA_SOFT_RELEASE		0x40
 #define QCA81XX_PHY_PCS_ANA_SOFT_RESET		0
