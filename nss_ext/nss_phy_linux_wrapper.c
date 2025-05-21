@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -481,4 +481,16 @@ int nss_phydev_loopback_update(struct nss_phy_device *nss_phydev,
 	nss_phydev->phydev->loopback_enabled = enable;
 
 	return 0;
+}
+
+bool nss_phydev_eee_support(struct nss_phy_device *nss_phydev)
+{
+	u32 eee_broken_modes, eee_cap;
+
+	eee_broken_modes = nss_phydev->phydev->eee_broken_modes;
+	eee_cap = linkmode_to_mii_eee_cap1_t(nss_phydev->phydev->supported_eee);
+	if ((eee_broken_modes & eee_cap) == eee_cap)
+		return false;
+
+	return true;
 }
