@@ -10,6 +10,12 @@
 
 #define QCE1204_PHY		0x004dd190
 
+enum qce1204_addr_offset {
+	PCS0_ADDR_OFFSET = 4,
+	PCS1_ADDR_OFFSET = 5,
+	SOC_ADDR_OFFSET = 6,
+};
+
 u32 __qce1204_soc_read(struct phy_device *phydev, u32 reg);
 void __qce1204_soc_write(struct phy_device *phydev, u32 reg, u32 val);
 int __qce1204_soc_modify(struct phy_device *phydev, u32 reg,
