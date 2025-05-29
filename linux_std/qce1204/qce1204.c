@@ -507,6 +507,94 @@ static int qce1204_pcs_qusgmii_mode_set(struct phy_device *phydev)
 	return ret;
 }
 
+int qce1204_pcs_speed_clock_set(struct phy_device *phydev,
+	u32 channel, u32 speed)
+{
+	u32 clk_rate = 0;
+
+	switch(speed)
+	{
+		case SPEED_2500:
+			clk_rate = 312500000;
+			break;
+		case SPEED_1000:
+			clk_rate = 125000000;
+			break;
+		case SPEED_100:
+			clk_rate = 25000000;
+			break;
+		case SPEED_10:
+			clk_rate = 2500000;
+			break;
+		default:
+			return -EOPNOTSUPP;
+	}
+
+	/* clk code */
+	return 0;
+}
+
+static int qce1204_pcs_qusgmii_function_reset(struct phy_device *phydev,
+	u32 channel)
+{
+	int ret = 0;
+
+	if(channel == 1)
+		ret = qce1204_pcs_modify_mmd(phydev, MDIO_MMD_PCS,
+			QCE1204_PCS_MMD_MII_DIG_CTRL,
+			0x400, QCE1204_PCS_MMD3_QUSGMII_FIFO_RESET);
+	else
+		ret = qce1204_pcs_modify_channel_mmd(phydev, channel,
+			QCE1204_PCS_MMD_MII_DIG_CTRL,
+			QCE1204_PCS_MMD_QUSGMII_FIFO_RESET,
+			QCE1204_PCS_MMD_QUSGMII_FIFO_RESET);
+
+	return ret;
+}
+
+static int qce1204_pcs_qusgmii_reset(struct phy_device *phydev, u32 channel)
+{
+	int ret;
+
+	ret = qce1204_pcs_modify_mmd(phydev, MDIO_MMD_PMAPMD,
+		QCE1204_PCS_MMD1_QUSGMII_RESET, BIT(channel - 1), 0);
+	if (ret < 0)
+		return ret;
+	mdelay(1);
+	ret = qce1204_pcs_modify_mmd(phydev, MDIO_MMD_PMAPMD,
+		QCE1204_PCS_MMD1_QUSGMII_RESET, BIT(channel - 1), BIT(channel - 1));
+
+	return ret;
+}
+
+int qce1204_pcs_ipg_tune_reset(struct phy_device *phydev)
+{
+	int ret = 0;
+
+	ret = qce1204_pcs_modify_mmd(phydev, MDIO_MMD_PMAPMD,
+		QCE1204_PCS_MMD1_QUSGMII_RESET, QCE1204_PCS_MMD1_QUSGMII_FUNC_RESET, 0);
+	if (ret < 0)
+		return ret;
+	mdelay(1);
+	ret = qce1204_pcs_modify_mmd(phydev, MDIO_MMD_PMAPMD,
+		QCE1204_PCS_MMD1_QUSGMII_RESET, QCE1204_PCS_MMD1_QUSGMII_FUNC_RESET,
+		QCE1204_PCS_MMD1_QUSGMII_FUNC_RESET);
+
+	return ret;
+}
+
+int qce1204_phy_fifo_reset(struct phy_device *phydev, bool enable)
+{
+	u16 phy_data = 0;
+
+	if (!enable)
+		phy_data |= QCE1204_PHY_FIFO_RESET;
+
+	return phy_modify_mmd(phydev, MDIO_MMD_VEND2,
+		QCE1204_PHY_CONTROL,
+		QCE1204_PHY_FIFO_RESET, phy_data);
+}
+
 int qce1204_phy_config_aneg(struct phy_device *phydev)
 {
 	bool changed = false;
@@ -620,6 +708,11 @@ irqreturn_t qce1204_phy_handle_interrupt(struct phy_device *phydev)
 	return IRQ_HANDLED;
 }
 
+static int qce1204_phy_channel_get(struct phy_device *phydev)
+{
+	return (phydev->mdio.addr - phydev->shared->addr + 1);
+}
+
 static int qce1204_phy_probe(struct phy_device *phydev)
 {
 	struct device *dev = &phydev->mdio.dev;
@@ -703,9 +796,65 @@ static int qce1204_phy_config_init(struct phy_device *phydev)
 	return qce1204_ability_fix_up(phydev);
 }
 
-int qce1204_phy_read_status(struct phy_device *phydev)
+static int qce1204_phy_qusgmii_speed_fix_up(struct phy_device *phydev)
+{
+	u32 channel;
+	int ret;
+
+	channel = qce1204_phy_channel_get(phydev);
+	ret = qce1204_pcs_speed_clock_set(phydev, channel, phydev->speed);
+	if (ret < 0)
+		return ret;
+	/* enable or disable phy clock */
+	/*clk code*/
+	mdelay(100);
+	/* reset phy clock */
+	/*clk code*/
+	ret = qce1204_pcs_qusgmii_reset(phydev, channel);
+	if (ret < 0)
+		return ret;
+	ret = qce1204_pcs_qusgmii_function_reset(phydev, channel);
+	if (ret < 0)
+		return ret;
+	ret = qce1204_phy_fifo_reset(phydev, true);
+	if (ret < 0)
+		return ret;
+	mdelay(1);
+	if (phydev->link) {
+		ret = qce1204_phy_fifo_reset(phydev, false);
+		if (ret < 0)
+			return ret;
+	}
+	/*change IPG from 10 to 11 for 1G speed*/
+	ret = phy_modify_mmd(phydev, MDIO_MMD_AN, QCE1204_PHY_MMD7_IPG_OP,
+		QCE1204_PHY_IPG_10_TO_11_EN, phydev->speed == SPEED_1000 ?
+		QCE1204_PHY_IPG_10_TO_11_EN : 0);
+
+	return ret;
+}
+
+static int qce1204_phy_link_change(struct phy_device *phydev)
 {
 	int ret = 0;
+
+	switch (phydev->interface) {
+	case PHY_INTERFACE_MODE_QUSGMII:
+		ret = qce1204_phy_qusgmii_speed_fix_up(phydev);
+		if (ret < 0)
+			return ret;
+		break;
+	default:
+		break;
+	}
+
+	return 0;
+}
+
+int qce1204_phy_read_status(struct phy_device *phydev)
+{
+	int ret = 0, old_link = 0;
+
+	old_link = phydev->link;
 
 	ret = genphy_c45_read_status(phydev);
 	if (ret < 0)
@@ -753,6 +902,9 @@ int qce1204_phy_read_status(struct phy_device *phydev)
 		else
 			phydev->duplex = DUPLEX_HALF;
 	}
+
+	if (phydev->link != old_link)
+		qce1204_phy_link_change(phydev);
 
 	return 0;
 }
