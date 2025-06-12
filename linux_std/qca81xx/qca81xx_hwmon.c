@@ -167,8 +167,8 @@ int qca81xx_hwmon_hw_init(struct phy_device *phydev)
 			ts0_0c_code, ts1_0c_code, ts2_0c_code, slope;
 
 		base_code_30c = phy_data0 & TSENSOR_BASE_CODE_30C;
-		/* the 921600 is temp diff of 90c, and the 246 is the code diff of 90c */
-		base_code_diff_90c = 246;
+		/* the 921600 is temp diff of 90c, and the 235 is the code diff of 90c */
+		base_code_diff_90c = 235;
 		slope = 921600/base_code_diff_90c;
 		ts0_0c_code_offset = (phy_data0 & TSENSOR_OFFSET_0C_0) >> 20;
 		ts1_0c_code_offset = phy_data1 & TSENSOR_OFFSET_0C_1;
