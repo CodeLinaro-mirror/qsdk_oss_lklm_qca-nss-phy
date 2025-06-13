@@ -7,11 +7,24 @@
 #if defined(NSS_PHY_PTP)
 #include "nss_phy_ptp.h"
 #endif
+#if defined(CONFIG_NSSPHY_QCA807X)
 #include "qca807x_phy.h"
+#endif
+#if defined(CONFIG_NSSPHY_QCA81XX)
 #include "qca81xx_phy.h"
+#endif
+#if defined(CONFIG_NSSPHY_QCA808X)
 #include "qca808x_phy.h"
+#endif
+#if defined(CONFIG_NSSPHY_QCA803X)
 #include "qca803x_phy.h"
+#endif
+#if defined(CONFIG_NSSPHY_QCA833X)
 #include "qca833x_phy.h"
+#endif
+#if defined(CONFIG_NSSPHY_QCE1204)
+#include "qce1204_phy.h"
+#endif
 #include <linux/of_device.h>
 #include <linux/of_mdio.h>
 #if IS_ENABLED(CONFIG_MDIO_I2C)
@@ -295,6 +308,8 @@ static int nss_phy_ops_init(struct phy_device *phydev,
 			phydev_err(phydev, "nss phy ops init failed!\n");
 			return ret;
 		}
+	} else {
+		ret = -NSS_PHY_EOPNOTSUPP;
 	}
 #if defined(NSS_PHY_PTP)
 	ret = nss_phy_ptp_ops_add(phydev, ops);
@@ -328,6 +343,10 @@ static int nss_phy_probe(struct phy_device *phydev)
 		atomic_inc(&g_nss_phy_manager.debug_stats.qca81xx_num);
 #if defined(CONFIG_NSSPHY_QCA81XX)
 		ops_init = qca81xx_phy_ops_init;
+#endif
+	} else if (nss_phydev_id_compare(phydev, QCE1204_PHY, QCA_PHY_EXACT_MASK)) {
+#if defined(CONFIG_NSSPHY_QCE1204)
+		ops_init = qce1204_phy_ops_init;
 #endif
 	} else if (nss_phydev_id_compare(phydev, QCA8084_PHY, QCA808X_MASK)) {
 		atomic_inc(&g_nss_phy_manager.debug_stats.qca808x_num);
