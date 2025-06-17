@@ -977,11 +977,6 @@ static int qca81xx_phy_gcc_pre_init(struct phy_device *phydev)
 {
 	int ret;
 
-	/* set the ahb clock as 50M */
-	ret = qca81xx_soc_ahb_clk_set(phydev, AHB_CLK_50M);
-	if (ret < 0)
-		return ret;
-
 	/* enable efuse loading into analog circuit */
 	ret = qca81xx_soc_modify(phydev, EPHY_CFG, EPHY_LDO_CTRL, 0);
 	mdelay(10);
@@ -1477,6 +1472,19 @@ static int qca81xx_phy_sku_probe(struct phy_device *phydev)
 	return 0;
 }
 
+static void qca81xx_phy_shutdown (struct device *dev)
+{
+	struct phy_device *phydev;
+
+	phydev = to_phy_device(dev);
+	if (phydev) {
+		qca81xx_phy_pcs_assert(phydev, false);
+		mdelay(1);
+		qca81xx_soc_ahb_clk_set(phydev, AHB_CLK_50M);
+		mdelay(1);
+	}
+}
+
 static ssize_t qca81xx_phy_show_snr(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
@@ -1530,6 +1538,8 @@ static int qca81xx_phy_probe(struct phy_device *phydev)
 	qca81xx_hwmon_probe(phydev);
 #endif
 	device_create_file(&phydev->mdio.dev, &dev_attr_snr);
+	/* to fix the reboot issue of laguna SFP */
+	phydev->drv->mdiodrv.driver.shutdown = qca81xx_phy_shutdown;
 
 	return 0;
 }
