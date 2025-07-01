@@ -47,6 +47,89 @@
 #define QCE1204_MMD3_CDT_THRESH_CTRL13					0x807e
 #define QCE1204_MMD3_CDT_THRESH_CTRL13_VAL				0xb060
 
+static void qce1204_split_addr(u32 regaddr, u16 *reg_low, u16 *reg_mid,
+	u16 *reg_high)
+{
+	*reg_low = (regaddr & 0xc) << 1;
+
+	*reg_mid = regaddr >> 4 & 0xffff;
+
+	*reg_high = ((regaddr >> 20 & 0xf) << 1) | BIT(0);
+}
+
+u32 __qce1204_soc_read(struct phy_device *phydev, u32 reg)
+{
+	u16 reg_low, reg_mid, reg_high;
+	u16 lo, hi;
+	u32 addr;
+
+	addr = FIELD_GET(GENMASK(28, 24), reg);
+	qce1204_split_addr(reg, &reg_low, &reg_mid, &reg_high);
+	/*write ahb address bit4~bit23*/
+	__mdiobus_write(phydev->mdio.bus, addr, reg_high & 0x1f, reg_mid);
+	udelay(100);
+	/*write ahb address bit0~bit3 and read low 16bit data*/
+	lo = __mdiobus_read(phydev->mdio.bus, addr, reg_low);
+	/*write ahb address bit0~bit3 and read high 16 bit data*/
+	hi = __mdiobus_read(phydev->mdio.bus, addr, (reg_low + 4));
+
+	return (hi << 16) | lo;
+}
+
+void __qce1204_soc_write(struct phy_device *phydev, u32 reg, u32 val)
+{
+	u16 reg_low, reg_mid, reg_high;
+	u16 lo, hi;
+	u32 addr;
+
+	addr = FIELD_GET(GENMASK(28, 24), reg);
+
+	qce1204_split_addr(reg, &reg_low, &reg_mid, &reg_high);
+	lo = val & 0xffff;
+	hi = (u16)(val >> 16);
+
+	/*write ahb address bit4~bit23*/
+	__mdiobus_write(phydev->mdio.bus, addr, reg_high & 0x1f, reg_mid);
+	udelay(100);
+	/*write ahb address bit0~bit3 and write low 16 bit data*/
+	__mdiobus_write(phydev->mdio.bus, addr, reg_low, lo);
+	/*write ahb address bit0~bit3 and write high 16 bit data*/
+	__mdiobus_write(phydev->mdio.bus, addr, (reg_low + 4), hi);
+}
+
+int __qce1204_soc_modify(struct phy_device *phydev, u32 reg,
+	u32 mask, u32 set)
+{
+	u32 val;
+
+	val = __qce1204_soc_read(phydev, reg);
+	val = (val & ~mask) | set;
+	__qce1204_soc_write(phydev, reg, val);
+
+	return 0;
+}
+
+u32 qce1204_soc_read(struct phy_device *phydev, u32 reg)
+{
+	u32 val;
+
+	phy_lock_mdio_bus(phydev);
+	val = __qce1204_soc_read(phydev, reg);
+	phy_unlock_mdio_bus(phydev);
+
+	return val;
+}
+
+int qce1204_soc_modify(struct phy_device *phydev, u32 reg,
+	u32 mask, u32 set)
+{
+	phy_lock_mdio_bus(phydev);
+	__qce1204_soc_modify(phydev, reg, mask, set);
+	phy_unlock_mdio_bus(phydev);
+
+	return 0;
+}
+
 int qce1204_phy_config_aneg(struct phy_device *phydev)
 {
 	bool changed = false;
