@@ -66,6 +66,10 @@ int __qca81xx_phy_debug_write(struct phy_device *phydev,
 	unsigned int reg, u16 val);
 int qca81xx_phy_debug_write(struct phy_device *phydev,
 	unsigned int reg, u16 val);
+int __qca81xx_phy_debug_read(struct phy_device *phydev,
+	unsigned int reg);
+int qca81xx_phy_debug_read(struct phy_device *phydev,
+	unsigned int reg);
 int qca81xx_phy_debug_modify(struct phy_device *phydev,
 			     unsigned int reg, u16 clear, u16 set);
 u32 __qca81xx_soc_read(struct phy_device *phydev, u32 reg);
@@ -89,6 +93,8 @@ struct qca81xx_private {
 #if IS_ENABLED(CONFIG_HWMON)
 	struct device *hwmon_dev;
 #endif
+	u16 afe_dac8;
+	u16 afe_dac9;
 };
 
 #endif /* _QCA81XX_H_ */

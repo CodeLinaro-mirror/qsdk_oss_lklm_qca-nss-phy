@@ -58,6 +58,8 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_DEBUG_ANA_CAP0_VAL		0x2023
 #define QCA81XX_DEBUG_ANA_CAP1_CTRL		0x4e80
 #define QCA81XX_DEBUG_ANA_CAP1_VAL		0x2020
+#define QCA81XX_DEBUG_ANA_AFE_DAC8_DP		0x2f80
+#define QCA81XX_DEBUG_ANA_AFE_DAC9_DP		0x3080
 
 /*PHY MMD1 registers*/
 #define QCA81XX_MMD1_2P5G_VGA_BW_CTRL		0x8108
@@ -306,10 +308,56 @@ struct qca81xx_phy_mdio_data {
 #define WOL_INTR_EN				BIT(0)
 #define SKU_REG					0x90607C
 
+/* Cable Diagnostic Test (CDT) registers and constants */
+/* CDT control register */
+#define QCA81XX_CDT				0x16
+/* CDT status and control bits */
+/* Time delta for length calculation */
+#define QCA81XX_CDT_STATUS_DELTA_TIME_MASK	GENMASK(7, 0)
+/* Start the cable test */
+#define QCA81XX_CDT_ENABLE_TEST			BIT(15)
+/* Use meters for length reporting */
+#define QCA81XX_CDT_LENGTH_UNIT			BIT(10)
+#define QCA81XX_MMD3_CDT_STATUS			0x8064
+#define QCA81XX_MMD3_CDT_DIAG_PAIR_A		0x8065
+#define QCA81XX_MMD3_CDT_DIAG_PAIR_B		0x8066
+#define QCA81XX_MMD3_CDT_DIAG_PAIR_C		0x8067
+#define QCA81XX_MMD3_CDT_DIAG_PAIR_D		0x8068
+#define QCA81XX_CDT_CODE_MASK			GENMASK(3, 0)
+#define QCA81XX_CDT_STATUS_STAT_TYPE		GENMASK(1, 0)
+#define QCA81XX_CDT_STATUS_STAT_FAIL		FIELD_PREP_CONST(QCA81XX_CDT_STATUS_STAT_TYPE, 0)
+#define QCA81XX_CDT_STATUS_STAT_NORMAL		FIELD_PREP_CONST(QCA81XX_CDT_STATUS_STAT_TYPE, 1)
+#define QCA81XX_CDT_STATUS_STAT_SAME_OPEN	FIELD_PREP_CONST(QCA81XX_CDT_STATUS_STAT_TYPE, 2)
+#define QCA81XX_CDT_STATUS_STAT_SAME_SHORT	FIELD_PREP_CONST(QCA81XX_CDT_STATUS_STAT_TYPE, 3)
+
+bool qca81xx_phy_reg_valid(struct phy_device *phydev,
+	unsigned int reg)
+{
+	if (reg > 0xFFFF) {
+		phydev_err(phydev, "Invalid debug register address: 0x%x\n",
+			reg);
+		return false;
+	}
+	return true;
+}
+/**
+ * __qca81xx_phy_debug_write - Write to PHY debug register
+ * @phydev: The PHY device structure
+ * @reg: The debug register to write to (must be 0-0xFFFF)
+ * @val: The value to write
+ *
+ * Write to the specified debug register using indirect access.
+ * The register address must be within the valid range (0-0xFFFF).
+ *
+ * Return: 0 on success, negative error code on failure
+ */
 int __qca81xx_phy_debug_write(struct phy_device *phydev,
 	unsigned int reg, u16 val)
 {
 	int ret;
+
+	if (!qca81xx_phy_reg_valid(phydev, reg))
+		return -EINVAL;
 
 	ret = __phy_write_mmd(phydev, MDIO_MMD_VEND2,
 		QCA81XX_DEBUG_ADDR, reg);
@@ -321,6 +369,17 @@ int __qca81xx_phy_debug_write(struct phy_device *phydev,
 	return ret;
 }
 
+/**
+ * qca81xx_phy_debug_write - Write to PHY debug register with bus locking
+ * @phydev: The PHY device structure
+ * @reg: The debug register to write to
+ * @val: The value to write
+ *
+ * Write to the specified debug register using indirect access with proper
+ * MDIO bus locking.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
 int qca81xx_phy_debug_write(struct phy_device *phydev,
 	unsigned int reg, u16 val)
 {
@@ -328,6 +387,56 @@ int qca81xx_phy_debug_write(struct phy_device *phydev,
 
 	phy_lock_mdio_bus(phydev);
 	ret = __qca81xx_phy_debug_write(phydev, reg, val);
+	phy_unlock_mdio_bus(phydev);
+
+	return ret;
+}
+
+/**
+ * __qca81xx_phy_debug_read - Read from PHY debug register
+ * @phydev: The PHY device structure
+ * @reg: The debug register to read(must be 0-0xFFFF)
+ *
+ * Read from the specified debug register using indirect access.
+ * The register address must be within the valid range (0-0xFFFF).
+ *
+ * Return: The register value on success, negative error code on failure
+ */
+int __qca81xx_phy_debug_read(struct phy_device *phydev,
+	unsigned int reg)
+{
+	int ret;
+
+	if (!qca81xx_phy_reg_valid(phydev, reg))
+		return -EINVAL;
+
+	ret = __phy_write_mmd(phydev, MDIO_MMD_VEND2,
+		QCA81XX_DEBUG_ADDR, reg);
+	if (ret < 0)
+		return ret;
+	ret = __phy_read_mmd(phydev, MDIO_MMD_VEND2,
+		QCA81XX_DEBUG_DATA);
+
+	return ret;
+}
+
+/**
+ * qca81xx_phy_debug_read - Read from PHY debug register with bus locking
+ * @phydev: The PHY device structure
+ * @reg: The debug register to read
+ *
+ * Read from the specified debug register using indirect access with proper
+ * MDIO bus locking.
+ *
+ * Return: The register value on success, negative error code on failure
+ */
+int qca81xx_phy_debug_read(struct phy_device *phydev,
+	unsigned int reg)
+{
+	int ret;
+
+	phy_lock_mdio_bus(phydev);
+	ret = __qca81xx_phy_debug_read(phydev, reg);
 	phy_unlock_mdio_bus(phydev);
 
 	return ret;
@@ -1852,6 +1961,244 @@ static void qca81xx_phy_get_stats(struct phy_device *phydev,
 	return;
 }
 
+static int qca81xx_phy_cable_test_completion(struct phy_device *phydev)
+{
+	int val, ret;
+
+	ret = read_poll_timeout(phy_read_mmd,
+		val, !(val & QCA81XX_CDT_ENABLE_TEST),
+		20000, 100000, true, phydev, MDIO_MMD_VEND2,
+		QCA81XX_CDT);
+
+	return ret < 0 ? ret : 0;
+}
+
+/**
+ * qca81xx_phy_cable_test_fault_valid - Check if a cable test status code indicates a valid fault
+ * @status_code: The cable test status code to check
+ *
+ * Determines if the given status code represents a valid cable fault (open or short).
+ *
+ * Return: true if the status code indicates a valid fault, false otherwise
+ */
+static bool qca81xx_phy_cable_test_fault_valid(int status_code)
+{
+	switch (status_code) {
+	case QCA81XX_CDT_STATUS_STAT_SAME_SHORT:
+	case QCA81XX_CDT_STATUS_STAT_SAME_OPEN:
+		return true;
+	default:
+		return false;
+	}
+}
+
+/**
+ * qca81xx_phy_cable_test_result_trans - Translate cable test status code to ethtool result code
+ * @status_code: The cable test status code to translate
+ *
+ * Converts internal cable test status codes to standardized ethtool cable test result codes.
+ *
+ * Return: The corresponding ethtool cable test result code
+ */
+static int qca81xx_phy_cable_test_result_trans(int status_code)
+{
+	switch (status_code) {
+	case QCA81XX_CDT_STATUS_STAT_NORMAL:
+		return ETHTOOL_A_CABLE_RESULT_CODE_OK;
+	case QCA81XX_CDT_STATUS_STAT_SAME_SHORT:
+		return ETHTOOL_A_CABLE_RESULT_CODE_SAME_SHORT;
+	case QCA81XX_CDT_STATUS_STAT_SAME_OPEN:
+		return ETHTOOL_A_CABLE_RESULT_CODE_OPEN;
+	case QCA81XX_CDT_STATUS_STAT_FAIL:
+	default:
+		return ETHTOOL_A_CABLE_RESULT_CODE_UNSPEC;
+	}
+}
+
+static u32 qca81xx_phy_cable_test_fault_length(struct phy_device *phydev,
+	u8 pair)
+{
+	int val;
+	u32 length_reg = 0, delta_length;
+
+	switch (pair) {
+	case ETHTOOL_A_CABLE_PAIR_A:
+		length_reg = QCA81XX_MMD3_CDT_DIAG_PAIR_A;
+		break;
+	case ETHTOOL_A_CABLE_PAIR_B:
+		length_reg = QCA81XX_MMD3_CDT_DIAG_PAIR_B;
+		break;
+	case ETHTOOL_A_CABLE_PAIR_C:
+		length_reg = QCA81XX_MMD3_CDT_DIAG_PAIR_C;
+		break;
+	case ETHTOOL_A_CABLE_PAIR_D:
+		length_reg = QCA81XX_MMD3_CDT_DIAG_PAIR_D;
+		break;
+	default:
+		return 0;
+	}
+
+	val = phy_read_mmd(phydev, MDIO_MMD_PCS, length_reg);
+	if (val < 0) {
+		phydev_err(phydev, "Failed to read length: %d\n", val);
+		return 0;
+	}
+	/* Extract time delta value and ensure it's within valid range */
+	delta_length = ((val & QCA81XX_CDT_STATUS_DELTA_TIME_MASK) * 824UL);
+
+	return delta_length / 10;
+}
+
+static int qca81xx_phy_cable_test_get_pair_status(struct phy_device *phydev,
+	u8 pair, u16 status)
+{
+	int result, ret;
+	u16 pair_code;
+	u32 length;
+
+	if (pair > ETHTOOL_A_CABLE_PAIR_D)
+		return -EINVAL;
+
+	/* Calculate bit shift based on pair number (12, 8, 4, 0) */
+	pair_code = (status & (QCA81XX_CDT_CODE_MASK << (12 - (pair * 4))))
+		>> (12 - (pair * 4));
+	result = qca81xx_phy_cable_test_result_trans(pair_code);
+	ret = ethnl_cable_test_result(phydev, pair, result);
+	if (ret < 0) {
+		phydev_err(phydev, "Failed to report cable test result for pair %d: %d\n",
+			pair, ret);
+		return ret;
+	}
+	if (qca81xx_phy_cable_test_fault_valid(pair_code)) {
+		length = qca81xx_phy_cable_test_fault_length(phydev, pair);
+		ret = ethnl_cable_test_fault_length(phydev, pair, length);
+		if (ret < 0) {
+			phydev_err(phydev, "Failed to report fault length for pair %d: %d\n",
+				pair, ret);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
+static int qca81xx_phy_afe_dac_restore(struct phy_device *phydev)
+{
+	int ret;
+	struct qca81xx_private *priv = phydev->priv;
+
+	ret = qca81xx_phy_debug_write(phydev, QCA81XX_DEBUG_ANA_AFE_DAC8_DP,
+		priv->afe_dac8);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_debug_write(phydev, QCA81XX_DEBUG_ANA_AFE_DAC9_DP,
+		priv->afe_dac9);
+
+	return ret;
+}
+
+/**
+ * qca81xx_phy_cable_test_get_status - get the result of cable test
+ * @phydev: The PHY device structure
+ * @finished: Pointer to boolean that will be set to true when test completes
+ *
+ * get the result of cable test including status(open/normal/short) and cable
+ * length for open/short.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+static int qca81xx_phy_cable_test_get_status(struct phy_device *phydev,
+	bool *finished)
+{
+	int ret = 0, val = 0, pair_id = 0, pair_ret = 0;
+	bool pairs_processed = false;
+
+	const int all_pairs_normal = QCA81XX_CDT_STATUS_STAT_NORMAL |
+		(QCA81XX_CDT_STATUS_STAT_NORMAL << 4) |
+		(QCA81XX_CDT_STATUS_STAT_NORMAL << 8) |
+		(QCA81XX_CDT_STATUS_STAT_NORMAL << 12);
+
+	*finished = false;
+
+	if (phydev->link) {
+		val = all_pairs_normal;
+	} else {
+		ret = qca81xx_phy_cable_test_completion(phydev);
+		if (ret < 0)
+			goto restore;
+		pair_ret = phy_read_mmd(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_CDT_STATUS);
+		if (pair_ret < 0) {
+			phydev_err(phydev, "Failed to get the cdt status ret: %d\n", pair_ret);
+			ret = pair_ret;
+			goto restore;
+		}
+		val = pair_ret;
+	}
+	for (pair_id = ETHTOOL_A_CABLE_PAIR_A; pair_id <= ETHTOOL_A_CABLE_PAIR_D;
+		pair_id++) {
+		pair_ret = qca81xx_phy_cable_test_get_pair_status(phydev, pair_id, val);
+		if (pair_ret < 0) {
+			if (ret == 0)
+				ret = pair_ret;
+		} else {
+			pairs_processed = true;
+		}
+	}
+	*finished = pairs_processed;
+restore:
+	if (phydev->link == false) {
+		int restore_ret = qca81xx_phy_afe_dac_restore(phydev);
+		if (restore_ret < 0) {
+			if (ret == 0)
+				ret = restore_ret;
+		}
+	}
+
+	return ret;
+}
+
+/**
+ * qca81xx_phy_cable_test_start  - Start the cable test
+ * @phydev: The PHY device structure
+ *
+ * Initiates the appropriate settings and start cable test.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+static int qca81xx_phy_cable_test_start(struct phy_device *phydev)
+{
+	int ret;
+	struct qca81xx_private *priv = phydev->priv;
+
+	if (phydev->link)
+		return 0;
+	/* store the dac8 and dac9 value */
+	ret = qca81xx_phy_debug_read(phydev, QCA81XX_DEBUG_ANA_AFE_DAC8_DP);
+	if (ret < 0)
+		return ret;
+	priv->afe_dac8 = ret;
+	ret = qca81xx_phy_debug_read(phydev, QCA81XX_DEBUG_ANA_AFE_DAC9_DP);
+	if (ret < 0)
+		return ret;
+	priv->afe_dac9 = ret;
+
+	ret = qca81xx_phy_debug_write(phydev, QCA81XX_DEBUG_ANA_AFE_DAC8_DP, 0);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_debug_write(phydev, QCA81XX_DEBUG_ANA_AFE_DAC9_DP, 0);
+	if (ret < 0)
+		return ret;
+	ret = phy_modify_mmd(phydev, MDIO_MMD_VEND2, QCA81XX_CDT,
+		QCA81XX_CDT_ENABLE_TEST | QCA81XX_CDT_LENGTH_UNIT,
+		QCA81XX_CDT_ENABLE_TEST | QCA81XX_CDT_LENGTH_UNIT);
+	if (ret < 0) {
+		phydev_err(phydev, "Failed to enable cable test: %d\n", ret);
+		qca81xx_phy_afe_dac_restore(phydev);
+	}
+
+	return ret;
+}
+
 static struct phy_driver qca81xx_phy_driver[] = {
 {
 	PHY_ID_MATCH_EXACT(QCA8111_PHY),
@@ -1875,6 +2222,8 @@ static struct phy_driver qca81xx_phy_driver[] = {
 	.get_sset_count = qca81xx_phy_get_sset_count,
 	.get_strings = qca81xx_phy_get_strings,
 	.get_stats = qca81xx_phy_get_stats,
+	.cable_test_start = qca81xx_phy_cable_test_start,
+	.cable_test_get_status = qca81xx_phy_cable_test_get_status,
 },
 };
 
