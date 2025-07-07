@@ -1544,6 +1544,11 @@ static int qca81xx_phy_probe(struct phy_device *phydev)
 	return 0;
 }
 
+static void qca81xx_phy_remove(struct phy_device *phydev)
+{
+	device_remove_file(&phydev->mdio.dev, &dev_attr_snr);
+}
+
 static int qca81xx_phy_suspend(struct phy_device *phydev)
 {
 	int ret;
@@ -1853,6 +1858,7 @@ static struct phy_driver qca81xx_phy_driver[] = {
 	.name = "Qualcomm QCA81xx",
 	.flags = PHY_POLL_CABLE_TEST,
 	.probe = qca81xx_phy_probe,
+	.remove = qca81xx_phy_remove,
 	.config_init = qca81xx_phy_config_init,
 	.get_features = qca81xx_phy_get_features,
 	.config_aneg = qca81xx_phy_config_aneg,
