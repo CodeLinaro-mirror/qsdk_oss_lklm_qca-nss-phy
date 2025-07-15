@@ -1,17 +1,6 @@
 /*
- * Copyright (c) 2024-2025, Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
  */
 
 #include "nss_phy.h"
@@ -23,6 +12,12 @@
 #include "qca808x_phy.h"
 #include "qca803x_phy.h"
 #include "qca833x_phy.h"
+#include <linux/of_device.h>
+#include <linux/of_mdio.h>
+#if IS_ENABLED(CONFIG_MDIO_I2C)
+#include <linux/mdio/mdio-i2c.h>
+#include <linux/i2c.h>
+#endif
 
 #define NSS_PHY_DRV_NUM		6
 static struct nss_phy_ops *g_ops[NSS_PHY_DRV_NUM] = { NULL };
@@ -293,10 +288,139 @@ static int nss_phy_fixup(struct phy_device *phydev)
 	return ret;
 }
 
+#if IS_ENABLED(CONFIG_MDIO_I2C)
+static struct mii_bus *nss_phy_mdio_i2c_bus_register(struct platform_device *pdev)
+{
+	struct device_node *i2c_node;
+	struct i2c_adapter *i2c_adpt;
+	struct mii_bus *mdio_i2c;
+
+	i2c_node = of_parse_phandle(pdev->dev.of_node, "i2c-bus", 0);
+	if(!i2c_node) {
+		dev_err(&pdev->dev, "i2c-bus node was not found in platform device %s\n",
+			pdev->name);
+		return NULL;
+	}
+
+	i2c_adpt = of_find_i2c_adapter_by_node(i2c_node);
+	of_node_put(i2c_node);
+	if(!i2c_adpt) {
+		dev_err(&pdev->dev, "i2c adpt was not found by i2c_node:%s\n",
+			i2c_node->full_name);
+		return NULL;
+	}
+	mdio_i2c = mdio_i2c_alloc(&pdev->dev, i2c_adpt, MDIO_I2C_QCOM);
+	if (!mdio_i2c) {
+		dev_err(&pdev->dev, "mdio_i2c bus alloc failed with i2c_adpt:%s\n",
+			i2c_adpt->name);
+		put_device(&i2c_adpt->dev);
+		return NULL;
+	}
+	mdio_i2c->name = "SFP I2C Bus";
+	if (of_mdiobus_register(mdio_i2c, i2c_node) < 0) {
+		dev_err(&pdev->dev, "mdio_i2c bus register failed with bus id %s\n",
+			mdio_i2c->id);
+		mdiobus_free(mdio_i2c);
+		put_device(&i2c_adpt->dev);
+		return NULL;
+	}
+
+	return mdio_i2c;
+}
+
+static u32 nss_sfp_phy_id_get(struct mii_bus *bus)
+{
+	u16 org_id, rev_id;
+	u32 phy_id;
+
+	if (!bus)
+		return NSS_INVALID_PHY_ID;
+
+	org_id = mdiobus_c45_read(bus, NSS_SFP_PHY_ADDR, MDIO_MMD_AN, MDIO_DEVID1);
+	if (org_id < 0)
+		return NSS_INVALID_PHY_ID;
+	rev_id = mdiobus_c45_read(bus, NSS_SFP_PHY_ADDR, MDIO_MMD_AN, MDIO_DEVID2);
+	if (rev_id < 0)
+		return NSS_INVALID_PHY_ID;
+	phy_id = ((org_id << 16) | rev_id);
+
+	return phy_id;
+}
+
+static int nss_phy_sfp_device_register(struct mii_bus *bus)
+{
+	struct phy_device *phydev = NULL;
+	u32 phy_id = nss_sfp_phy_id_get(bus);
+
+	if (phy_id == NSS_INVALID_PHY_ID)
+		return -EINVAL;
+
+	if (phy_id_compare(phy_id, QCA8111_PHY, QCA_PHY_EXACT_MASK))
+		phydev = get_phy_device(bus, NSS_SFP_PHY_ADDR, true);
+	else
+		return -EOPNOTSUPP;
+
+	if (!phydev)
+		return -EINVAL;
+
+	return phy_device_register(phydev);
+}
+#endif
+
+static int nss_phy_platform_probe(struct platform_device *pdev)
+{
+#if IS_ENABLED(CONFIG_MDIO_I2C)
+	struct mii_bus *bus;
+
+	bus = nss_phy_mdio_i2c_bus_register(pdev);
+	if (bus) {
+		nss_phy_sfp_device_register(bus);
+		platform_set_drvdata(pdev, bus);
+		dev_info(&pdev->dev, "nss-phy mdio-i2c bus registered successfully\n");
+	}
+#endif
+
+	return 0;
+}
+
+static int nss_phy_platform_remove(struct platform_device *pdev)
+{
+#if IS_ENABLED(CONFIG_MDIO_I2C)
+	struct phy_device *phydev = NULL;
+	struct mii_bus *bus = dev_get_drvdata(&pdev->dev);
+	if (bus) {
+		phydev = mdiobus_get_phy(bus, NSS_SFP_PHY_ADDR);
+		if (phydev)
+			phy_device_remove(phydev);
+		mdiobus_unregister(bus);
+	}
+#endif
+
+	return 0;
+}
+
+static const struct of_device_id nss_phy_of_match[] = {
+	{.compatible = "qcom,nss-phy" },
+};
+
+MODULE_DEVICE_TABLE(of, nss_phy_of_match);
+
+static struct platform_driver nss_phy_platform_driver = {
+	.probe = nss_phy_platform_probe,
+	.remove = nss_phy_platform_remove,
+	.driver = {
+		.name = "nss-phy",
+		.of_match_table = nss_phy_of_match,
+	},
+};
+
 static int __init nss_phy_module_init(void)
 {
 	int ret = 0;
 
+	ret = platform_driver_register(&nss_phy_platform_driver);
+	if (ret < 0)
+		pr_err("Failed to register nss_phy platform driver\n");
 	ret = phy_driver_register(&nss_phy_driver, THIS_MODULE);
 	if (!ret)
 		pr_info("nss phy driver register successfully\n");
@@ -312,8 +436,8 @@ static void __exit nss_phy_module_exit(void)
 	nss_phy_ops_free();
 	phy_driver_unregister(&nss_phy_driver);
 	phy_unregister_fixup_for_uid(QCA_PHY_ID, QCA_PHY_MASK);
+	platform_driver_unregister(&nss_phy_platform_driver);
 }
-
 module_init(nss_phy_module_init);
 module_exit(nss_phy_module_exit);
 MODULE_DESCRIPTION("NSS PHY driver");
