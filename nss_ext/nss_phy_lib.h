@@ -99,6 +99,7 @@ int nss_phy_modify_soc(struct nss_phy_device *nss_phydev, u32 reg,
 bool nss_phy_is_suspended(struct nss_phy_device *nss_phydev);
 int nss_phydev_loopback_update(struct nss_phy_device *nss_phydev,
 	u32 enable);
+bool nss_phydev_eee_support(struct nss_phy_device *nss_phydev);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */
