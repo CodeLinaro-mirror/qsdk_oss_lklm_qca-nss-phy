@@ -132,6 +132,8 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_MMD3_10G_INGRESS_COUNTER_LOW	0xa118
 #define QCA81XX_MMD3_10G_INGRESS_ERROR_COUNTER	0xa11a
 #define QCA81XX_MMD3_10G_FRAME_CHECK_EN		0x80
+#define QCA81XX_MMD3_CABLE_SKEW			0xa102
+#define QCA81XX_MMD3_CABLE_TX_SKEW_MASK		GENMASK(7, 0)
 
 /*PHY MMD7 registers*/
 #define QCA81XX_MMD7_COUNTER_CTRL		0x8029
@@ -1324,6 +1326,12 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 		QCA81XX_MMD7_COUNTER_CTRL,
 		QCA81XX_MMD7_FRAME_CHECK_EN | QCA81XX_MMD7_CNT_SELFCLR,
 		QCA81XX_MMD7_FRAME_CHECK_EN | QCA81XX_MMD7_CNT_SELFCLR);
+	if (ret < 0)
+		return ret;
+
+	/* adjust the cable tx skew to improve 10G link performance */
+	ret = phy_modify_mmd(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_CABLE_SKEW,
+		QCA81XX_MMD3_CABLE_TX_SKEW_MASK, 0x30);
 	if (ret < 0)
 		return ret;
 
