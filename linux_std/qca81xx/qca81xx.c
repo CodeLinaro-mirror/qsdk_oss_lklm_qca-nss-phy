@@ -1,22 +1,31 @@
 /*
- * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
  */
 
 #include <linux/ethtool_netlink.h>
 #include "qca81xx.h"
 #include <linux/etherdevice.h>
+#include <linux/device.h>
+#include <linux/sysfs.h>
+
+static void
+qca81xx_priv_atomic64_inc(struct phy_device *phydev, atomic64_t *v)
+{
+	struct qca81xx_private *priv = phydev->priv;
+
+	if (priv)
+		atomic64_inc(v);
+}
+
+static void
+qca81xx_set_init_state(struct phy_device *phydev, enum qca81xx_init_state state)
+{
+	struct qca81xx_private *priv = phydev->priv;
+
+	if (priv)
+		priv->init_state = state;
+}
 
 enum qca81xx_addr_offset {
 	PCS_ADDR_OFFSET = 1,
@@ -929,6 +938,9 @@ static int qca81xx_phy_soft_reset(struct phy_device *phydev)
 {
 	int ret;
 
+	qca81xx_priv_atomic64_inc(phydev,
+		&((struct qca81xx_private *)phydev->priv)->debug_stats.soft_reset_count);
+
 	/* enable auto soft reset when power on */
 	ret = phy_modify_mmd(phydev, MDIO_MMD_VEND2,
 		QCA81XX_SPEC_CONTROL,
@@ -1348,72 +1360,80 @@ static int qca81xx_phy_ana_capacitance_update(struct phy_device *phydev)
 static int qca81xx_phy_config_init(struct phy_device *phydev)
 {
 	int ret = 0;
-	struct qca81xx_private *priv = NULL;
+	enum qca81xx_init_state state = QCA81XX_INIT_START;
+	struct qca81xx_private *priv = phydev->priv;
 
-	priv = phydev->priv;
+	qca81xx_set_init_state(phydev, state);
 
 	ret = qca81xx_phy_gcc_pre_init(phydev);
-	if (ret < 0)
-		return ret;
+	if (ret < 0) {
+		state = QCA81XX_INIT_GCC_PRE_INIT_FAILURE;
+		goto err_out;
+	}
 	ret = qca81xx_phy_ana_config_init(phydev);
-	if (ret < 0)
-		return ret;
+	if (ret < 0) {
+		state = QCA81XX_INIT_ANA_CONFIG_FAILURE;
+		goto err_out;
+	}
+
 	ret = qca81xx_pcs_usxgmii_init(phydev);
-	if (ret < 0)
-		return ret;
+	if (ret < 0) {
+		state = QCA81XX_INIT_PCS_USXGMII_FAILURE;
+		goto err_out;
+	}
 	phydev->interface = PHY_INTERFACE_MODE_USXGMII;
 
 	ret = qca81xx_phy_gcc_post_init(phydev);
-	if (ret < 0)
-		return ret;
-	ret = qca81xx_phy_eee_config_init(phydev);
-	if (ret < 0)
-		return ret;
+	if (ret < 0) {
+		state = QCA81XX_INIT_GCC_POST_INIT_FAILURE;
+		goto err_out;
+	}
+	qca81xx_phy_eee_config_init(phydev);
+	/* update VGA gain to improve 10G long cable high */
+	/* temperature performance */
+	phy_write_mmd(phydev, MDIO_MMD_PMAPMD,
+		QCA81XX_MMD1_10G_VGA_GAIN_CTRL,
+		QCA81XX_MMD1_10G_VGA_GAIN_VAL);
 	/* update 2.5G VGA(Variable-Gain Amplifier)bandwidth */
 	/* to improve channel anti-interference ability */
 	phy_write_mmd(phydev, MDIO_MMD_PMAPMD,
 		QCA81XX_MMD1_2P5G_VGA_BW_CTRL,
 		QCA81XX_MMD1_2P5G_VGA_BW_VAL);
 	ret = qca81xx_sec_ctrl_init(phydev);
-	if (ret < 0)
-		return ret;
-	ret = qca81xx_tlmm_init(phydev);
-	if (ret < 0)
-		return ret;
-
-	ret = qca81xx_phy_cdt_thresh_init(phydev);
-	if (ret < 0)
-		return ret;
-#if IS_ENABLED(CONFIG_MACSEC)
-	if(priv->sku.macsec) {
-		ret = qca81xx_macsec_init(phydev);
-		if (ret)
-			return ret;
+	if (ret < 0) {
+		state = QCA81XX_INIT_SEC_CTRL_FAILURE;
+		goto err_out;
 	}
+	ret = qca81xx_tlmm_init(phydev);
+	if (ret < 0) {
+		state = QCA81XX_INIT_TLMM_FAILURE;
+		goto err_out;
+	}
+	qca81xx_phy_cdt_thresh_init(phydev);
+#if IS_ENABLED(CONFIG_MACSEC)
+	if(priv && priv->sku.macsec)
+		qca81xx_macsec_init(phydev);
 #endif
 #if IS_ENABLED(CONFIG_HWMON)
 	qca81xx_hwmon_hw_init(phydev);
 #endif
-
 	/*enable phy counter check*/
-	ret = phy_modify_mmd(phydev, MDIO_MMD_PCS,
+	phy_modify_mmd(phydev, MDIO_MMD_PCS,
 		QCA81XX_MMD3_10G_FRAME_CHECK_CTRL,
 		QCA81XX_MMD3_10G_FRAME_CHECK_EN,
 		QCA81XX_MMD3_10G_FRAME_CHECK_EN);
-	if(ret < 0)
-		return ret;
-	ret = phy_modify_mmd(phydev, MDIO_MMD_AN,
+	phy_modify_mmd(phydev, MDIO_MMD_AN,
 		QCA81XX_MMD7_COUNTER_CTRL,
 		QCA81XX_MMD7_FRAME_CHECK_EN | QCA81XX_MMD7_CNT_SELFCLR,
 		QCA81XX_MMD7_FRAME_CHECK_EN | QCA81XX_MMD7_CNT_SELFCLR);
-	if (ret < 0)
-		return ret;
 
-	ret = qca81xx_phy_ana_capacitance_update(phydev);
-	if (ret < 0)
-		return ret;
+	qca81xx_phy_ana_capacitance_update(phydev);
 
-	return 0;
+	state = QCA81XX_INIT_SUCCESS;
+
+err_out:
+	qca81xx_set_init_state(phydev, state);
+	return ret;
 }
 
 static int qca81xx_phy_get_features(struct phy_device *phydev)
@@ -1497,6 +1517,9 @@ static int qca81xx_phy_config_aneg(struct phy_device *phydev)
 	u16 reg = 0;
 	int ret = 0;
 
+	qca81xx_priv_atomic64_inc(phydev,
+		&((struct qca81xx_private *)phydev->priv)->debug_stats.config_aneg_count);
+
 	if (phydev->autoneg == AUTONEG_DISABLE)
 		return genphy_c45_pma_setup_forced(phydev);
 
@@ -1532,6 +1555,9 @@ static int qca81xx_phy_fifo_reset(struct phy_device *phydev,
 	bool enable)
 {
 	u16 phy_data = 0;
+
+	qca81xx_priv_atomic64_inc(phydev,
+		&((struct qca81xx_private *)phydev->priv)->debug_stats.fifo_reset_count);
 
 	if (!enable)
 		phy_data |= QCA81XX_FIFO_RESET;
@@ -1612,6 +1638,10 @@ static int qca81xx_phy_read_status(struct phy_device *phydev)
 	/* if loopback is enabled, no need to read PHY */
 	if (phydev->loopback_enabled)
 		return 0;
+
+	qca81xx_priv_atomic64_inc(phydev,
+		&((struct qca81xx_private *)phydev->priv)->debug_stats.read_status_count);
+
 	old_link = phydev->link;
 
 	ret = genphy_c45_read_status(phydev);
@@ -1847,6 +1877,10 @@ static int qca81xx_phy_probe(struct phy_device *phydev)
 	qca81xx_hwmon_probe(phydev);
 #endif
 	device_create_file(&phydev->mdio.dev, &dev_attr_snr);
+
+	/* Initialize sysfs module state/statistics support */
+	qca81xx_debugfs_init(phydev);
+
 	/* to fix the reboot issue of laguna SFP */
 	phydev->drv->mdiodrv.driver.shutdown = qca81xx_phy_shutdown;
 
@@ -1855,12 +1889,18 @@ static int qca81xx_phy_probe(struct phy_device *phydev)
 
 static void qca81xx_phy_remove(struct phy_device *phydev)
 {
+	/* Clean up debugfs support */
+	qca81xx_debugfs_exit(phydev);
+
 	device_remove_file(&phydev->mdio.dev, &dev_attr_snr);
 }
 
 static int qca81xx_phy_suspend(struct phy_device *phydev)
 {
 	int ret;
+
+	qca81xx_priv_atomic64_inc(phydev,
+		&((struct qca81xx_private *)phydev->priv)->debug_stats.suspend_count);
 
 	ret = phy_read_mmd(phydev, MDIO_MMD_VEND2,
 		QCA81XX_SPEC_STATUS);
@@ -1876,6 +1916,9 @@ static int qca81xx_phy_suspend(struct phy_device *phydev)
 static int qca81xx_phy_resume(struct phy_device *phydev)
 {
 	int ret;
+
+	qca81xx_priv_atomic64_inc(phydev,
+		&((struct qca81xx_private *)phydev->priv)->debug_stats.resume_count);
 
 	/* make sure the PHY PCS is enabled */
 	ret = qca81xx_phy_pcs_assert(phydev, false);
@@ -2632,6 +2675,256 @@ static int qca81xx_led_polarity_set(struct phy_device *phydev, int index,
 		QCA81XX_MMD7_LED_POLARITY_CTRL,
 		QCA81XX_LED_ACTIVE_HIGH,
 		active_low ? 0 : QCA81XX_LED_ACTIVE_HIGH);
+}
+
+/**
+ * qca81xx_phy_show_debug_module_statistics - Show PHY API call statistics
+ * @dev: The device structure
+ * @attr: The device attribute structure
+ * @buf: Buffer to write the statistics to
+ *
+ * Display statistics of all standard PHY API calls including read/write
+ * operations and configuration functions.
+ *
+ * Return: Number of bytes written to buffer
+ */
+static ssize_t qca81xx_phy_show_debug_module_statistics(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct phy_device *phydev = to_phy_device(dev);
+	struct qca81xx_private *priv = phydev->priv;
+	ssize_t size = 0;
+
+	if (!priv)
+		return -EINVAL;
+
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"QCA81XX PHY Debug Statistics\n");
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"    API Call Counters\n");
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"        Read Status Calls         : %llu\n",
+		atomic64_read(&priv->debug_stats.read_status_count));
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"        Config Aneg Calls         : %llu\n",
+		atomic64_read(&priv->debug_stats.config_aneg_count));
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"        Soft Reset Calls          : %llu\n",
+		atomic64_read(&priv->debug_stats.soft_reset_count));
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"        Fifo Reset Calls          : %llu\n",
+		atomic64_read(&priv->debug_stats.fifo_reset_count));
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"        Suspend Calls             : %llu\n",
+		atomic64_read(&priv->debug_stats.suspend_count));
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"        Resume Calls              : %llu\n",
+		atomic64_read(&priv->debug_stats.resume_count));
+
+	return size;
+}
+
+/**
+ * qca81xx_phy_show_debug_module_state - Show PHY module state information
+ * @dev: The device structure
+ * @attr: The device attribute structure
+ * @buf: Buffer to write the state information to
+ *
+ * Display comprehensive PHY module state including initialization status,
+ * SKU information, and internal states not available through ethtool.
+ *
+ * Return: Number of bytes written to buffer
+ */
+static ssize_t qca81xx_phy_show_debug_module_state(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct phy_device *phydev = to_phy_device(dev);
+	struct qca81xx_private *priv = phydev->priv;
+	ssize_t size = 0;
+
+	if (!priv)
+		return -EINVAL;
+
+	switch (priv->init_state) {
+	case QCA81XX_INIT_START:
+		size += snprintf(buf + size, PAGE_SIZE - size,
+			"%-24s : Success\n", "PHY INIT START");
+		break;
+	case QCA81XX_INIT_GCC_PRE_INIT_FAILURE:
+		size += snprintf(buf + size, PAGE_SIZE - size,
+			"%-24s : Failure\n", "PHY GCC PRE-INIT");
+		break;
+	case QCA81XX_INIT_ANA_CONFIG_FAILURE:
+		size += snprintf(buf + size, PAGE_SIZE - size,
+			"%-24s : Failure\n", "PHY ANA CONFIG");
+		break;
+	case QCA81XX_INIT_PCS_USXGMII_FAILURE:
+		size += snprintf(buf + size, PAGE_SIZE - size,
+			"%-24s : Failure\n", "PHY PCS USXGMII");
+		break;
+	case QCA81XX_INIT_GCC_POST_INIT_FAILURE:
+		size += snprintf(buf + size, PAGE_SIZE - size,
+			"%-24s : Failure\n", "PHY GCC POST-INIT");
+		break;
+	case QCA81XX_INIT_SEC_CTRL_FAILURE:
+		size += snprintf(buf + size, PAGE_SIZE - size,
+			"%-24s : Failure\n", "PHY SECURITY CONTROL");
+		break;
+	case QCA81XX_INIT_TLMM_FAILURE:
+		size += snprintf(buf + size, PAGE_SIZE - size,
+			"%-24s : Failure\n", "PHY TLMM");
+		break;
+	case QCA81XX_INIT_SUCCESS:
+		size += snprintf(buf + size, PAGE_SIZE - size,
+			"%-24s : Success\n", "PHY INIT");
+		break;
+	case QCA81XX_INIT_INVALID_STATE:
+	default:
+		size += snprintf(buf + size, PAGE_SIZE - size,
+			"%-24s : INVALID\n", "PHY INIT");
+		break;
+	}
+
+	/* SKU Information (from priv, not reading registers) */
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"\n%s\n", "SKU Information");
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"    %-20s : %s\n", "SKU", priv->sku.name);
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"    %-20s : %s\n", "PTP Support", priv->sku.ptp ? "enabled" : "disabled");
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"    %-20s : %s\n", "MACSEC Support", priv->sku.macsec ? "enabled" : "disabled");
+
+	/* PHY Device Structure Information (not available via ethtool) */
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"\n%s\n", "PHY Device Internal State");
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"    %-20s : %s\n", "is_c45", phydev->is_c45 ? "true" : "false");
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"    %-20s : %s\n", "suspended", phydev->suspended ? "true" : "false");
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"    %-20s : %s\n", "loopback_enabled", phydev->loopback_enabled ? "true" : "false");
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"    %-20s : %s\n", "interrupts", phydev->interrupts ? "enabled" : "disabled");
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"    %-20s : %s\n", "irq_suspended", phydev->irq_suspended ? "true" : "false");
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"    %-20s : %d\n", "state", phydev->state);
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"    %-20s : %s (%d)\n", "interface", phy_modes(phydev->interface), phydev->interface);
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"    %-20s : %s\n", "eee_enabled", phydev->eee_enabled ? "true" : "false");
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"    %-20s : 0x%08x\n", "eee_broken_modes", phydev->eee_broken_modes);
+
+	/* Internal AFE Values (from priv, not reading registers) */
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"\n%s\n", "AFE Configuration");
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"    %-20s : 0x%04x\n", "AFE DAC8", priv->afe_dac8);
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"    %-20s : 0x%04x\n", "AFE DAC9", priv->afe_dac9);
+
+	return size;
+}
+
+/**
+ * qca81xx_debug_module_reset_statistics - Reset debug statistics counters
+ * @priv: The private data structure
+ *
+ * Reset all debug statistics counters to zero.
+ */
+static void _qca81xx_phy_debug_module_reset_statistics(struct qca81xx_private *priv)
+{
+	if (!priv)
+		return;
+
+	/* Reset all counters */
+	atomic64_set(&priv->debug_stats.read_status_count, 0);
+	atomic64_set(&priv->debug_stats.config_aneg_count, 0);
+	atomic64_set(&priv->debug_stats.soft_reset_count, 0);
+	atomic64_set(&priv->debug_stats.fifo_reset_count, 0);
+	atomic64_set(&priv->debug_stats.suspend_count, 0);
+	atomic64_set(&priv->debug_stats.resume_count, 0);
+}
+
+/**
+ * qca81xx_phy_debug_module_reset_statistics - Reset debug statistics counters on write
+ * @dev: The device structure
+ * @attr: The device attribute structure
+ * @buf: Buffer containing the input (ignored)
+ * @count: Number of bytes in the buffer
+ *
+ * Reset all debug statistics counters to zero when this sysfs node is written to.
+ *
+ * Return: Number of bytes processed
+ */
+static ssize_t qca81xx_phy_debug_module_reset_statistics(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct phy_device *phydev = to_phy_device(dev);
+	struct qca81xx_private *priv = phydev->priv;
+
+	if (!priv)
+		return -EINVAL;
+
+	if (count > 0 && (buf[0] == '0' || buf[0] == '\n'))
+		_qca81xx_phy_debug_module_reset_statistics(priv);
+
+	return count;
+}
+
+/* Device attribute definitions */
+static DEVICE_ATTR(module_statistics, 0644, qca81xx_phy_show_debug_module_statistics, qca81xx_phy_debug_module_reset_statistics);
+static DEVICE_ATTR(module_state, 0444, qca81xx_phy_show_debug_module_state, NULL);
+
+/**
+ * qca81xx_debugfs_init - Initialize debugfs support for PHY device
+ * @phydev: The PHY device structure
+ *
+ * Create sysfs attribute files for debug statistics and module state.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int qca81xx_debugfs_init(struct phy_device *phydev)
+{
+	struct qca81xx_private *priv = phydev->priv;
+	int ret = 0;
+
+	if (!priv)
+		return -EINVAL;
+
+	/* Initialize debug statistics */
+	_qca81xx_phy_debug_module_reset_statistics(priv);
+
+
+	/* Create sysfs attribute files */
+	ret = device_create_file(&phydev->mdio.dev, &dev_attr_module_statistics);
+	if (ret) {
+		phydev_err(phydev, "Failed to create module_statistics sysfs file: %d\n", ret);
+		return ret;
+	}
+
+	ret = device_create_file(&phydev->mdio.dev, &dev_attr_module_state);
+	if (ret) {
+		phydev_err(phydev, "Failed to create module_state sysfs file: %d\n", ret);
+		device_remove_file(&phydev->mdio.dev, &dev_attr_module_statistics);
+		return ret;
+	}
+
+	return 0;
+}
+
+/**
+ * qca81xx_debugfs_exit - Clean up debugfs support for PHY device
+ * @phydev: The PHY device structure
+ *
+ * Remove sysfs attribute files created for debug support.
+ */
+void qca81xx_debugfs_exit(struct phy_device *phydev)
+{
+	device_remove_file(&phydev->mdio.dev, &dev_attr_module_statistics);
+	device_remove_file(&phydev->mdio.dev, &dev_attr_module_state);
 }
 
 static struct phy_driver qca81xx_phy_driver[] = {
