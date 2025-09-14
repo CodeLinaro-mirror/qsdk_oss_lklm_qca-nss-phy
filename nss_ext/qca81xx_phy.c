@@ -180,9 +180,22 @@ static int qca81xx_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 static int qca81xx_phy_mdix_set(struct nss_phy_device *nss_phydev,
 	enum nss_phy_mdix_mode mode)
 {
+	u16 phy_data = 0;
 	int ret = 0;
 
-	ret = nss_phy_c45_common_mdix_mode_set(nss_phydev, mode);
+	if (mode == MODE_AUTO)
+		phy_data = NSS_PHY_MDIX_AUTO;
+	else if (mode == MODE_MDIX)
+		phy_data = NSS_PHY_MDIX;
+	else if (mode == MODE_MDI)
+		phy_data = NSS_PHY_MDI;
+	else
+		return -NSS_PHY_EINVAL;
+
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD31_NUM, NSS_PHY_SPEC_CONTROL,
+		NSS_PHY_MDIX_AUTO | QCA81XX_PHY_MMD31_AUTO_SOFT_RESET_EN,
+		phy_data | QCA81XX_PHY_MMD31_AUTO_SOFT_RESET_EN);
+
 	if (ret < 0)
 		return ret;
 
