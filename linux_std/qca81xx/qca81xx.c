@@ -217,6 +217,7 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_SS_SPEED_2500			0x200
 #define QCA81XX_SS_SPEED_1000			0x100
 #define QCA81XX_SS_SPEED_100			0x80
+#define QCA81XX_SS_MDIX				0x40
 
 #define QCA81XX_INTR_MASK			0x12
 #define QCA81XX_INTR_STATUS			0x13
@@ -226,6 +227,10 @@ struct qca81xx_phy_mdio_data {
 
 #define QCA81XX_SPEC_CONTROL			0x10
 #define QCA81XX_AUTO_SOFT_RESET_EN		0x8
+#define QCA81XX_MDI_MASK			GENMASK(6, 5)
+#define QCA81XX_MDI_AUTO			0x3
+#define QCA81XX_MDI_X				0x1
+#define QCA81XX_MDI				0
 
 #define QCA81XX_WOL_CTRL			0x8012
 #define QCA81XX_WOL_EN				0x0020
@@ -1354,6 +1359,65 @@ static int qca81xx_phy_get_features(struct phy_device *phydev)
 	return 0;
 }
 
+static int qca81xx_phy_mdix_ctrl_set(struct phy_device *phydev)
+{
+	int ret;
+	u16 val;
+
+	switch (phydev->mdix_ctrl) {
+	case ETH_TP_MDI:
+		val = QCA81XX_MDI;
+		break;
+	case ETH_TP_MDI_X:
+		val = QCA81XX_MDI_X;
+		break;
+	case ETH_TP_MDI_AUTO:
+		val = QCA81XX_MDI_AUTO;
+		break;
+	default:
+		return 0;
+	}
+	ret = phy_read_mmd(phydev, MDIO_MMD_VEND2, QCA81XX_SPEC_CONTROL);
+	if (ret < 0)
+		return ret;
+	if (FIELD_GET(QCA81XX_MDI_MASK, ret) != val) {
+		/* the bit QCA81XX_AUTO_SOFT_RESET_EN need to set with MDI bits at the */
+		/* same time to make sure the mdi take effect after soft reset */
+		val = (ret & (~QCA81XX_MDI_MASK)) | FIELD_PREP(QCA81XX_MDI_MASK, val) |
+			QCA81XX_AUTO_SOFT_RESET_EN;
+		ret = phy_write_mmd(phydev, MDIO_MMD_VEND2, QCA81XX_SPEC_CONTROL, val);
+		if (ret < 0)
+			return ret;
+		ret = qca81xx_phy_soft_reset(phydev);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
+static int qca81xx_phy_mdix_ctrl_get(struct phy_device *phydev)
+{
+	int ret;
+
+	ret = phy_read_mmd(phydev, MDIO_MMD_VEND2, QCA81XX_SPEC_CONTROL);
+	if (ret < 0)
+		return ret;
+	switch (FIELD_GET(QCA81XX_MDI_MASK, ret)) {
+	case QCA81XX_MDI:
+		phydev->mdix_ctrl = ETH_TP_MDI;
+		break;
+	case QCA81XX_MDI_X:
+		phydev->mdix_ctrl = ETH_TP_MDI_X;
+		break;
+	case QCA81XX_MDI_AUTO:
+		phydev->mdix_ctrl = ETH_TP_MDI_AUTO;
+		break;
+	}
+
+	return ret;
+}
+
 static int qca81xx_phy_config_aneg(struct phy_device *phydev)
 {
 	bool changed = false;
@@ -1382,6 +1446,11 @@ static int qca81xx_phy_config_aneg(struct phy_device *phydev)
 		return ret;
 	if (ret > 0)
 		changed = true;
+
+	/* configure mdix mode */
+	ret = qca81xx_phy_mdix_ctrl_set(phydev);
+	if (ret < 0)
+		return ret;
 
 	return genphy_c45_check_and_restart_aneg(phydev, changed);
 }
@@ -1521,6 +1590,11 @@ static int qca81xx_phy_read_status(struct phy_device *phydev)
 		else
 			phydev->duplex = DUPLEX_UNKNOWN;
 	}
+	/* get the mdix ctrl and status */
+	phydev->mdix = (ret & QCA81XX_SS_MDIX) ? ETH_TP_MDI_X : ETH_TP_MDI;
+	ret = qca81xx_phy_mdix_ctrl_get(phydev);
+	if (ret < 0)
+		return ret;
 
 	if (phydev->link != old_link)
 		qca81xx_phy_speed_fixup(phydev);
