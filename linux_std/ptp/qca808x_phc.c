@@ -940,7 +940,7 @@ static int qca808x_hwtstamp(struct mii_timestamper *mii_ts, struct ifreq *ifr)
 							 mii_ts);
 	struct phy_device *phydev = ptp_info->phydev;
 	bool ptp_en = false, one_step = false;
-	struct hwtstamp_config cfg;
+	struct hwtstamp_config cfg = {0};
 
 	if (copy_from_user(&cfg, ifr->ifr_data, sizeof(cfg)))
 		return -EFAULT;
