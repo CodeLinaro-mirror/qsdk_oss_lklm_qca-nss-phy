@@ -20,6 +20,11 @@
 #define QCA8084_PHY_ID				0x004dd180
 
 #define QCA8084_SPECIFIC_FUNCTION_CONTROL	0x10
+#define QCA8084_AUTO_SOFT_RESET_EN		0x8
+#define QCA8084_MDI_MASK			GENMASK(6, 5)
+#define QCA8084_MDI_AUTO			0x3
+#define QCA8084_MDI_X				0x1
+#define QCA8084_MDI				0
 #define QCA8084_SPECIFIC_STATUS			0x11
 #define QCA8084_SS_SPEED_MASK			GENMASK(9, 7)
 #define QCA8084_SS_SPEED_2500			4
@@ -299,6 +304,60 @@ static int qca8084_link_change(struct phy_device *phydev)
 	return 0;
 }
 
+static int qca8084_phy_mdix_ctrl_get(struct phy_device *phydev)
+{
+	int ret;
+
+	ret = phy_read(phydev, QCA8084_SPECIFIC_FUNCTION_CONTROL);
+	if (ret < 0)
+		return ret;
+	switch (FIELD_GET(QCA8084_MDI_MASK, ret)) {
+	case QCA8084_MDI:
+		phydev->mdix_ctrl = ETH_TP_MDI;
+		break;
+	case QCA8084_MDI_X:
+		phydev->mdix_ctrl = ETH_TP_MDI_X;
+		break;
+	case QCA8084_MDI_AUTO:
+		phydev->mdix_ctrl = ETH_TP_MDI_AUTO;
+		break;
+	default:
+		phydev->mdix_ctrl = ETH_TP_MDI_INVALID;
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int qca8084_phy_mdix_ctrl_set(struct phy_device *phydev)
+{
+	int ret;
+	u16 val;
+
+	switch (phydev->mdix_ctrl) {
+	case ETH_TP_MDI:
+		val = QCA8084_MDI;
+		break;
+	case ETH_TP_MDI_X:
+		val = QCA8084_MDI_X;
+		break;
+	case ETH_TP_MDI_AUTO:
+		val = QCA8084_MDI_AUTO;
+		break;
+	default:
+		return 0;
+	}
+	ret = phy_modify_changed(phydev, QCA8084_SPECIFIC_FUNCTION_CONTROL,
+		QCA8084_MDI_MASK, FIELD_PREP(QCA8084_MDI_MASK, val));
+	if (ret > 0) {
+		ret = genphy_soft_reset(phydev);
+		if (ret < 0)
+			return ret;
+	}
+
+	return ret;
+}
+
 static int qca8084_read_specific_status(struct phy_device *phydev)
 {
 	int spec_status, speed;
@@ -335,7 +394,7 @@ static int qca8084_read_specific_status(struct phy_device *phydev)
 
 	}
 
-	return 0;
+	return qca8084_phy_mdix_ctrl_get(phydev);
 }
 
 static int qca8084_read_status(struct phy_device *phydev)
@@ -407,7 +466,11 @@ static int qca8084_config_aneg(struct phy_device *phydev)
 	if (ret < 0)
 		return ret;
 
-	return __genphy_config_aneg(phydev, ret);
+	ret = __genphy_config_aneg(phydev, ret);
+	if (ret < 0)
+		return ret;
+
+	return qca8084_phy_mdix_ctrl_set(phydev);
 }
 
 static int qca8084_ability_fix_up(struct phy_device *phydev)
