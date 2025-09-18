@@ -18,36 +18,171 @@
 #include <linux/mdio/mdio-i2c.h>
 #include <linux/i2c.h>
 #endif
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
+#include <linux/uaccess.h>
+#include "nss_phy_linux_wrapper.h"
 
-#define NSS_PHY_DRV_NUM		6
-static struct nss_phy_ops *g_ops[NSS_PHY_DRV_NUM] = { NULL };
+static struct nss_phy_global_manager g_nss_phy_manager = {0};
 
-static int nss_phy_ops_add(struct nss_phy_ops *ops)
+/*
+ * nss_phy_ext_state_show()
+ *	Sysfs callback to display extended PHY state.
+ */
+static ssize_t nss_phy_ext_state_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	int ops_index = 0;
+	struct phy_device *phydev = to_phy_device(dev);
+	struct nss_phy_device *nss_phydev = dev_get_drvdata(&phydev->mdio.dev);
+	ssize_t count = 0;
+	const char *status_str;
 
-	for (ops_index = 0; ops_index < NSS_PHY_DRV_NUM; ops_index++) {
-		if (!g_ops[ops_index]) {
-			g_ops[ops_index] = ops;
-			break;
-		}
-	}
+	if (atomic_read(&nss_phydev->pcs_state))
+		status_str = "enabled";
+	else
+		status_str = "disabled";
 
-	if (ops_index == NSS_PHY_DRV_NUM)
-		return -NSS_PHY_ENOSPC;
+	count += scnprintf(buf + count, PAGE_SIZE - count, "NSS PHY Extended State\n");
+	count += scnprintf(buf + count, PAGE_SIZE - count, "    %-20s : %s\n", "pcs_state", status_str);
 
-	return ops_index;
+	return count;
 }
 
-static void nss_phy_ops_free(void)
+/*
+ * nss_phy_ext_statistics_show()
+ *	Sysfs callback to display extended PHY statistics.
+ */
+static ssize_t nss_phy_ext_statistics_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	int ops_index = 0;
+	struct phy_device *phydev = to_phy_device(dev);
+	struct nss_phy_device *nss_phydev = dev_get_drvdata(&phydev->mdio.dev);
+	ssize_t ret_count = 0;
+	struct nss_phy_ops *ops = (struct nss_phy_ops *)phydev->drv->driver_data;
 
-	for (ops_index = 0; ops_index < NSS_PHY_DRV_NUM; ops_index++) {
-		kfree(g_ops[ops_index]);
-		g_ops[ops_index] = NULL;
+	ret_count += scnprintf(buf + ret_count, PAGE_SIZE - ret_count, "NSS PHY Extended Statistics\n");
+	if (ops && ops->adjust_link_post) {
+		ret_count += scnprintf(buf + ret_count, PAGE_SIZE - ret_count, "    %-20s : %llu\n", "adjust_link_post_count", atomic64_read(&nss_phydev->adjust_link_post_count));
 	}
+
+	return ret_count;
 }
+
+/*
+ * nss_phy_ext_statistics_reset()
+ *	Sysfs callback to clear extended PHY statistics.
+ */
+static ssize_t nss_phy_ext_statistics_reset(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct phy_device *phydev = to_phy_device(dev);
+	struct nss_phy_device *nss_phydev = dev_get_drvdata(&phydev->mdio.dev);
+
+	if (buf[0] == '0' || buf[0] == '\n') { /* Any write with '0' or newline clears statistics */
+		atomic64_set(&nss_phydev->adjust_link_post_count, 0);
+	}
+
+	return count;
+}
+
+/*
+ * nss_phy_global_state_show()
+ *	Debugfs callback to display global state.
+ */
+static int nss_phy_global_state_show(struct seq_file *s, void __attribute__((unused))*data)
+{
+	char *state_str;
+
+	switch (g_nss_phy_manager.init_state) {
+	case NSS_PHY_INIT_START:
+		state_str = "NSS PHY INIT START : Success";
+		break;
+	case NSS_PHY_INIT_PLATFORM_DRIVER_REGISTER_FAILURE:
+		state_str = "NSS PHY INIT PLATFORM DRIVER REGISTER : Failure";
+		break;
+	case NSS_PHY_INIT_PHY_DRIVER_REGISTER_FAILURE:
+		state_str = "NSS PHY INIT PHY DRIVER REGISTER : Failure";
+		break;
+	case NSS_PHY_INIT_SUCCESS:
+		state_str = "NSS PHY INIT : Success";
+		break;
+	default:
+		state_str = "NSS PHY INIT : Invalid";
+		break;
+	}
+
+	seq_printf(s, "%s\n", state_str);
+
+	return 0;
+}
+
+/*
+ * nss_phy_global_statistics_show()
+ *	Debugfs callback to display global statistics.
+ */
+static int nss_phy_global_statistics_show(struct seq_file *s, void __attribute__((unused))*data)
+{
+	seq_printf(s, "NSS PHY Global Statistics\n");
+	seq_printf(s, "    %-20s : %u\n", "qca807x_num", atomic_read(&g_nss_phy_manager.debug_stats.qca807x_num));
+	seq_printf(s, "    %-20s : %u\n", "qca81xx_num", atomic_read(&g_nss_phy_manager.debug_stats.qca81xx_num));
+	seq_printf(s, "    %-20s : %u\n", "qca808x_num", atomic_read(&g_nss_phy_manager.debug_stats.qca808x_num));
+	seq_printf(s, "    %-20s : %u\n", "qca803x_num", atomic_read(&g_nss_phy_manager.debug_stats.qca803x_num));
+	seq_printf(s, "    %-20s : %u\n", "qca833x_num", atomic_read(&g_nss_phy_manager.debug_stats.qca833x_num));
+	seq_printf(s, "    %-20s : %u\n", "unknown_phy_num", atomic_read(&g_nss_phy_manager.debug_stats.unknown_phy_num));
+	seq_printf(s, "    %-20s : %llu\n", "mdio_i2c_bus_num", atomic64_read(&g_nss_phy_manager.debug_stats.mdio_i2c_bus_num));
+	seq_printf(s, "    %-20s : %llu\n", "sfp_devices_num", atomic64_read(&g_nss_phy_manager.debug_stats.sfp_devices_num));
+
+	return 0;
+}
+
+DEFINE_SHOW_ATTRIBUTE(nss_phy_global_state);
+DEFINE_SHOW_ATTRIBUTE(nss_phy_global_statistics);
+
+static DEVICE_ATTR(ext_module_state, 0444, nss_phy_ext_state_show, NULL);
+static DEVICE_ATTR(ext_module_statistics, 0644, nss_phy_ext_statistics_show, nss_phy_ext_statistics_reset);
+
+static void nss_phy_debugfs_init(struct phy_device *phydev)
+{
+	device_create_file(&phydev->mdio.dev, &dev_attr_ext_module_state);
+	device_create_file(&phydev->mdio.dev, &dev_attr_ext_module_statistics);
+}
+
+static void nss_phy_debugfs_exit(struct phy_device *phydev)
+{
+	device_remove_file(&phydev->mdio.dev, &dev_attr_ext_module_state);
+	device_remove_file(&phydev->mdio.dev, &dev_attr_ext_module_statistics);
+}
+
+/*
+ * nss_phy_debugfs_create()
+ *	Create debugfs entries for NSS PHY module.
+ */
+static void nss_phy_debugfs_create(void)
+{
+	struct nss_phy_global_manager *mgr = &g_nss_phy_manager;
+	struct dentry *nss_phy_debugfs_dir;
+
+	nss_phy_debugfs_dir = debugfs_create_dir("nss_phy", NULL);
+	if (!nss_phy_debugfs_dir) {
+		nss_phy_pr_info("Failed to create debugfs directory\n");
+		return;
+	}
+
+	debugfs_create_file("global_state", 0444, nss_phy_debugfs_dir, NULL, &nss_phy_global_state_fops);
+	debugfs_create_file("global_statistics", 0444, nss_phy_debugfs_dir, NULL, &nss_phy_global_statistics_fops);
+
+	mgr->debugfs_root = nss_phy_debugfs_dir;
+}
+
+/*
+ * nss_phy_debugfs_remove()
+ *	Remove debugfs entries for NSS PHY module.
+ */
+static void nss_phy_debugfs_remove(void)
+{
+	struct nss_phy_global_manager *mgr = &g_nss_phy_manager;
+
+	debugfs_remove_recursive(mgr->debugfs_root);
+	mgr->debugfs_root = NULL;
+}
+
 
 static int nss_phy_id_get(struct phy_device *phydev, int addr, u32 *phy_id)
 {
@@ -139,59 +274,95 @@ static int nss_phy_ptp_ops_add(struct phy_device *phydev, struct nss_phy_ops *ph
 }
 #endif
 
-static int nss_phy_ops_init(struct phy_device *phydev)
+static int nss_phy_ops_init(struct phy_device *phydev,
+		int (*ops_init)(struct nss_phy_ops *ops))
 {
-	int ret;
+	int ret = -NSS_PHY_EOPNOTSUPP;
 	struct nss_phy_ops *ops = NULL;
 
 	if (phydev->drv->driver_data)
 		return 0;
 
-	ops = nss_phy_kzalloc(sizeof(struct nss_phy_ops));
+	ops = devm_kzalloc(&phydev->mdio.dev, sizeof(struct nss_phy_ops), GFP_KERNEL);
 	if (!ops) {
 		phydev_err(phydev, "nss phy ops kzalloc failed!\n");
 		return -NSS_PHY_ENOSPC;
 	}
 
-	if (nss_phydev_id_compare(phydev, QCA8075_PHY, QCA807X_MASK)) {
-#if defined(CONFIG_NSSPHY_QCA807X)
-		ret = qca807x_phy_ops_init(ops);
-#endif
-	} else if (nss_phydev_id_compare(phydev, QCA8111_PHY, QCA81XX_MASK)) {
-#if defined(CONFIG_NSSPHY_QCA81XX)
-		ret = qca81xx_phy_ops_init(ops);
-#endif
-	} else if (nss_phydev_id_compare(phydev, QCA8084_PHY, QCA808X_MASK)) {
-#if defined(CONFIG_NSSPHY_QCA808X)
-		ret = qca808x_phy_ops_init(ops);
-#endif
-	} else if (nss_phydev_id_compare(phydev, QCA8033_PHY, QCA803X_MASK)) {
-#if defined(CONFIG_NSSPHY_QCA803X)
-		ret = qca803x_phy_ops_init(ops);
-#endif
-	} else if (nss_phydev_id_compare(phydev, QCA8337_PHY_V4,
-				       QCA8337_PHY_MASK)) {
-#if defined(CONFIG_NSSPHY_QCA833X)
-		ret = qca833x_phy_ops_init(ops);
-#endif
-	} else {
-		ret = -NSS_PHY_EOPNOTSUPP;
+	if (ops_init) {
+		ret = ops_init(ops);
+		if (ret < 0) {
+			phydev_err(phydev, "nss phy ops init failed!\n");
+			return ret;
+		}
 	}
-	if (ret < 0) {
-		phydev_err(phydev, "nss phy ops init failed\n");
-		kfree(ops);
-		ops = NULL;
-		return ret;
-	}
-
 #if defined(NSS_PHY_PTP)
 	ret = nss_phy_ptp_ops_add(phydev, ops);
-	if (ret)
+	if (ret) {
 		return ret;
+	}
 #endif
 	phydev->drv->driver_data = ops;
 
-	return nss_phy_ops_add(ops);
+	return 0;
+}
+
+static int nss_phy_probe(struct phy_device *phydev)
+{
+	struct nss_phy_device *nss_phydev;
+	int (*ops_init)(struct nss_phy_ops *ops) = NULL;
+
+	if (!phydev)
+		return -ENODEV;
+
+	nss_phydev = devm_kzalloc(&phydev->mdio.dev, sizeof(*nss_phydev), GFP_KERNEL);
+	if (!nss_phydev)
+		return -ENOMEM;
+
+	if (nss_phydev_id_compare(phydev, QCA8075_PHY, QCA807X_MASK)) {
+		atomic_inc(&g_nss_phy_manager.debug_stats.qca807x_num);
+#if defined(CONFIG_NSSPHY_QCA807X)
+		ops_init = qca807x_phy_ops_init;
+#endif
+	} else if (nss_phydev_id_compare(phydev, QCA8111_PHY, QCA81XX_MASK)) {
+		atomic_inc(&g_nss_phy_manager.debug_stats.qca81xx_num);
+#if defined(CONFIG_NSSPHY_QCA81XX)
+		ops_init = qca81xx_phy_ops_init;
+#endif
+	} else if (nss_phydev_id_compare(phydev, QCA8084_PHY, QCA808X_MASK)) {
+		atomic_inc(&g_nss_phy_manager.debug_stats.qca808x_num);
+#if defined(CONFIG_NSSPHY_QCA808X)
+		ops_init = qca808x_phy_ops_init;
+#endif
+	} else if (nss_phydev_id_compare(phydev, QCA8033_PHY, QCA803X_MASK)) {
+		atomic_inc(&g_nss_phy_manager.debug_stats.qca803x_num);
+#if defined(CONFIG_NSSPHY_QCA803X)
+		ops_init = qca803x_phy_ops_init;
+#endif
+	} else if (nss_phydev_id_compare(phydev, QCA8337_PHY_V4, QCA8337_PHY_MASK)) {
+		atomic_inc(&g_nss_phy_manager.debug_stats.qca833x_num);
+#if defined(CONFIG_NSSPHY_QCA833X)
+		ops_init = qca833x_phy_ops_init;
+#endif
+	} else {
+		atomic_inc(&g_nss_phy_manager.debug_stats.unknown_phy_num);
+	}
+
+	/*init nss phy ops*/
+	nss_phy_ops_init(phydev, ops_init);
+	/*init base addr*/
+	nss_phy_base_addr_init(phydev);
+
+	nss_phydev->phydev = phydev;
+	dev_set_drvdata(&phydev->mdio.dev, nss_phydev);
+
+	/* Initialize extended state and statistics */
+	atomic_set(&nss_phydev->pcs_state, 1);
+	atomic64_set(&nss_phydev->adjust_link_post_count, 0);
+
+	nss_phy_debugfs_init(phydev);
+
+	return 0;
 }
 
 static int nss_phy_match_phy_device(struct phy_device *phydev)
@@ -202,25 +373,14 @@ static int nss_phy_match_phy_device(struct phy_device *phydev)
 	if (phydev->drv == NULL)
 		return true;
 
-	/*init nss phy ops*/
-	nss_phy_ops_init(phydev);
-	/**
-	* if upstream driver did not init the base addr,
-	* will init it here
-	*/
-	nss_phy_base_addr_init(phydev);
+	nss_phy_probe(phydev);
 
 	return false;
 }
 
-static int nss_phy_probe(struct phy_device *phydev)
+static void nss_phy_remove(struct phy_device *phydev)
 {
-	/*init nss phy ops*/
-	nss_phy_ops_init(phydev);
-	/*init base addr*/
-	nss_phy_base_addr_init(phydev);
-
-	return 0;
+	nss_phy_debugfs_exit(phydev);
 }
 
 static int nss_phy_read_abilities(struct phy_device *phydev)
@@ -258,6 +418,7 @@ static int nss_phy_resume(struct phy_device *phydev)
 struct phy_driver nss_phy_driver = {
 	.name = "nss phy driver",
 	.probe = nss_phy_probe,
+	.remove = nss_phy_remove,
 	.match_phy_device = nss_phy_match_phy_device,
 	.get_features = nss_phy_read_abilities,
 	.read_status = nss_phy_read_status,
@@ -325,6 +486,7 @@ static struct mii_bus *nss_phy_mdio_i2c_bus_register(struct platform_device *pde
 		return NULL;
 	}
 
+	atomic64_inc(&g_nss_phy_manager.debug_stats.mdio_i2c_bus_num);
 	return mdio_i2c;
 }
 
@@ -351,6 +513,7 @@ static int nss_phy_sfp_device_register(struct mii_bus *bus)
 {
 	struct phy_device *phydev = NULL;
 	u32 phy_id = nss_sfp_phy_id_get(bus);
+	int ret = 0;
 
 	if (phy_id == NSS_INVALID_PHY_ID)
 		return -EINVAL;
@@ -363,7 +526,12 @@ static int nss_phy_sfp_device_register(struct mii_bus *bus)
 	if (!phydev)
 		return -EINVAL;
 
-	return phy_device_register(phydev);
+	ret = phy_device_register(phydev);
+	if (ret)
+		return ret;
+
+	atomic64_inc(&g_nss_phy_manager.debug_stats.sfp_devices_num);
+	return 0;
 }
 #endif
 
@@ -419,25 +587,52 @@ static int __init nss_phy_module_init(void)
 {
 	int ret = 0;
 
+	/* Initialize global state and statistics */
+	g_nss_phy_manager.init_state = NSS_PHY_INIT_START;
+
+	atomic_set(&g_nss_phy_manager.debug_stats.qca807x_num, 0);
+	atomic_set(&g_nss_phy_manager.debug_stats.qca81xx_num, 0);
+	atomic_set(&g_nss_phy_manager.debug_stats.qca808x_num, 0);
+	atomic_set(&g_nss_phy_manager.debug_stats.qca803x_num, 0);
+	atomic_set(&g_nss_phy_manager.debug_stats.qca833x_num, 0);
+	atomic_set(&g_nss_phy_manager.debug_stats.unknown_phy_num, 0);
+	atomic64_set(&g_nss_phy_manager.debug_stats.mdio_i2c_bus_num, 0);
+	atomic64_set(&g_nss_phy_manager.debug_stats.sfp_devices_num, 0);
+
+	nss_phy_debugfs_create();
+
 	ret = platform_driver_register(&nss_phy_platform_driver);
-	if (ret < 0)
+	if (ret < 0) {
 		pr_err("Failed to register nss_phy platform driver\n");
+		g_nss_phy_manager.init_state = NSS_PHY_INIT_PLATFORM_DRIVER_REGISTER_FAILURE;
+		return ret;
+	}
+
 	ret = phy_driver_register(&nss_phy_driver, THIS_MODULE);
-	if (!ret)
+	if (!ret) {
 		pr_info("nss phy driver register successfully\n");
+	} else {
+		pr_err("Failed to register nss_phy driver\n");
+		g_nss_phy_manager.init_state = NSS_PHY_INIT_PHY_DRIVER_REGISTER_FAILURE;
+		platform_driver_unregister(&nss_phy_platform_driver);
+		return ret;
+	}
 
 	ret = phy_register_fixup_for_uid(QCA_PHY_ID, QCA_PHY_MASK,
 		nss_phy_fixup);
+	if (ret < 0)
+		return ret;
+	g_nss_phy_manager.init_state = NSS_PHY_INIT_SUCCESS;
 
-	return ret;
+	return 0;
 }
 
 static void __exit nss_phy_module_exit(void)
 {
-	nss_phy_ops_free();
 	phy_driver_unregister(&nss_phy_driver);
 	phy_unregister_fixup_for_uid(QCA_PHY_ID, QCA_PHY_MASK);
 	platform_driver_unregister(&nss_phy_platform_driver);
+	nss_phy_debugfs_remove();
 }
 module_init(nss_phy_module_init);
 module_exit(nss_phy_module_exit);

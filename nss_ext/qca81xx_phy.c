@@ -252,14 +252,19 @@ static int qca81xx_phy_adjust_link_post(struct nss_phy_device *nss_phydev)
 {
 	int ret = 0;
 
+	atomic64_inc(&nss_phydev->adjust_link_post_count);
+
 	/* disable PHY PCS if PHY is suspended and link is down */
 	if (nss_phy_is_suspended(nss_phydev) &&
 		nss_phydev_link_get(nss_phydev) == NSS_PHY_FALSE) {
+		atomic_set(&nss_phydev->pcs_state, 0);
 		ret = nss_phy_pcs_modify_mmd(nss_phydev, QCA81XX_PHY_SERDES_ADDR_OFFSET,
 			NSS_PHY_MMD1_NUM, QCA81XX_PHY_PCS_PLL_POWER_ON_AND_RESET,
 			QCA81XX_PHY_PCS_ANA_SOFT_RESET_MASK, QCA81XX_PHY_PCS_ANA_SOFT_RESET);
 		if (ret < 0)
 			return ret;
+	} else {
+		atomic_set(&nss_phydev->pcs_state, 1);
 	}
 
 	return 0;

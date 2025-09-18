@@ -228,6 +228,31 @@ struct nss_phy_pinctrl_setting {
 	},							\
 }
 
+typedef enum {
+	NSS_PHY_INIT_START = 0,
+	NSS_PHY_INIT_PLATFORM_DRIVER_REGISTER_FAILURE,
+	NSS_PHY_INIT_PHY_DRIVER_REGISTER_FAILURE,
+	NSS_PHY_INIT_SUCCESS,
+	NSS_PHY_INIT_INVALID_STATE = 0xff,
+} nss_phy_init_state_t;
+
+struct nss_phy_global_statistics {
+	atomic_t qca807x_num;
+	atomic_t qca81xx_num;
+	atomic_t qca808x_num;
+	atomic_t qca803x_num;
+	atomic_t qca833x_num;
+	atomic_t unknown_phy_num;
+	atomic64_t mdio_i2c_bus_num;
+	atomic64_t sfp_devices_num;
+};
+
+struct nss_phy_global_manager {
+	nss_phy_init_state_t init_state;
+	struct nss_phy_global_statistics debug_stats;
+	struct dentry *debugfs_root;
+};
+
 struct nss_phy_ops {
 	int (*hibernation_set)(struct nss_phy_device *nss_phydev, u32 enable);
 	int (*hibernation_get)(struct nss_phy_device *nss_phydev, u32 *enable);
