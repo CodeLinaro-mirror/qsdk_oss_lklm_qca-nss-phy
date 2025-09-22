@@ -401,6 +401,7 @@ static int nss_phy_platform_remove(struct platform_device *pdev)
 
 static const struct of_device_id nss_phy_of_match[] = {
 	{.compatible = "qcom,nss-phy" },
+	{}
 };
 
 MODULE_DEVICE_TABLE(of, nss_phy_of_match);
