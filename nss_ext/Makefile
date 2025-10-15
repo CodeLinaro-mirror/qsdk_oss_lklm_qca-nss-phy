@@ -43,3 +43,8 @@ ifneq (, $(filter CONFIG_NSSPHY_QCA833X, $(supported_phys)))
     ccflags-y += -DCONFIG_NSSPHY_QCA833X
     $(TARGET)-objs += qca833x_phy.o
 endif
+
+ifneq (, $(filter CONFIG_NSSPHY_QCE1204, $(supported_phys)))
+    ccflags-y += -DCONFIG_NSSPHY_QCE1204X
+    $(TARGET)-objs += qce1204_phy.o
+endif
