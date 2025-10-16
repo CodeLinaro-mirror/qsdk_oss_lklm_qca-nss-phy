@@ -1,19 +1,10 @@
 /*
  * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
  */
 
+#include <linux/sysfs.h>
 #include "../qcom_phy_lib.h"
 #include "../clock/qca8k_clk.h"
 
@@ -94,9 +85,43 @@
 #define QCA8084_CALIBRATION_PHY4_EFUSE		0xC900068
 #define QCA8084_PTE_EFUSE			0xC900014
 
+enum qca8084_init_state {
+	QCA8084_INIT_STATE_START = 0,
+	QCA8084_INIT_STATE_ICC_EFUSE_FAILURE,
+	QCA8084_INIT_STATE_ABILITY_FIXUP_FAILURE,
+	QCA8084_INIT_STATE_SUCCESS,
+	QCA8084_INIT_STATE_INVALID = 0xff,
+};
+
+struct qca8084_debug_stats {
+	atomic64_t read_status_count;
+	atomic64_t config_aneg_count;
+	atomic64_t fifo_reset_count;
+};
+
 struct qca8084_priv {
 	u32 icc_value;
+	enum qca8084_init_state init_state;
+	struct qca8084_debug_stats debug_stats;
 };
+
+static void
+qca8084_priv_atomic64_inc(struct phy_device *phydev, atomic64_t *v)
+{
+	struct qca8084_priv *priv = phydev->priv;
+
+	if (priv && v)
+		atomic64_inc(v);
+}
+
+static void
+qca8084_set_init_state(struct phy_device *phydev, enum qca8084_init_state state)
+{
+	struct qca8084_priv *priv = phydev->priv;
+
+	if (priv)
+		priv->init_state = state;
+}
 
 static int qca8084_debug_reg_read(struct phy_device *phydev, u16 reg)
 {
@@ -191,6 +216,9 @@ static int qca8084_phy_index_get(struct phy_device *phydev)
 static int qca8084_phy_fifo_reset(struct phy_device *phydev, bool enable)
 {
 	u16 phy_data = 0;
+
+	qca8084_priv_atomic64_inc(phydev,
+		&((struct qca8084_priv *)phydev->priv)->debug_stats.fifo_reset_count);
 
 	if (!enable)
 		phy_data |= QCA8084_PHY_FIFO_RESET;
@@ -401,6 +429,8 @@ static int qca8084_read_status(struct phy_device *phydev)
 {
 	int ret, old_link;
 
+	qca8084_priv_atomic64_inc(phydev,
+		&((struct qca8084_priv *)phydev->priv)->debug_stats.read_status_count);
 	old_link = phydev->link;
 
 	ret = phy_read_mmd(phydev, MDIO_MMD_AN, MDIO_AN_10GBT_STAT);
@@ -447,6 +477,9 @@ static int qca8084_get_features(struct phy_device *phydev)
 static int qca8084_config_aneg(struct phy_device *phydev)
 {
 	int ret, phy_ctrl = 0, duplex = 0;
+
+	qca8084_priv_atomic64_inc(phydev,
+		&((struct qca8084_priv *)phydev->priv)->debug_stats.config_aneg_count);
 
 	if (phydev->autoneg == AUTONEG_DISABLE) {
 		duplex = phydev->duplex;
@@ -556,7 +589,10 @@ static int qca8084_icc_efuse_init(struct phy_device *phydev)
 
 static int qca8084_config_init(struct phy_device *phydev)
 {
-	int ret, index;
+	int ret = 0, index;
+	enum qca8084_init_state state = QCA8084_INIT_STATE_START;
+
+	qca8084_set_init_state(phydev, state);
 
 	if (phydev->interface != PHY_INTERFACE_MODE_INTERNAL &&
 		phydev->interface != PHY_INTERFACE_MODE_GMII) {
@@ -587,28 +623,164 @@ static int qca8084_config_init(struct phy_device *phydev)
 	/* Configure the ADC to convert the signal using falling edge
 	 * instead of the default rising edge.
 	 */
-	ret = qca8084_debug_reg_mask(phydev, QCA8084_ADC_CLK_SEL,
+	qca8084_debug_reg_mask(phydev, QCA8084_ADC_CLK_SEL,
 		QCA8084_ADC_CLK_SEL_ACLK,
 		FIELD_PREP(QCA8084_ADC_CLK_SEL_ACLK,
 		QCA8084_ADC_CLK_SEL_ACLK_FALL));
-	if (ret < 0)
-		return ret;
-
 	/* Adjust MSE threshold value to avoid link issue with
 	 * some link partner.
 	 */
-	ret = phy_write_mmd(phydev, MDIO_MMD_PMAPMD,
+	phy_write_mmd(phydev, MDIO_MMD_PMAPMD,
 		QCA8084_MSE_THRESHOLD,
 		QCA8084_MSE_THRESHOLD_2P5G_VAL);
-	if (ret < 0)
-		return ret;
-
 	/* initialize the icc value */
 	ret = qca8084_icc_efuse_init(phydev);
-	if (ret < 0)
-		return ret;
+	if (ret < 0) {
+		state = QCA8084_INIT_STATE_ICC_EFUSE_FAILURE;
+		goto err_out;
+	}
 
-	return qca8084_ability_fix_up(phydev);
+	ret = qca8084_ability_fix_up(phydev);
+	if (ret < 0) {
+		state = QCA8084_INIT_STATE_ABILITY_FIXUP_FAILURE;
+		goto err_out;
+	}
+
+	state = QCA8084_INIT_STATE_SUCCESS;
+
+err_out:
+	qca8084_set_init_state(phydev, state);
+	return ret;
+}
+
+static ssize_t qca8084_phy_show_debug_module_state(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct phy_device *phydev = to_phy_device(dev);
+	struct qca8084_priv *priv = phydev->priv;
+	ssize_t len = 0;
+
+	if (!priv)
+		return -EINVAL;
+
+	switch (priv->init_state) {
+	case QCA8084_INIT_STATE_START:
+		len += scnprintf(buf + len, PAGE_SIZE - len,
+			"%-24s : Success\n", "PHY INIT START");
+		break;
+	case QCA8084_INIT_STATE_ICC_EFUSE_FAILURE:
+		len += scnprintf(buf + len, PAGE_SIZE - len,
+			"%-24s : Failure\n", "PHY ICC EFUSE");
+		break;
+	case QCA8084_INIT_STATE_ABILITY_FIXUP_FAILURE:
+		len += scnprintf(buf + len, PAGE_SIZE - len,
+			"%-24s : Failure\n", "PHY ABILITY FIXUP");
+		break;
+	case QCA8084_INIT_STATE_SUCCESS:
+		len += scnprintf(buf + len, PAGE_SIZE - len,
+			"%-24s : Success\n", "PHY INIT");
+		break;
+	case QCA8084_INIT_STATE_INVALID:
+	default:
+		len += scnprintf(buf + len, PAGE_SIZE - len,
+			"%-24s : INVALID\n", "PHY INIT");
+		break;
+	}
+
+	/* PHY Device Structure Information (not available via ethtool) */
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+		"\n%s\n", "PHY Device Internal State");
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+		"    %-20s : %s\n", "is_c45", phydev->is_c45 ? "true" : "false");
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+		"    %-20s : %s\n", "suspended", phydev->suspended ? "true" : "false");
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+		"    %-20s : %s\n", "loopback_enabled", phydev->loopback_enabled ? "true" : "false");
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+		"    %-20s : %s\n", "interrupts", phydev->interrupts ? "enabled" : "disabled");
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+		"    %-20s : %s\n", "irq_suspended", phydev->irq_suspended ? "true" : "false");
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+		"    %-20s : %d\n", "state", phydev->state);
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+		"    %-20s : %s (%d)\n", "interface", phy_modes(phydev->interface), phydev->interface);
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+		"    %-20s : %s\n", "eee_enabled", phydev->eee_enabled ? "true" : "false");
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+		"    %-20s : 0x%08x\n", "eee_broken_modes", phydev->eee_broken_modes);
+
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+		"\n%s\n", "AFE Configuration");
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+		"    %-20s : 0x%04x\n", "ICC Value", priv->icc_value);
+
+	return len;
+}
+
+static ssize_t qca8084_phy_show_debug_module_statistics(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct phy_device *phydev = to_phy_device(dev);
+	struct qca8084_priv *priv = phydev->priv;
+	ssize_t len = 0;
+
+	if (!priv)
+		return -EINVAL;
+
+	len += scnprintf(buf + len, PAGE_SIZE - len, "QCA8084 PHY Debug Statistics\n");
+	len += scnprintf(buf + len, PAGE_SIZE - len, "    API Call Counters\n");
+	len += scnprintf(buf + len, PAGE_SIZE - len, "        Read Status Calls         : %llu\n",
+		atomic64_read(&priv->debug_stats.read_status_count));
+	len += scnprintf(buf + len, PAGE_SIZE - len, "        Config Aneg Calls         : %llu\n",
+		atomic64_read(&priv->debug_stats.config_aneg_count));
+	len += scnprintf(buf + len, PAGE_SIZE - len, "        Fifo Reset Calls          : %llu\n",
+		atomic64_read(&priv->debug_stats.fifo_reset_count));
+
+	return len;
+}
+
+static void _qca8084_phy_debug_module_reset_statistics(struct qca8084_priv *priv)
+{
+	if (!priv)
+		return;
+
+	atomic64_set(&priv->debug_stats.read_status_count, 0);
+	atomic64_set(&priv->debug_stats.config_aneg_count, 0);
+	atomic64_set(&priv->debug_stats.fifo_reset_count, 0);
+}
+
+static ssize_t qca8084_phy_debug_module_reset_statistics(struct device *dev,
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
+{
+	struct phy_device *phydev = to_phy_device(dev);
+	struct qca8084_priv *priv = phydev->priv;
+
+	if (!priv)
+		return -EINVAL;
+
+	if (count > 0 && (buf[0] == '0' || buf[0] == '\n'))
+		_qca8084_phy_debug_module_reset_statistics(priv);
+
+	return count;
+}
+
+static DEVICE_ATTR(module_state, 0444, qca8084_phy_show_debug_module_state, NULL);
+static DEVICE_ATTR(module_statistics, 0644, qca8084_phy_show_debug_module_statistics, qca8084_phy_debug_module_reset_statistics);
+
+static void qca8084_sysfs_init(struct phy_device *phydev)
+{
+	struct qca8084_priv *priv = phydev->priv;
+
+	_qca8084_phy_debug_module_reset_statistics(priv);
+	device_create_file(&phydev->mdio.dev, &dev_attr_module_state);
+	device_create_file(&phydev->mdio.dev, &dev_attr_module_statistics);
+}
+
+static void qca8084_sysfs_exit(struct phy_device *phydev)
+{
+	device_remove_file(&phydev->mdio.dev, &dev_attr_module_state);
+	device_remove_file(&phydev->mdio.dev, &dev_attr_module_statistics);
 }
 
 static int qca8084_probe(struct phy_device *phydev)
@@ -630,7 +802,14 @@ static int qca8084_probe(struct phy_device *phydev)
 	devm_phy_package_join(&phydev->mdio.dev, phydev,
 		FIELD_GET(QCA8084_EPHY_ADDR0_MASK, val), 0);
 
+	qca8084_sysfs_init(phydev);
+
 	return 0;
+}
+
+static void qca8084_remove(struct phy_device *phydev)
+{
+	qca8084_sysfs_exit(phydev);
 }
 
 static struct phy_driver qca8084_driver[] = {
@@ -647,6 +826,7 @@ static struct phy_driver qca8084_driver[] = {
 	.soft_reset		= genphy_soft_reset,
 	.config_init		= qca8084_config_init,
 	.probe			= qca8084_probe,
+	.remove			= qca8084_remove,
 },
 };
 
