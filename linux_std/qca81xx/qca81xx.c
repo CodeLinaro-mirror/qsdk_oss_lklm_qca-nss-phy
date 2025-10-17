@@ -62,9 +62,9 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_DEBUG_ANA_EDAC_RES_VAL0		0x5868
 #define QCA81XX_DEBUG_ANA_AFE_DAC9_DP		0x3080
 #define QCA81XX_DEBUG_ANA_EDAC_RES_VAL1		0x6858
-#define QCA81XX_DEBUG_ANA_TX_POWER_CTRL		0xbd80
-#define QCA81XX_DEBUG_ANA_TX_POWER_MASK		GENMASK(12, 0)
-#define QCA81XX_DEBUG_ANA_TX_POWER_REDUCED_1P3	0xdc3
+#define QCA81XX_DEBUG_ANA_RX_SENS_CTRL		0xbd80
+#define QCA81XX_DEBUG_ANA_RX_SENS_MASK		GENMASK(12, 0)
+#define QCA81XX_DEBUG_ANA_RX_SENS_VAL		0xdc3
 #define QCA81XX_DEBUG_ANA_OPEN_RAMPING_CRTL0	0x9180
 #define QCA81XX_DEBUG_ANA_OPEN_RAMPING_EN	BIT(7)
 
@@ -73,9 +73,9 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_MMD1_2P5G_VGA_BW_VAL		0x1b
 #define QCA81XX_MMD1_FFE_COEF1_CTRL		0x801B
 #define QCA81XX_MMD1_FFE_COEF1_VAL		BIT(3)
-#define QCA81XX_MMD1_MSE_THRESHOLD_CTRL		0x8020
-#define QCA81XX_MMD1_MSE_THRESHOLD_MASK		GENMASK(10, 0)
-#define QCA81XX_MMD1_MSE_THRESHOLD_VAL		0x419
+#define QCA81XX_MMD1_SNR_THRESHOLD_CTRL		0x8020
+#define QCA81XX_MMD1_SNR_THRESHOLD_MASK		GENMASK(10, 0)
+#define QCA81XX_MMD1_SNR_THRESHOLD_VAL		0x419
 #define QCA81XX_MMD1_10G_VGA_GAIN_CTRL		0x8022
 #define QCA81XX_MMD1_10G_VGA_GAIN_VAL		0x5dd9
 
@@ -148,9 +148,9 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_MMD3_OPEN_RAMPING_EN_MASK1	0x801
 #define QCA81XX_MMD3_OPEN_RAMPING_CTRL2		0xa01f
 #define QCA81XX_MMD3_OPEN_RAMPING_EN_MASK2	BIT(7)
-#define QCA81XX_MMD3_PB0_TRAIN_DURATION_CTRL	0xa017
-#define QCA81XX_MMD3_PB0_DURATION_MASK		GENMASK(5, 4)
-#define QCA81XX_MMD3_PB0_DURATION_VAL		0x10
+#define QCA81XX_MMD3_TRAIN_DURATION_CTRL	0xa017
+#define QCA81XX_MMD3_DURATION_MASK		GENMASK(5, 4)
+#define QCA81XX_MMD3_DURATION_VAL		0x10
 
 /*PHY MMD7 registers*/
 #define QCA81XX_MMD7_COUNTER_CTRL		0x8029
@@ -1281,10 +1281,10 @@ static int qca81xx_phy_ana_capacitance_update(struct phy_device *phydev)
 {
 	int ret = 0;
 
-	/* update tx power value */
-	ret = qca81xx_phy_debug_modify(phydev, QCA81XX_DEBUG_ANA_TX_POWER_CTRL,
-		QCA81XX_DEBUG_ANA_TX_POWER_MASK,
-		QCA81XX_DEBUG_ANA_TX_POWER_REDUCED_1P3);
+	/* update rx sensitivity value */
+	ret = qca81xx_phy_debug_modify(phydev, QCA81XX_DEBUG_ANA_RX_SENS_CTRL,
+		QCA81XX_DEBUG_ANA_RX_SENS_MASK,
+		QCA81XX_DEBUG_ANA_RX_SENS_VAL);
 	if (ret < 0)
 		return ret;
 	/* update edac resistor value */
@@ -1319,10 +1319,10 @@ static int qca81xx_phy_ana_capacitance_update(struct phy_device *phydev)
 		QCA81XX_MMD3_OPEN_RAMPING_CTRL2, QCA81XX_MMD3_OPEN_RAMPING_EN_MASK2, 0);
 	if (ret < 0)
 		return ret;
-	/* update MSE threshold */
+	/* update SNR threshold */
 	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_PMAPMD,
-		QCA81XX_MMD1_MSE_THRESHOLD_CTRL, QCA81XX_MMD1_MSE_THRESHOLD_MASK,
-		QCA81XX_MMD1_MSE_THRESHOLD_VAL);
+		QCA81XX_MMD1_SNR_THRESHOLD_CTRL, QCA81XX_MMD1_SNR_THRESHOLD_MASK,
+		QCA81XX_MMD1_SNR_THRESHOLD_VAL);
 	if (ret < 0)
 		return ret;
 	/* update VGA gain to improve 10G long cable high temperature performance */
@@ -1335,9 +1335,9 @@ static int qca81xx_phy_ana_capacitance_update(struct phy_device *phydev)
 		QCA81XX_MMD3_CABLE_TX_SKEW_MASK, 0x30);
 	if (ret < 0)
 		return ret;
-	/* adjust the PBO duration */
-	ret = phy_modify_mmd(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_PB0_TRAIN_DURATION_CTRL,
-		QCA81XX_MMD3_PB0_DURATION_MASK, QCA81XX_MMD3_PB0_DURATION_VAL);
+	/* adjust the training duration */
+	ret = phy_modify_mmd(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_TRAIN_DURATION_CTRL,
+		QCA81XX_MMD3_DURATION_MASK, QCA81XX_MMD3_DURATION_VAL);
 	if (ret < 0)
 		return ret;
 	ret = qca81xx_phy_soft_reset(phydev);
