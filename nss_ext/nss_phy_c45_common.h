@@ -1,17 +1,6 @@
 /*
- * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
  */
 
 #ifndef _NSS_PHY_C45_COMMON_H_
@@ -46,6 +35,8 @@ extern "C" {
 #define NSS_PHY_MMD7_LED1_FORCE_CTRL		0x8075
 #define NSS_PHY_MMD7_LED2_FORCE_CTRL		0x8077
 #define NSS_PHY_MMD7_LED_10G_CTRL		0x807a
+#define NSS_PHY_MMD7_TX_CTRL		0x9022
+#define NSS_PHY_MMD7_AUTONEG_STATUS		0x8001
 
 /*MMD registers field*/
 #define NSS_PHY_MMD1_PMA_SPEED_MASK		0x207c
@@ -78,6 +69,18 @@ extern "C" {
 
 #define NSS_PHY_MMD7_LINK_5000M_LIGHT_EN		0x2
 #define NSS_PHY_MMD7_LINK_10000M_LIGHT_EN		0x80
+#define NSS_PHY_MMD7_TX_ZERO		0x1
+#define NSS_PHY_MMD7_AUTONEG_STATUS_MASK		0xf
+#define NSS_PHY_MMD7_AUTONEG_INIT	0
+#define NSS_PHY_MMD7_AUTONEG_TRANS_DIS	1
+#define NSS_PHY_MMD7_AUTONEG_ADV_DETECT	2
+#define NSS_PHY_MMD7_AUTONEG_ACK_DETECT		3
+#define NSS_PHY_MMD7_AUTONEG_ACK_COMPLETE	4
+#define NSS_PHY_MMD7_AUTONEG_FLP_LINK_GOOD_CHECK	5
+#define NSS_PHY_MMD7_AUTONEG_FLP_LINK_GOOD	6
+#define NSS_PHY_MMD7_AUTONEG_LINK_STATUS_CHECK	7
+#define NSS_PHY_MMD7_AUTONEG_PARALLEL_DETECT_FAULT	8
+#define NSS_PHY_MMD7_AUTONEG_NEXT_PAGE_WAIT	9
 
 #define NSS_PHY_MMD31_INTR_FAST_LINK_DOWN		0x8000
 #define NSS_PHY_MMD31_INTR_SEC_ENA		0x2000
@@ -121,6 +124,9 @@ int nss_phy_c45_common_autoneg_restart(struct nss_phy_device *nss_phydev);
 int nss_phy_c45_common_cdt_start(struct nss_phy_device *nss_phydev);
 int nss_phy_c45_common_mdix_mode_set(struct nss_phy_device *nss_phydev,
 	enum nss_phy_mdix_mode mode);
+int nss_phy_c45_common_soft_reset(struct nss_phy_device *nss_phydev);
+int nss_phy_c45_common_mdix_set(struct nss_phy_device *nss_phydev,
+	enum nss_phy_mdix_mode mode);
 int nss_phy_c45_common_mdix_get(struct nss_phy_device *nss_phydev,
 	enum nss_phy_mdix_mode *mode);
 int nss_phy_c45_common_mdix_status_get(struct nss_phy_device *nss_phydev,
@@ -162,6 +168,8 @@ int nss_phy_c45_common_led_ctrl_source_set
 int nss_phy_c45_common_led_ctrl_source_get
 	(struct nss_phy_device *nss_phydev, u32 source_id,
 	struct nss_phy_led_pattern_ctrl *pattern);
+int nss_phy_c45_function_reset(struct nss_phy_device *nss_phydev,
+	enum nss_phy_reset reset_type);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

@@ -1,18 +1,8 @@
 /*
- * Copyright (c) 2024-2025, Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
  */
+
 #include "nss_phy.h"
 #include "nss_phy_c45_common.h"
 
@@ -302,6 +292,12 @@ int nss_phy_c45_common_pcs_local_loopback_set(struct nss_phy_device *nss_phydev,
 		if (ret < 0)
 			return ret;
 	}
+	if (nss_phydev_speed_get(nss_phydev) == NSS_PHY_SPEED_100) {
+		ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM, NSS_PHY_MMD7_TX_CTRL,
+			NSS_PHY_MMD7_TX_ZERO, enable ? NSS_PHY_MMD7_TX_ZERO : 0);
+		if (ret < 0)
+			return ret;
+	}
 
 	return 0;
 }
@@ -393,6 +389,24 @@ int nss_phy_c45_common_mdix_mode_set(struct nss_phy_device *nss_phydev,
 		NSS_PHY_SPEC_CONTROL, NSS_PHY_MDIX_AUTO, phy_data);
 
 	return ret;
+}
+
+int nss_phy_c45_common_soft_reset(struct nss_phy_device *nss_phydev)
+{
+	return nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD31_NUM,
+		NSS_PHY_CONTROL, NSS_PHY_SOFT_RESET, NSS_PHY_SOFT_RESET);
+}
+
+int nss_phy_c45_common_mdix_set(struct nss_phy_device *nss_phydev,
+	enum nss_phy_mdix_mode mode)
+{
+	int ret = 0;
+
+	ret = nss_phy_c45_common_mdix_mode_set(nss_phydev, mode);
+	if (ret < 0)
+		return ret;
+
+	return nss_phy_c45_common_soft_reset(nss_phydev);
 }
 
 int nss_phy_c45_common_mdix_get(struct nss_phy_device *nss_phydev,
@@ -578,7 +592,7 @@ int nss_phy_c45_common_intr_mask_get(struct nss_phy_device *nss_phydev,
 	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD31_NUM,
 		NSS_PHY_INTR_MASK);
 
-	*intr_mask = nss_phy_common_intr_from_reg(nss_phydev, phy_data);
+	*intr_mask = nss_phy_c45_common_intr_from_reg(nss_phydev, phy_data);
 
 	return 0;
 }
@@ -591,7 +605,7 @@ int nss_phy_c45_common_intr_status_get(struct nss_phy_device *nss_phydev,
 	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD31_NUM,
 		NSS_PHY_INTR_STATUS);
 
-	*intr_status = nss_phy_common_intr_from_reg(nss_phydev, phy_data);
+	*intr_status = nss_phy_c45_common_intr_from_reg(nss_phydev, phy_data);
 
 	return 0;
 }
@@ -862,6 +876,33 @@ int nss_phy_c45_common_led_ctrl_source_get(struct nss_phy_device *nss_phydev,
 		ret = nss_phy_10g_led_ctrl_get(nss_phydev, source_id, pattern);
 		if (ret < 0)
 			return ret;
+	}
+
+	return 0;
+}
+
+int nss_phy_c45_function_reset(struct nss_phy_device *nss_phydev,
+	enum nss_phy_reset reset_type)
+{
+	int ret = 0;
+
+	switch (reset_type) {
+	case FIFO_RESET:
+		ret = nss_phy_c45_common_fifo_reset(nss_phydev, true);
+		if (ret < 0)
+			return ret;
+		nss_phy_mdelay(50);
+		ret = nss_phy_c45_common_fifo_reset(nss_phydev, false);
+		if (ret < 0)
+			return ret;
+		break;
+	case SOFT_RESET:
+		ret = nss_phy_c45_common_soft_reset(nss_phydev);
+		if (ret < 0)
+			return ret;
+		break;
+	default:
+		return -NSS_PHY_EOPNOTSUPP;
 	}
 
 	return 0;

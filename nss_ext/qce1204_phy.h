@@ -12,8 +12,7 @@ extern "C"
 {
 #endif				/* __cplusplus */
 /*Debug registers*/
-#define QCE1204_PHY_DEBUG_AFE_DAC8_DP		0x2f80
-#define QCE1204_PHY_DEBUG_AFE_DAC9_DP		0x3080
+#define QCE1204_PHY_MMD7_CDT_WITH_AUTONEG	0x200
 
 int qce1204_phy_ops_init(struct nss_phy_ops *ops);
 #ifdef __cplusplus

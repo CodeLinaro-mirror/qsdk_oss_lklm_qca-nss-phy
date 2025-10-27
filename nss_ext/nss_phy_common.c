@@ -1,17 +1,6 @@
 /*
- * Copyright (c) 2024-2025, Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
  */
 
 #include "nss_phy.h"
@@ -947,6 +936,22 @@ int nss_phy_common_intr_status_get(struct nss_phy_device *nss_phydev,
 	phy_data = nss_phy_read(nss_phydev, NSS_PHY_INTR_STATUS);
 
 	*intr_status = nss_phy_common_intr_from_reg(nss_phydev, phy_data);
+
+	return 0;
+}
+
+int nss_phy_common_hibernation_status_get(struct nss_phy_device *nss_phydev,
+	u32 *status)
+{
+	u16 phy_data;
+
+	*status = !NSS_PHY_FALSE;
+
+	phy_data = nss_phy_read_debug(nss_phydev,
+		NSS_PHY_DEBUG_PHY_HIBERNATION_STAT);
+
+	if (phy_data & NSS_PHY_DEBUG_HIBERNATION_STAT_EN)
+		*status = NSS_PHY_FALSE;
 
 	return 0;
 }
