@@ -28,6 +28,25 @@
 #define QCE1204_PHY_MMD7_IPG_OP						0x901d
 #define QCE1204_PHY_IPG_10_TO_11_EN					BIT(0)
 
+#define QCE1204_MMD3_CDT_THRESH_CTRL14					0x807f
+#define QCE1204_MMD3_CDT_THRESH_CTRL14_VAL				0xb6b0
+#define QCE1204_MMD3_CDT_THRESH_CTRL2					0x8073
+#define QCE1204_MMD3_CDT_THRESH_CTRL2_VAL				0xb03f
+#define QCE1204_MMD3_CDT_THRESH_CTRL3					0x8074
+#define QCE1204_MMD3_CDT_THRESH_CTRL3_VAL				0xc040
+#define QCE1204_MMD3_CDT_THRESH_CTRL4					0x8075
+#define QCE1204_MMD3_CDT_THRESH_CTRL4_VAL				0xa060
+#define QCE1204_MMD3_CDT_THRESH_CTRL5					0x8076
+#define QCE1204_MMD3_CDT_THRESH_CTRL5_VAL				0xc040
+#define QCE1204_MMD3_CDT_THRESH_CTRL6					0x8077
+#define QCE1204_MMD3_CDT_THRESH_CTRL6_VAL				0xa060
+#define QCE1204_MMD3_CDT_THRESH_CTRL7					0x8078
+#define QCE1204_MMD3_CDT_THRESH_CTRL7_VAL				0xae50
+#define QCE1204_MMD3_CDT_THRESH_CTRL9					0x807a
+#define QCE1204_MMD3_CDT_THRESH_CTRL9_VAL				0xc060
+#define QCE1204_MMD3_CDT_THRESH_CTRL13					0x807e
+#define QCE1204_MMD3_CDT_THRESH_CTRL13_VAL				0xb060
+
 int qce1204_phy_config_aneg(struct phy_device *phydev)
 {
 	bool changed = false;
@@ -169,8 +188,44 @@ static int qce1204_ability_fix_up(struct phy_device *phydev)
 	return 0;
 }
 
+static int qce1204_phy_cdt_thresh_init(struct phy_device *phydev)
+{
+
+	phy_write_mmd(phydev, MDIO_MMD_PCS,
+		QCE1204_MMD3_CDT_THRESH_CTRL2,
+		QCE1204_MMD3_CDT_THRESH_CTRL2_VAL);
+	phy_write_mmd(phydev, MDIO_MMD_PCS,
+		QCE1204_MMD3_CDT_THRESH_CTRL3,
+		QCE1204_MMD3_CDT_THRESH_CTRL3_VAL);
+	phy_write_mmd(phydev, MDIO_MMD_PCS,
+		QCE1204_MMD3_CDT_THRESH_CTRL4,
+		QCE1204_MMD3_CDT_THRESH_CTRL4_VAL);
+	phy_write_mmd(phydev, MDIO_MMD_PCS,
+		QCE1204_MMD3_CDT_THRESH_CTRL5,
+		QCE1204_MMD3_CDT_THRESH_CTRL5_VAL);
+	phy_write_mmd(phydev, MDIO_MMD_PCS,
+		QCE1204_MMD3_CDT_THRESH_CTRL6,
+		QCE1204_MMD3_CDT_THRESH_CTRL6_VAL);
+	phy_write_mmd(phydev, MDIO_MMD_PCS,
+		QCE1204_MMD3_CDT_THRESH_CTRL7,
+		QCE1204_MMD3_CDT_THRESH_CTRL7_VAL);
+	phy_write_mmd(phydev, MDIO_MMD_PCS,
+		QCE1204_MMD3_CDT_THRESH_CTRL9,
+		QCE1204_MMD3_CDT_THRESH_CTRL9_VAL);
+	phy_write_mmd(phydev, MDIO_MMD_PCS,
+		QCE1204_MMD3_CDT_THRESH_CTRL13,
+		QCE1204_MMD3_CDT_THRESH_CTRL13_VAL);
+	phy_write_mmd(phydev, MDIO_MMD_PCS,
+		QCE1204_MMD3_CDT_THRESH_CTRL14,
+		QCE1204_MMD3_CDT_THRESH_CTRL14_VAL);
+
+	return 0;
+}
+
 static int qce1204_phy_config_init(struct phy_device *phydev)
 {
+	qce1204_phy_cdt_thresh_init(phydev);
+
 	return qce1204_ability_fix_up(phydev);
 }
 
