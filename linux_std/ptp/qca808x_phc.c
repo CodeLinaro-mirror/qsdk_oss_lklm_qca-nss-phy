@@ -28,6 +28,7 @@
 #define QCA8081_PHY_ID				0x004dd101
 #define QCA8084_PHY_ID				0x004dd180
 #define QCA8111_PHY_ID				0x004dd1c0
+#define QCE1204_PHY_ID				0x004dd190
 
 #define QCA808X_DEBUG_ADDR			0x1d
 #define QCA808X_DEBUG_DATA			0x1e
@@ -57,15 +58,16 @@
  * link speed.
  *
  * link_speed	clock_freq	divider		PTP reference clock
- * 10 G		800 MHZ		4		200 MHZ
- * 5 G		400 MHZ		2		200 MHZ
- * 2.5 G	200 MHZ		1		200 MHZ
- * 100 M/1 G	125 MHZ		1		125 MHZ
+ * 10G		800 MHZ		4		200 MHZ
+ * 5G		400 MHZ		2		200 MHZ
+ * 2.5G		200 MHZ		1		200 MHZ
+ * 10/100/1000M	125 MHZ		1		125 MHZ
  */
 #define QCA81XX_MMD1_SYNCE_CLK_CTRL		0x2000
 #define QCA81XX_SYNCE_CLK_SEL			GENMASK(6, 0)
 #define QCA81XX_SYNCE_SEL_AFE_ADC_CLK_0		0x10
 #define QCA81XX_SYNCE_SEL_AFE_ADC_CLK_1		0x12
+#define QCA81XX_SYNCE_SEL_AFE_PLL_CLK		0x40
 #define QCA81XX_SYNCE_CLK_DISABLE		BIT(7)
 #define QCA81XX_SYNCE_CLK_DIV			GENMASK(10, 8)
 
@@ -233,34 +235,51 @@ static const char *qca_phy_driver_ptp_supported_names[] = {
 	"Qualcomm QCA8081",
 	"Qualcomm QCA8084",
 	"Qualcomm QCA81xx",
+	"Qualcomm QCE1204",
 };
 
-static int qca808x_debug_reg_read(struct phy_device *phydev, u16 reg)
+static int __qca808x_debug_reg_read(struct phy_device *phydev, u16 reg)
 {
 	int ret;
 
-	ret = phy_write(phydev, QCA808X_DEBUG_ADDR, reg);
+	if (phydev->is_c45) {
+		ret = __phy_write_mmd(phydev, MDIO_MMD_VEND2, QCA808X_DEBUG_ADDR, reg);
+		if (ret < 0)
+			return ret;
+
+		return __phy_read_mmd(phydev, MDIO_MMD_VEND2, QCA808X_DEBUG_DATA);
+	}
+
+	ret = __phy_write(phydev, QCA808X_DEBUG_ADDR, reg);
 	if (ret < 0)
 		return ret;
 
-	return phy_read(phydev, QCA808X_DEBUG_DATA);
+	return __phy_read(phydev, QCA808X_DEBUG_DATA);
 }
 
 static int qca808x_debug_reg_mask(struct phy_device *phydev, u16 reg,
-				 u16 clear, u16 set)
+				  u16 clear, u16 set)
 {
 	u16 val;
 	int ret;
 
-	ret = qca808x_debug_reg_read(phydev, reg);
+	phy_lock_mdio_bus(phydev);
+	ret = __qca808x_debug_reg_read(phydev, reg);
 	if (ret < 0)
-		return ret;
+		goto debug_reg_unlock;
 
 	val = ret & 0xffff;
 	val &= ~clear;
 	val |= set;
 
-	return phy_write(phydev, QCA808X_DEBUG_DATA, val);
+	if (phydev->is_c45)
+		ret = __phy_write_mmd(phydev, MDIO_MMD_VEND2, QCA808X_DEBUG_DATA, val);
+	else
+		ret = __phy_write(phydev, QCA808X_DEBUG_DATA, val);
+
+debug_reg_unlock:
+	phy_unlock_mdio_bus(phydev);
+	return ret;
 }
 
 static int qca808x_ptp_rtc_reference_set(struct phy_device *phydev, int ref_clock)
@@ -693,7 +712,7 @@ static int qca808x_ptp_rtc_incval_set(struct phy_device *phydev, u32 nsec, u32 f
 	int ret;
 
 	data = FIELD_PREP(QCA808X_RTC_INC_NSEC, nsec);
-	data |= FIELD_PREP(QCA808X_RTC_INC_FRACTION_NSEC_HI, (fsec >> 16) && 0x3ff);
+	data |= FIELD_PREP(QCA808X_RTC_INC_FRACTION_NSEC_HI, (fsec >> 16) & 0x3ff);
 
 	ret = phy_write_mmd(phydev, MDIO_MMD_PCS, QCA808X_RTC_INC_CONF_0, data);
 	if (ret)
@@ -887,6 +906,33 @@ static int qca808x_ptp_verify(struct ptp_clock_info *ptp, unsigned int pin,
 	return 0;
 }
 
+/* For a 10 M link speed, the AFE_ADC does not provide a clock output.
+ * Select AFE_PLL as the clock source when operating at 10 M link speed.
+ */
+static void qce1204_link_state(struct phy_device *phydev)
+{
+	u16 val = 0;
+
+	switch (phydev->speed) {
+	case SPEED_2500:
+	case SPEED_1000:
+	case SPEED_100:
+		val = FIELD_PREP(QCA81XX_SYNCE_CLK_SEL, QCA81XX_SYNCE_SEL_AFE_ADC_CLK_0);
+		break;
+	case SPEED_10:
+	default:
+		val = FIELD_PREP(QCA81XX_SYNCE_CLK_SEL, QCA81XX_SYNCE_SEL_AFE_PLL_CLK);
+		break;
+	}
+
+	/* Do not need to do divider. */
+	val |= FIELD_PREP(QCA81XX_SYNCE_CLK_DIV, 0);
+
+	phy_modify_mmd(phydev, MDIO_MMD_PMAPMD, QCA81XX_MMD1_SYNCE_CLK_CTRL,
+		       QCA81XX_SYNCE_CLK_SEL | QCA81XX_SYNCE_CLK_DIV,
+		       val);
+}
+
 static void qca81xx_link_state(struct phy_device *phydev)
 {
 	u16 reg_val, div = 0, compensation = 0;
@@ -940,8 +986,12 @@ static void qca808x_ptp_change_notify(struct mii_timestamper *mii_ts, struct phy
 	u32 nsec;
 
 	mutex_lock(&clock->tsreg_lock);
+
 	if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], QCA8111_PHY_ID, 0x00ffffff))
 		qca81xx_link_state(phydev);
+
+	if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], QCE1204_PHY_ID, 0x00ffffff))
+		qce1204_link_state(phydev);
 
 	switch (phydev->speed) {
 	case SPEED_10000:
@@ -1137,7 +1187,7 @@ static int qca808x_hwtstamp(struct mii_timestamper *mii_ts, struct ifreq *ifr)
 			break;
 	}
 
-	if (ptp_info->hwts_tx_type || ptp_info->hwts_tx_type)
+	if (ptp_info->hwts_tx_type || ptp_info->hwts_rx_type)
 		ptp_en = true;
 
 	qca808x_ptp_enable_set(phydev, ptp_en, one_step);

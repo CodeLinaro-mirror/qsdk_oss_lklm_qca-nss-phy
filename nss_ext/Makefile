@@ -4,6 +4,7 @@
 ccflags-y += -Werror -Wall
 TARGET := qca-nss-phy
 obj-m += $(TARGET).o
+PTP_REQUIRE_CONFIG := CONFIG_NSSPHY_QCA808X CONFIG_NSSPHY_QCA81XX CONFIG_NSSPHY_QCE1204
 
 $(TARGET)-objs +=	\
 	nss_phy_common.o	\
@@ -19,19 +20,11 @@ endif
 ifneq (, $(filter CONFIG_NSSPHY_QCA808X, $(supported_phys)))
     ccflags-y += -DCONFIG_NSSPHY_QCA808X
     $(TARGET)-objs += qca808x_phy.o qca8084_pinctrl.o
-    ifeq ($(nss-phy-ptp), y)
-        $(TARGET)-objs += nss_phy_ptp.o nss_phy_ptp_api.o
-        ccflags-y += -DNSS_PHY_PTP
-    endif
 endif
 
 ifneq (, $(filter CONFIG_NSSPHY_QCA81XX, $(supported_phys)))
     ccflags-y += -DCONFIG_NSSPHY_QCA81XX
     $(TARGET)-objs += qca81xx_phy.o
-    ifeq ($(nss-phy-ptp), y)
-        $(TARGET)-objs += nss_phy_ptp.o nss_phy_ptp_api.o
-        ccflags-y += -DNSS_PHY_PTP
-    endif
 endif
 
 ifneq (, $(filter CONFIG_NSSPHY_QCA803X, $(supported_phys)))
@@ -47,4 +40,11 @@ endif
 ifneq (, $(filter CONFIG_NSSPHY_QCE1204, $(supported_phys)))
     ccflags-y += -DCONFIG_NSSPHY_QCE1204
     $(TARGET)-objs += qce1204_phy.o
+endif
+
+ifneq (, $(filter $(PTP_REQUIRE_CONFIG), $(supported_phys)))
+    ifeq ($(nss-phy-ptp), y)
+        $(TARGET)-objs += nss_phy_ptp.o nss_phy_ptp_api.o
+        ccflags-y += -DNSS_PHY_PTP
+    endif
 endif

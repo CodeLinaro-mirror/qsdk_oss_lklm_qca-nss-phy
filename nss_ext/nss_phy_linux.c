@@ -268,6 +268,7 @@ static int nss_phy_ptp_ops_add(struct phy_device *phydev, struct nss_phy_ops *ph
 
 	if (!(nss_phydev_id_compare(phydev, QCA8111_PHY, GENMASK(31, 0)) ||
 	    nss_phydev_id_compare(phydev, QCA8084_PHY, GENMASK(31, 0)) ||
+	    nss_phydev_id_compare(phydev, QCE1204_PHY, QCA_PHY_EXACT_MASK) ||
 	    nss_phydev_id_compare(phydev, QCA8081_PHY, GENMASK(31, 0))))
 		return 0;
 
