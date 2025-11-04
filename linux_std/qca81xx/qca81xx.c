@@ -151,6 +151,9 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_MMD3_TRAIN_DURATION_CTRL	0xa017
 #define QCA81XX_MMD3_DURATION_MASK		GENMASK(5, 4)
 #define QCA81XX_MMD3_DURATION_VAL		0x10
+#define QCA81XX_MMD3_DELAY_DATA_MODE		0xa028
+#define QCA81XX_MMD3_DELAY_DATA_MODE_MASK	GENMASK(13, 8)
+#define QCA81XX_MMD3_DELAY_DATA_MODE_VAL	0x5a00
 
 /*PHY MMD7 registers*/
 #define QCA81XX_MMD7_COUNTER_CTRL		0x8029
@@ -1268,6 +1271,13 @@ static int qca81xx_phy_eee_config_init(struct phy_device *phydev)
 	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_PCS,
 		QCA81XX_MMD3_AZ_1G_AFE_CTRL,
 		QCA81XX_MMD3_AZ_1G_AFE_CTRL_MASK, 0);
+	if (ret < 0)
+		return ret;
+	/* some link partner would enter to data mode later than laguna when */
+	/* EEE is enabled, so laguna need to match it */
+	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_PCS,
+		QCA81XX_MMD3_DELAY_DATA_MODE,
+		QCA81XX_MMD3_DELAY_DATA_MODE_MASK, QCA81XX_MMD3_DELAY_DATA_MODE_VAL);
 
 	return ret;
 }
