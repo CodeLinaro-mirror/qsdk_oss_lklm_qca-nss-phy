@@ -547,8 +547,10 @@ static int nss_phy_sfp_device_register(struct mii_bus *bus)
 		return -EINVAL;
 
 	ret = phy_device_register(phydev);
-	if (ret)
+	if (ret) {
+		phy_device_free(phydev);
 		return ret;
+	}
 
 	atomic64_inc(&g_nss_phy_manager.debug_stats.sfp_devices_num);
 	return 0;
