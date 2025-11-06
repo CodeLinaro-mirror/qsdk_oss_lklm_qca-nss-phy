@@ -7,9 +7,6 @@
 #define _QCA81XX_H_
 
 #include <linux/phy.h>
-#if IS_ENABLED(CONFIG_MACSEC)
-#include "qca81xx_macsec.h"
-#endif
 
 #define QCA8111_PHY		0x004dd1c0
 /* in QCOM MDIO bus driver, bit29~31 is for soc type, 2 is for laguna */
@@ -100,9 +97,6 @@ struct qca81xx_debug_stats {
 
 struct qca81xx_private {
 
-#if IS_ENABLED(CONFIG_MACSEC)
-	struct qca_macsec_cfg_t macsec_cfg;
-#endif
 	struct qca81xx_sku_info sku;
 #if IS_ENABLED(CONFIG_HWMON)
 	struct device *hwmon_dev;

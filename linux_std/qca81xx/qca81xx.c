@@ -1371,7 +1371,6 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 {
 	int ret = 0;
 	enum qca81xx_init_state state = QCA81XX_INIT_START;
-	struct qca81xx_private *priv = phydev->priv;
 
 	qca81xx_set_init_state(phydev, state);
 
@@ -1420,10 +1419,6 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 		goto err_out;
 	}
 	qca81xx_phy_cdt_thresh_init(phydev);
-#if IS_ENABLED(CONFIG_MACSEC)
-	if(priv && priv->sku.macsec)
-		qca81xx_macsec_init(phydev);
-#endif
 #if IS_ENABLED(CONFIG_HWMON)
 	qca81xx_hwmon_hw_init(phydev);
 #endif

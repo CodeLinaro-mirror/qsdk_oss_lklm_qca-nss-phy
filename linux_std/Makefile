@@ -1,4 +1,4 @@
-obj-y := qca8084/ ptp/ clock/
+obj-y := qca8084/ ptp/ clock/ macsec/
 #
 # PHY objects
 #
@@ -8,8 +8,4 @@ qcom-lnx-phy-objs := qca81xx/qca81xx.o qce1204/qce1204.o
 
 ifdef CONFIG_HWMON
 qcom-lnx-phy-objs += qca81xx/qca81xx_hwmon.o
-endif
-
-ifdef CONFIG_MACSEC
-qcom-lnx-phy-objs += qca81xx/qca81xx_macsec.o
 endif
