@@ -205,6 +205,9 @@ int qca81xx_hwmon_probe(struct phy_device *phydev)
 	struct qca81xx_private *priv = phydev->priv;
 
 	hwmon_name = devm_kstrdup(dev, dev_name(dev), GFP_KERNEL);
+	if (!hwmon_name)
+		return -ENOMEM;
+
 	for (i = j = 0; hwmon_name[i]; i++) {
 		if (isalnum(hwmon_name[i])) {
 			if (i != j)
