@@ -648,72 +648,12 @@ int qce1204_phy_soft_reset(struct phy_device *phydev)
 		MII_BMCR, BMCR_RESET, BMCR_RESET);
 }
 
-int qce1204_phy_ack_interrupt(struct phy_device *phydev)
-{
-	int ret = 0;
-
-	ret = phy_read_mmd(phydev, MDIO_MMD_VEND2,
-		QCE1204_PHY_INTR_STATUS);
-
-	return (ret < 0) ? ret : 0;
-}
-
-int qce1204_phy_config_intr(struct phy_device *phydev)
-{
-	int ret = 0;
-	u16 mask = 0;
-
-	mask = QCE1204_PHY_INTR_STATUS_DOWN | QCE1204_PHY_INTR_STATUS_UP;
-
-	if (phydev->interrupts == PHY_INTERRUPT_ENABLED) {
-		ret = qce1204_phy_ack_interrupt(phydev);
-		if (ret < 0)
-			return ret;
-		ret = phy_modify_mmd(phydev, MDIO_MMD_VEND2, QCE1204_PHY_INTR_MASK,
-			mask, mask);
-	} else {
-		ret = phy_modify_mmd(phydev, MDIO_MMD_VEND2, QCE1204_PHY_INTR_MASK,
-			mask, 0);
-		if (ret < 0)
-			return ret;
-		ret = qce1204_phy_ack_interrupt(phydev);
-	}
-
-	return ret;
-}
-
-irqreturn_t qce1204_phy_handle_interrupt(struct phy_device *phydev)
-{
-	int irq_status, int_enabled;
-
-	irq_status = phy_read_mmd(phydev, MDIO_MMD_VEND2, QCE1204_PHY_INTR_STATUS);
-	if (irq_status < 0) {
-		phy_error(phydev);
-		return IRQ_NONE;
-	}
-
-	/* Read the current enabled interrupts */
-	int_enabled = phy_read_mmd(phydev, MDIO_MMD_VEND2, QCE1204_PHY_INTR_MASK);
-	if (int_enabled < 0) {
-		phy_error(phydev);
-		return IRQ_NONE;
-	}
-
-	/* See if this was one of our enabled interrupts */
-	if (!(irq_status & int_enabled))
-		return IRQ_NONE;
-
-	phy_trigger_machine(phydev);
-
-	return IRQ_HANDLED;
-}
-
 static int qce1204_phy_channel_get(struct phy_device *phydev)
 {
 	return (phydev->mdio.addr - phydev->shared->addr + 1);
 }
 
-static int qce1204_phy_probe(struct phy_device *phydev)
+int qce1204_phy_probe(struct phy_device *phydev)
 {
 	struct device *dev = &phydev->mdio.dev;
 	int ret;
@@ -775,7 +715,7 @@ static int qce1204_phy_cdt_thresh_init(struct phy_device *phydev)
 	return 0;
 }
 
-static int qce1204_phy_config_init(struct phy_device *phydev)
+int qce1204_phy_config_init(struct phy_device *phydev)
 {
 	if (phydev->interface != PHY_INTERFACE_MODE_INTERNAL &&
 		phydev->interface != PHY_INTERFACE_MODE_GMII) {
@@ -908,24 +848,3 @@ int qce1204_phy_read_status(struct phy_device *phydev)
 
 	return 0;
 }
-
-static struct phy_driver qce1204_phy_driver[] = {
-{
-	PHY_ID_MATCH_EXACT(QCE1204_PHY),
-	.name = "Qualcomm QCE1204",
-	.flags = PHY_POLL_CABLE_TEST,
-	.probe = qce1204_phy_probe,
-	.config_init = qce1204_phy_config_init,
-	.config_aneg = qce1204_phy_config_aneg,
-	.config_intr = qce1204_phy_config_intr,
-	.handle_interrupt = qce1204_phy_handle_interrupt,
-	.read_status = qce1204_phy_read_status,
-	.suspend = genphy_c45_pma_suspend,
-	.resume = genphy_c45_pma_resume,
-	.soft_reset = qce1204_phy_soft_reset,
-},
-};
-
-module_phy_driver(qce1204_phy_driver);
-MODULE_DESCRIPTION("QCE1204 PHY Driver");
-MODULE_LICENSE("Dual BSD/GPL");

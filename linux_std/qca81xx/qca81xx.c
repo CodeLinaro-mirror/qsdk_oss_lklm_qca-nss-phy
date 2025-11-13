@@ -2937,7 +2937,50 @@ void qca81xx_debugfs_exit(struct phy_device *phydev)
 	device_remove_file(&phydev->mdio.dev, &dev_attr_module_state);
 }
 
-static struct phy_driver qca81xx_phy_driver[] = {
+/* QCE1204 PHY ID and function declarations */
+#define QCE1204_PHY		0x004dd190
+
+/**
+ * qce1204_phy_probe - Probe QCE1204 PHY device
+ * @phydev: PHY device structure
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int qce1204_phy_probe(struct phy_device *phydev);
+
+/**
+ * qce1204_phy_config_init - Configure initial settings for QCE1204 PHY
+ * @phydev: PHY device structure
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int qce1204_phy_config_init(struct phy_device *phydev);
+
+/**
+ * qce1204_phy_config_aneg - Configure auto-negotiation for QCE1204 PHY
+ * @phydev: PHY device structure
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int qce1204_phy_config_aneg(struct phy_device *phydev);
+
+/**
+ * qce1204_phy_read_status - Read the status of QCE1204 PHY
+ * @phydev: PHY device structure
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int qce1204_phy_read_status(struct phy_device *phydev);
+
+/**
+ * qce1204_phy_soft_reset - Perform a soft reset on QCE1204 PHY
+ * @phydev: PHY device structure
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int qce1204_phy_soft_reset(struct phy_device *phydev);
+
+static struct phy_driver qcom_phy_driver[] = {
 {
 	PHY_ID_MATCH_EXACT(QCA8111_PHY),
 	.name = "Qualcomm QCA81xx",
@@ -2969,8 +3012,39 @@ static struct phy_driver qca81xx_phy_driver[] = {
 	.led_hw_control_get = qca81xx_led_hw_control_get,
 	.led_polarity_set = qca81xx_led_polarity_set,
 },
+{
+	PHY_ID_MATCH_EXACT(QCE1204_PHY),
+	.name = "Qualcomm QCE1204",
+	.flags = PHY_POLL_CABLE_TEST,
+	.probe = qce1204_phy_probe,
+	.config_init = qce1204_phy_config_init,
+	.config_aneg = qce1204_phy_config_aneg,
+	.read_status = qce1204_phy_read_status,
+	.soft_reset = qce1204_phy_soft_reset,
+	.suspend = genphy_c45_pma_suspend,
+	.resume = genphy_c45_pma_resume,
+	.config_intr = qca81xx_phy_config_intr,
+	.handle_interrupt = qca81xx_phy_handle_interrupt,
+	.set_wol = qca81xx_phy_set_wol,
+	.get_wol = qca81xx_phy_get_wol,
+	.get_tunable = qca81xx_phy_get_tunable,
+	.set_tunable = qca81xx_phy_set_tunable,
+	.led_brightness_set = qca81xx_led_brightness_set,
+	.led_blink_set = qca81xx_led_blink_set,
+	.led_hw_is_supported = qca81xx_led_hw_is_supported,
+	.led_hw_control_set = qca81xx_led_hw_control_set,
+	.led_hw_control_get = qca81xx_led_hw_control_get,
+	.led_polarity_set = qca81xx_led_polarity_set,
+},
 };
+module_phy_driver(qcom_phy_driver);
 
-module_phy_driver(qca81xx_phy_driver);
-MODULE_DESCRIPTION("QCA81XX PHY Driver");
+static struct mdio_device_id __maybe_unused qcom_phy_tbl[] = {
+	{ PHY_ID_MATCH_EXACT(QCA8111_PHY) },
+	{ PHY_ID_MATCH_EXACT(QCE1204_PHY) },
+	{ }
+};
+MODULE_DEVICE_TABLE(mdio, qcom_phy_tbl);
+
+MODULE_DESCRIPTION("QCOM Linux PHY Driver");
 MODULE_LICENSE("Dual BSD/GPL");
