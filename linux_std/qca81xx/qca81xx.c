@@ -1886,9 +1886,6 @@ static int qca81xx_phy_probe(struct phy_device *phydev)
 	/* Initialize sysfs module state/statistics support */
 	qca81xx_debugfs_init(phydev);
 
-	/* to fix the reboot issue of laguna SFP */
-	phydev->drv->mdiodrv.driver.shutdown = qca81xx_phy_shutdown;
-
 	return 0;
 }
 
@@ -3006,6 +3003,8 @@ static struct phy_driver qcom_phy_driver[] = {
 	.led_hw_control_set = qca81xx_led_hw_control_set,
 	.led_hw_control_get = qca81xx_led_hw_control_get,
 	.led_polarity_set = qca81xx_led_polarity_set,
+	/* to fix the reboot issue of laguna SFP */
+	.mdiodrv.driver.shutdown = qca81xx_phy_shutdown,
 },
 {
 	PHY_ID_MATCH_EXACT(QCE1204_PHY),
