@@ -587,6 +587,18 @@ static int qca8084_icc_efuse_init(struct phy_device *phydev)
 	return ret;
 }
 
+static void qca8084_fill_possible_interfaces(struct phy_device *phydev)
+{
+	unsigned long *possible = phydev->possible_interfaces;
+
+	if (phydev->interface == PHY_INTERFACE_MODE_QUSGMII) {
+		__set_bit(PHY_INTERFACE_MODE_QUSGMII, possible);
+	} else {
+		__set_bit(PHY_INTERFACE_MODE_SGMII, possible);
+		__set_bit(PHY_INTERFACE_MODE_2500BASEX, possible);
+	}
+}
+
 static int qca8084_config_init(struct phy_device *phydev)
 {
 	int ret = 0, index;
@@ -611,6 +623,7 @@ static int qca8084_config_init(struct phy_device *phydev)
 				qcom_phy_pcs_interface_set(phydev, config);
 			}
 		}
+		qca8084_fill_possible_interfaces(phydev);
 	}
 
 	/* Disable the LDO2 and LDO3 which are not used */
