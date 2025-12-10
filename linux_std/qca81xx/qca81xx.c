@@ -2972,6 +2972,9 @@ int qce1204_phy_read_status(struct phy_device *phydev);
  */
 int qce1204_phy_soft_reset(struct phy_device *phydev);
 
+/* IPQ52XX Built-in PHY ID and function declarations */
+#define IPQ52XX_PHY			0x004dd120
+
 static struct phy_driver qcom_phy_driver[] = {
 {
 	PHY_ID_MATCH_EXACT(QCA8111_PHY),
@@ -3030,12 +3033,35 @@ static struct phy_driver qcom_phy_driver[] = {
 	.led_hw_control_get = qca81xx_led_hw_control_get,
 	.led_polarity_set = qca81xx_led_polarity_set,
 },
+{
+	PHY_ID_MATCH_EXACT(IPQ52XX_PHY),
+	.name = "Qualcomm IPQ52XX internal PHY",
+	.flags = PHY_IS_INTERNAL | PHY_POLL_CABLE_TEST,
+	.config_aneg = qce1204_phy_config_aneg,
+	.read_status = qce1204_phy_read_status,
+	.soft_reset = qce1204_phy_soft_reset,
+	.suspend = genphy_c45_pma_suspend,
+	.resume = genphy_c45_pma_resume,
+	.config_intr = qca81xx_phy_config_intr,
+	.handle_interrupt = qca81xx_phy_handle_interrupt,
+	.set_wol = qca81xx_phy_set_wol,
+	.get_wol = qca81xx_phy_get_wol,
+	.get_tunable = qca81xx_phy_get_tunable,
+	.set_tunable = qca81xx_phy_set_tunable,
+	.led_brightness_set = qca81xx_led_brightness_set,
+	.led_blink_set = qca81xx_led_blink_set,
+	.led_hw_is_supported = qca81xx_led_hw_is_supported,
+	.led_hw_control_set = qca81xx_led_hw_control_set,
+	.led_hw_control_get = qca81xx_led_hw_control_get,
+	.led_polarity_set = qca81xx_led_polarity_set,
+},
 };
 module_phy_driver(qcom_phy_driver);
 
 static struct mdio_device_id __maybe_unused qcom_phy_tbl[] = {
 	{ PHY_ID_MATCH_EXACT(QCA8111_PHY) },
 	{ PHY_ID_MATCH_EXACT(QCE1204_PHY) },
+	{ PHY_ID_MATCH_EXACT(IPQ52XX_PHY) },
 	{ }
 };
 MODULE_DEVICE_TABLE(mdio, qcom_phy_tbl);

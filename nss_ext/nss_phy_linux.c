@@ -345,8 +345,9 @@ static int nss_phy_probe(struct phy_device *phydev)
 #if defined(CONFIG_NSSPHY_QCA81XX)
 		ops_init = qca81xx_phy_ops_init;
 #endif
-	} else if (nss_phydev_id_compare(phydev, QCE1204_PHY, QCA_PHY_EXACT_MASK)) {
-#if defined(CONFIG_NSSPHY_QCE1204)
+	} else if (nss_phydev_id_compare(phydev, QCE1204_PHY, QCA_PHY_EXACT_MASK) ||
+		nss_phydev_id_compare(phydev, IPQ52XX_PHY, QCA_PHY_EXACT_MASK)) {
+#if (defined(CONFIG_NSSPHY_QCE1204) || defined(CONFIG_NSSPHY_IPQ52XX))
 		ops_init = qce1204_phy_ops_init;
 #endif
 	} else if (nss_phydev_id_compare(phydev, QCA8084_PHY, QCA808X_MASK)) {

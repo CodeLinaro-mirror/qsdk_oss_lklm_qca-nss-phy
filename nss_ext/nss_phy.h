@@ -28,12 +28,13 @@ extern "C" {
 #define QCA8337_PHY_V2		0x004DD034
 #define QCA8337_PHY_V3		0x004DD035
 #define QCA8337_PHY_V4		0x004DD036
-#define QCA8337_PHY_MASK		0xfffffff0
+#define QCA8337_PHY_MASK	0xfffffff0
 #define QCA8030_PHY		0x004DD076
 #define QCA8033_PHY		0x004DD074
 #define QCA8035_PHY		0x004DD072
 #define QCA803X_MASK		0xfffffff0
 #define QCE1204_PHY		0x004dd190
+#define IPQ52XX_PHY		0x004dd120
 
 #define NSS_BIT(_n)		(1UL << (_n))
 #define NSS_PHY_FALSE		0

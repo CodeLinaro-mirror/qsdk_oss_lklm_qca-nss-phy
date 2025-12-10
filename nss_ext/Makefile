@@ -48,3 +48,8 @@ ifneq (, $(filter $(PTP_REQUIRE_CONFIG), $(supported_phys)))
         ccflags-y += -DNSS_PHY_PTP
     endif
 endif
+
+ifneq (, $(filter CONFIG_NSSPHY_IPQ52XX, $(supported_phys)))
+    ccflags-y += -DCONFIG_NSSPHY_IPQ52XX
+    $(TARGET)-objs += qce1204_phy.o
+endif
