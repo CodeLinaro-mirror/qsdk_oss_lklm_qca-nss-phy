@@ -1158,6 +1158,10 @@ static int qca81xx_phy_gcc_pre_init(struct phy_device *phydev)
 {
 	int ret;
 
+	/* switch the ahb clock as 50M */
+	ret = qca81xx_soc_ahb_clk_set(phydev, AHB_CLK_50M);
+	if (ret < 0)
+		return ret;
 	/* enable efuse loading into analog circuit */
 	ret = qca81xx_soc_modify(phydev, EPHY_CFG, EPHY_LDO_CTRL, 0);
 	mdelay(10);
