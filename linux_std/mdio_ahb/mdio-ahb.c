@@ -226,12 +226,12 @@ static struct mii_bus *mdio_ahb_bus_register(phys_addr_t base, size_t size, stru
 	priv->dev = parent;
 
 	/* Configure MDIO bus */
-	bus->name = "MDIO-AHB-BUS";
+	bus->name = MDIO_AHB_BUS_NAME;
 	bus->read_c45 = mdio_ahb_read_c45;
 	bus->write_c45 = mdio_ahb_write_c45;
 	bus->parent = parent;
 
-	snprintf(bus->id, MII_BUS_ID_SIZE, "MDIO-AHB-BUS");
+	snprintf(bus->id, MII_BUS_ID_SIZE, MDIO_AHB_BUS_NAME);
 
 	/* Register MDIO bus */
 	ret = mdiobus_register(bus);
