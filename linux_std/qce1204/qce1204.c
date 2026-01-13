@@ -1769,7 +1769,7 @@ int qce1204_phy_soft_reset(struct phy_device *phydev)
 		MII_BMCR, BMCR_RESET, BMCR_RESET);
 }
 
-static int qce1204_phy_channel_get(struct phy_device *phydev)
+int qce1204_phy_channel_get(struct phy_device *phydev)
 {
 	return (phydev->mdio.addr - phydev->shared->addr + 1);
 }
@@ -2045,6 +2045,9 @@ int qce1204_phy_probe(struct phy_device *phydev)
 	ret = devm_of_phy_package_join(dev, phydev, sizeof(struct qce1204_shared_priv));
 	if (ret < 0)
 		return ret;
+#if IS_ENABLED(CONFIG_HWMON)
+	qce1204_hwmon_probe(phydev);
+#endif
 
 	/* Allocate private data structure for this PHY */
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
@@ -2363,6 +2366,9 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 		if (ret < 0)
 			return ret;
 	 }
+#if IS_ENABLED(CONFIG_HWMON)
+	qce1204_hwmon_hw_init(phydev);
+#endif
 	ret = qce1204_phy_soft_reset(phydev);
 	if (ret < 0)
 		return ret;
