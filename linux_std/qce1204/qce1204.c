@@ -113,6 +113,14 @@
 #define QCE1204_PCS_MMD_CH3						27
 #define QCE1204_PCS_MMD_CH4						28
 
+static int qce1204_soc_addr_get(struct phy_device *phydev)
+{
+	if (!phydev || !phydev->shared)
+		return PHY_MAX_ADDR;
+
+	return phydev->shared->addr + QCE1204_SOC_ADDR_OFFSET;
+}
+
 static void qce1204_split_addr(u32 regaddr, u16 *reg_low, u16 *reg_mid,
 	u16 *reg_high)
 {
@@ -129,7 +137,10 @@ u32 __qce1204_soc_read(struct phy_device *phydev, u32 reg)
 	u16 lo, hi;
 	u32 addr;
 
-	addr = FIELD_GET(GENMASK(28, 24), reg);
+	addr = qce1204_soc_addr_get(phydev);
+	if (addr >= PHY_MAX_ADDR)
+		return 0xFFFFFFFF;
+
 	qce1204_split_addr(reg, &reg_low, &reg_mid, &reg_high);
 	/*write ahb address bit4~bit23*/
 	__mdiobus_write(phydev->mdio.bus, addr, reg_high & 0x1f, reg_mid);
@@ -148,7 +159,9 @@ void __qce1204_soc_write(struct phy_device *phydev, u32 reg, u32 val)
 	u16 lo, hi;
 	u32 addr;
 
-	addr = FIELD_GET(GENMASK(28, 24), reg);
+	addr = qce1204_soc_addr_get(phydev);
+	if (addr >= PHY_MAX_ADDR)
+		return;
 
 	qce1204_split_addr(reg, &reg_low, &reg_mid, &reg_high);
 	lo = val & 0xffff;
