@@ -1823,6 +1823,31 @@ static int qce1204_phy_shared_clk_init(struct phy_device *phydev, struct device 
 		{&clk_data->channels[3].resets[QCE1204_CLK_XGMII_RX], "ch3_xgmii_rx_reset", "CH3 XGMII RX reset"},
 		{&clk_data->pcs_sys_reset, "pcs_sys_reset", "PCS SYS reset"},
 		{&clk_data->xpcs_reset, "xpcs", "XPCS reset"},
+		/* Switch resets */
+		{&clk_data->switch_btq_reset, "switch_btq_reset", "Switch BTQ reset"},
+		{&clk_data->switch_cfg_reset, "switch_cfg_reset", "Switch CFG reset"},
+		{&clk_data->switch_core_reset, "switch_core_reset", "Switch CORE reset"},
+		{&clk_data->switch_ipe_reset, "switch_ipe_reset", "Switch IPE reset"},
+		{&clk_data->switch_mac0_reset, "switch_mac0_reset", "Switch MAC0 reset"},
+		{&clk_data->switch_mac1_reset, "switch_mac1_reset", "Switch MAC1 reset"},
+		{&clk_data->switch_mac2_reset, "switch_mac2_reset", "Switch MAC2 reset"},
+		{&clk_data->switch_mac3_reset, "switch_mac3_reset", "Switch MAC3 reset"},
+		{&clk_data->switch_mac4_reset, "switch_mac4_reset", "Switch MAC4 reset"},
+		{&clk_data->switch_mac5_reset, "switch_mac5_reset", "Switch MAC5 reset"},
+		{&clk_data->xgmac0_ptp_ref_reset, "xgmac0_ptp_ref_reset", "XGMAC0 PTP REF reset"},
+		{&clk_data->xgmac1_ptp_ref_reset, "xgmac1_ptp_ref_reset", "XGMAC1 PTP REF reset"},
+		{&clk_data->mac0_tx_reset, "mac0_tx_reset", "MAC0 TX reset"},
+		{&clk_data->mac0_rx_reset, "mac0_rx_reset", "MAC0 RX reset"},
+		{&clk_data->mac1_tx_reset, "mac1_tx_reset", "MAC1 TX reset"},
+		{&clk_data->mac1_rx_reset, "mac1_rx_reset", "MAC1 RX reset"},
+		{&clk_data->mac2_tx_reset, "mac2_tx_reset", "MAC2 TX reset"},
+		{&clk_data->mac2_rx_reset, "mac2_rx_reset", "MAC2 RX reset"},
+		{&clk_data->mac3_tx_reset, "mac3_tx_reset", "MAC3 TX reset"},
+		{&clk_data->mac3_rx_reset, "mac3_rx_reset", "MAC3 RX reset"},
+		{&clk_data->mac4_tx_reset, "mac4_tx_reset", "MAC4 TX reset"},
+		{&clk_data->mac4_rx_reset, "mac4_rx_reset", "MAC4 RX reset"},
+		{&clk_data->mac5_tx_reset, "mac5_tx_reset", "MAC5 TX reset"},
+		{&clk_data->mac5_rx_reset, "mac5_rx_reset", "MAC5 RX reset"},
 	};
 	int ret, i;
 
@@ -2102,6 +2127,75 @@ static int qce1204_phy_cdt_thresh_init(struct phy_device *phydev)
 	return 0;
 }
 
+/**
+ * qce1204_switch_clks_reset_assert - Assert all switch clks
+ * @phydev: PHY device
+ * Returns: 0 on success, negative error code on failure
+ *
+ * This function asserts all switch-related resets including:
+ * - BTQ, CFG, CORE resets
+ * - MAC0-5 resets
+ * - XGMAC PTP reference resets
+ * - GMAC TX/RX resets
+ */
+static int qce1204_switch_clks_reset_assert(struct phy_device *phydev)
+{
+	struct qce1204_shared_clk_data *clk_data;
+	int ret, i;
+
+	clk_data = qce1204_get_shared_clk_data(phydev);
+	if (!clk_data)
+		return -EINVAL;
+
+	/* Switch reset control table */
+	struct {
+		struct reset_control **reset_ptr;
+		const char *name;
+	} reset_table[] = {
+		{&clk_data->switch_btq_reset, "switch BTQ"},
+		{&clk_data->switch_cfg_reset, "switch CFG"},
+		{&clk_data->switch_core_reset, "switch CORE"},
+		{&clk_data->switch_ipe_reset, "switch IPE"},
+		{&clk_data->switch_mac0_reset, "switch MAC0"},
+		{&clk_data->switch_mac1_reset, "switch MAC1"},
+		{&clk_data->switch_mac2_reset, "switch MAC2"},
+		{&clk_data->switch_mac3_reset, "switch MAC3"},
+		{&clk_data->switch_mac4_reset, "switch MAC4"},
+		{&clk_data->switch_mac5_reset, "switch MAC5"},
+		{&clk_data->xgmac0_ptp_ref_reset, "XGMAC0 PTP REF"},
+		{&clk_data->xgmac1_ptp_ref_reset, "XGMAC1 PTP REF"},
+		{&clk_data->mac0_tx_reset, "MAC0 TX"},
+		{&clk_data->mac0_rx_reset, "MAC0 RX"},
+		{&clk_data->mac1_tx_reset, "MAC1 TX"},
+		{&clk_data->mac1_rx_reset, "MAC1 RX"},
+		{&clk_data->mac2_tx_reset, "MAC2 TX"},
+		{&clk_data->mac2_rx_reset, "MAC2 RX"},
+		{&clk_data->mac3_tx_reset, "MAC3 TX"},
+		{&clk_data->mac3_rx_reset, "MAC3 RX"},
+		{&clk_data->mac4_tx_reset, "MAC4 TX"},
+		{&clk_data->mac4_rx_reset, "MAC4 RX"},
+		{&clk_data->mac5_tx_reset, "MAC5 TX"},
+		{&clk_data->mac5_rx_reset, "MAC5 RX"},
+	};
+
+	/* Assert all resets using table-driven approach */
+	for (i = 0; i < ARRAY_SIZE(reset_table); i++) {
+		struct reset_control *reset = *reset_table[i].reset_ptr;
+
+		if (reset) {
+			ret = reset_control_assert(reset);
+			if (ret < 0) {
+				phydev_err(phydev, "Failed to assert %s reset: %d\n",
+					   reset_table[i].name, ret);
+				return ret;
+			}
+		}
+	}
+
+	phydev_info(phydev, "Successfully asserted all switch resets\n");
+	return 0;
+}
+
 static int qce1204_phy_gcc_init(struct phy_device *phydev)
 {
 	int ret = 0;
@@ -2110,6 +2204,10 @@ static int qce1204_phy_gcc_init(struct phy_device *phydev)
 	package_mode = qce1204_get_package_mode(phydev);
 	if (package_mode == PHY_INTERFACE_MODE_QUSGMII) {
 		if (phy_package_init_once(phydev)) {
+			/* Assert all switch resets */
+			ret = qce1204_switch_clks_reset_assert(phydev);
+			if (ret < 0)
+				return ret;
 			ret = qce1204_pcs_sys_clk_set(phydev, true);
 			if (ret < 0)
 				return ret;
