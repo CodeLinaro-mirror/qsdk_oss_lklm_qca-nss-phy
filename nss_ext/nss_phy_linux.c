@@ -328,10 +328,13 @@ static int nss_phy_eee_status_init(struct phy_device *phydev)
 	u32 eee_cap = linkmode_to_mii_eee_cap1_t(phydev->supported_eee);
 
 	/* for qca81xx and qca8084, the eee_enabled is enabled by phy structure,
-	for qca803x and qca833x, the eee_broken will be set in DTS */
+	for qca807x, qca8081, qca803x and qca833x, the eee_enabled is disabled here
+	manually */
 	if (((phydev->eee_broken_modes & eee_cap) == eee_cap) ||
 		nss_phydev_id_compare(phydev, QCA8075_PHY, QCA807X_MASK) ||
-		nss_phydev_id_compare(phydev, QCA8081_PHY, QCA_PHY_EXACT_MASK))
+		nss_phydev_id_compare(phydev, QCA8081_PHY, QCA_PHY_EXACT_MASK) ||
+		nss_phydev_id_compare(phydev, QCA8033_PHY, QCA803X_MASK) ||
+		nss_phydev_id_compare(phydev, QCA8337_PHY_V4, QCA8337_PHY_MASK))
 		phydev->eee_enabled = false;
 
 	return 0;
