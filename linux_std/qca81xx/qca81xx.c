@@ -1034,9 +1034,6 @@ static int qca81xx_pcs_usxgmii_init(struct phy_device *phydev)
 	ret = qca81xx_xpcs_clk_reset_update(phydev, false);
 	if (ret < 0)
 		return ret;
-	ret = qca81xx_phy_soft_reset(phydev);
-	if (ret < 0)
-		return ret;
 	ret = qca81xx_pcs_modify_mmd(phydev,
 		MDIO_MMD_PCS, QCA81XX_PCS_MMD3_PCS_CTRL2,
 		QCA81XX_PCS_MMD3_PCS_TYPE_MASK,
@@ -1170,6 +1167,10 @@ static int qca81xx_phy_gcc_pre_init(struct phy_device *phydev)
 {
 	int ret;
 
+	/* switch the ahb clock as 50M */
+	ret = qca81xx_soc_ahb_clk_set(phydev, AHB_CLK_50M);
+	if (ret < 0)
+		return ret;
 	/* enable efuse loading into analog circuit */
 	ret = qca81xx_soc_modify(phydev, EPHY_CFG, EPHY_LDO_CTRL, 0);
 	mdelay(10);
@@ -1360,11 +1361,41 @@ static int qca81xx_phy_ana_capacitance_update(struct phy_device *phydev)
 	/* adjust the training duration */
 	ret = phy_modify_mmd(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_TRAIN_DURATION_CTRL,
 		QCA81XX_MMD3_DURATION_MASK, QCA81XX_MMD3_DURATION_VAL);
-	if (ret < 0)
-		return ret;
-	ret = qca81xx_phy_soft_reset(phydev);
 
 	return ret;
+}
+
+static int qca81xx_phy_suspend(struct phy_device *phydev)
+{
+	int ret;
+
+	qca81xx_priv_atomic64_inc(phydev,
+		&((struct qca81xx_private *)phydev->priv)->debug_stats.suspend_count);
+
+	ret = phy_read_mmd(phydev, MDIO_MMD_VEND2,
+		QCA81XX_SPEC_STATUS);
+	if (!(ret & QCA81XX_SS_LINK_STATUS)) {
+		ret = qca81xx_phy_pcs_assert(phydev, true);
+		if (ret < 0)
+			return ret;
+	}
+
+	return genphy_c45_pma_suspend(phydev);
+}
+
+static int qca81xx_phy_resume(struct phy_device *phydev)
+{
+	int ret;
+
+	qca81xx_priv_atomic64_inc(phydev,
+		&((struct qca81xx_private *)phydev->priv)->debug_stats.resume_count);
+
+	/* make sure the PHY PCS is enabled */
+	ret = qca81xx_phy_pcs_assert(phydev, false);
+	if (ret < 0)
+		return ret;
+
+	return genphy_c45_pma_resume(phydev);
 }
 
 static int qca81xx_phy_config_init(struct phy_device *phydev)
@@ -1433,7 +1464,9 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 		QCA81XX_MMD7_FRAME_CHECK_EN | QCA81XX_MMD7_CNT_SELFCLR);
 
 	qca81xx_phy_ana_capacitance_update(phydev);
-
+	ret = qca81xx_phy_resume(phydev);
+	if (ret < 0)
+		goto err_out;
 	state = QCA81XX_INIT_SUCCESS;
 
 err_out:
@@ -1885,6 +1918,7 @@ static int qca81xx_phy_probe(struct phy_device *phydev)
 
 	/* Initialize sysfs module state/statistics support */
 	qca81xx_debugfs_init(phydev);
+	qca81xx_phy_suspend(phydev);
 
 	return 0;
 }
@@ -1895,39 +1929,6 @@ static void qca81xx_phy_remove(struct phy_device *phydev)
 	qca81xx_debugfs_exit(phydev);
 
 	device_remove_file(&phydev->mdio.dev, &dev_attr_snr);
-}
-
-static int qca81xx_phy_suspend(struct phy_device *phydev)
-{
-	int ret;
-
-	qca81xx_priv_atomic64_inc(phydev,
-		&((struct qca81xx_private *)phydev->priv)->debug_stats.suspend_count);
-
-	ret = phy_read_mmd(phydev, MDIO_MMD_VEND2,
-		QCA81XX_SPEC_STATUS);
-	if (!(ret & QCA81XX_SS_LINK_STATUS)) {
-		ret = qca81xx_phy_pcs_assert(phydev, true);
-		if (ret < 0)
-			return ret;
-	}
-
-	return genphy_c45_pma_suspend(phydev);
-}
-
-static int qca81xx_phy_resume(struct phy_device *phydev)
-{
-	int ret;
-
-	qca81xx_priv_atomic64_inc(phydev,
-		&((struct qca81xx_private *)phydev->priv)->debug_stats.resume_count);
-
-	/* make sure the PHY PCS is enabled */
-	ret = qca81xx_phy_pcs_assert(phydev, false);
-	if (ret < 0)
-		return ret;
-
-	return genphy_c45_pma_resume(phydev);
 }
 
 int qca81xx_phy_set_wol(struct phy_device *phydev,
@@ -2990,7 +2991,6 @@ static struct phy_driver qcom_phy_driver[] = {
 	.read_status = qca81xx_phy_read_status,
 	.suspend = qca81xx_phy_suspend,
 	.resume = qca81xx_phy_resume,
-	.soft_reset = qca81xx_phy_soft_reset,
 	.set_wol = qca81xx_phy_set_wol,
 	.get_wol = qca81xx_phy_get_wol,
 	.get_tunable = qca81xx_phy_get_tunable,
