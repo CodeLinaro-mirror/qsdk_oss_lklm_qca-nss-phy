@@ -2451,6 +2451,94 @@ err_disable_pcs_clk:
 	return ret;
 }
 
+static int qce1204_phy_speed_clock_set(struct phy_device *phydev)
+{
+	unsigned long clk_rate = 0;
+	struct qce1204_clk_data *clk_data = NULL;
+	int ret = 0;
+
+	/* Determine clock rates based on speed */
+	switch (phydev->speed) {
+	case SPEED_2500:
+		clk_rate = QCE1204_CLK_RATE_312P5M;
+		break;
+	case SPEED_1000:
+		clk_rate = QCE1204_CLK_RATE_125M;
+		break;
+	case SPEED_100:
+		clk_rate = QCE1204_CLK_RATE_25M;
+		break;
+	case SPEED_10:
+		clk_rate = QCE1204_CLK_RATE_2P5M;
+		break;
+	default:
+		phydev_err(phydev, "Unsupported speed: %d\n", phydev->speed);
+		return -EOPNOTSUPP;
+	}
+	ret = qce1204_validate_clock_rate(clk_rate);
+	if (ret < 0) {
+		phydev_err(phydev, "Invalid clock rate: %lu Hz\n", clk_rate);
+		return ret;
+	}
+
+	clk_data = qce1204_get_clk_data(phydev);
+	if (!clk_data)
+		return -EINVAL;
+	if (clk_data->tx_clk) {
+		ret = clk_set_rate(clk_data->tx_clk, clk_rate);
+		if (ret < 0) {
+			phydev_err(phydev, "Failed to set TX clock rate: %d\n", ret);
+			return ret;
+		}
+	}
+	if (clk_data->rx_clk) {
+		ret = clk_set_rate(clk_data->rx_clk, clk_rate);
+		if (ret < 0) {
+			phydev_err(phydev, "Failed to set RX clock rate: %d\n", ret);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
+static int qce1204_phy_internal_speed_fix_up(struct phy_device *phydev)
+{
+	bool clk_en = false;
+	int ret;
+
+	ret = qce1204_phy_speed_clock_set(phydev);
+	if (ret < 0)
+		return ret;
+	if (phydev->link)
+		clk_en = true;
+	ret = qce1204_phy_clk_set(phydev, clk_en);
+	if (ret < 0) {
+		phydev_err(phydev, "Failed to %s phy clocks, ret: %d\n",
+			clk_en ? "enable" : "disable", ret);
+		return ret;
+	}
+	/* reset phy clocks */
+	ret = qce1204_phy_clk_reset(phydev);
+	if (ret < 0)
+		goto err_disable_clks;
+	ret = qce1204_phy_fifo_reset(phydev, true);
+	if (ret < 0)
+		goto err_disable_clks;
+	mdelay(1);
+	ret = qce1204_phy_fifo_reset(phydev, false);
+	if (ret < 0)
+		goto err_disable_clks;
+
+	return 0;
+
+err_disable_clks:
+	if (clk_en)
+		qce1204_phy_clk_set(phydev, false);
+
+	return ret;
+}
+
 int qce1204_phy_read_status(struct phy_device *phydev)
 {
 	int ret = 0, old_link = 0;
@@ -2504,11 +2592,17 @@ int qce1204_phy_read_status(struct phy_device *phydev)
 			phydev->duplex = DUPLEX_HALF;
 	}
 
-	if ((phydev->link != old_link) &&
-		(phydev->interface == PHY_INTERFACE_MODE_QUSGMII)) {
-		ret = qce1204_phy_qusgmii_speed_fix_up(phydev);
-		if (ret < 0)
-			return ret;
+	if (phydev->link != old_link) {
+		if (phydev->interface == PHY_INTERFACE_MODE_QUSGMII) {
+			ret = qce1204_phy_qusgmii_speed_fix_up(phydev);
+			if (ret < 0)
+				return ret;
+		}
+		if (phydev->interface == PHY_INTERFACE_MODE_INTERNAL) {
+			ret = qce1204_phy_internal_speed_fix_up(phydev);
+			if (ret < 0)
+				return ret;
+		}
 	}
 
 	return 0;
