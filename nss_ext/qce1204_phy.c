@@ -26,6 +26,56 @@ static bool qce1024_phy_autoneg_check(struct nss_phy_device *nss_phydev)
 	return false;
 }
 
+static int qce1204_phy_cld_cable_length_get(struct nss_phy_device *nss_phydev, u32 *cable_len)
+{
+	int status, ret;
+	bool link_down;
+
+	status = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_CDT_STATUS);
+	if (status < 0)
+		return status;
+
+	/*
+	 * CLD is supported only when all pairs are in normal status.
+	 * If CLD is not available, return success (0) to allow fallback to CDT.
+	 */
+	if (status != QCE1204_PHY_ALL_PAIRS_NORMAL)
+		return 0;
+
+	link_down = (nss_phydev_link_get(nss_phydev) == NSS_PHY_FALSE);
+
+	if (link_down) {
+		ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+			QCE1204_PHY_MMD3_CLD_CTRL, QCE1204_PHY_CLD_FORCE_EN,
+			QCE1204_PHY_CLD_FORCE_EN);
+		if (ret < 0)
+			return ret;
+	}
+
+	ret = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		QCE1204_PHY_MMD3_CLD_RESULT);
+	if (ret >= 0)
+		*cable_len = ret & QCE1204_PHY_CLD_CABLE_LENGTH;
+
+	if (link_down) {
+		int restore_ret;
+		restore_ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+			QCE1204_PHY_MMD3_CLD_CTRL, QCE1204_PHY_CLD_FORCE_EN, 0);
+		/*
+		 * Error priority logic:
+		 * - If read succeeded but restore failed: return restore error
+		 *   (restore failure is more critical as it leaves hardware in wrong state)
+		 * - If both failed: return read error (first failure)
+		 * - If both succeeded: continue to return read result
+		 */
+		if (restore_ret < 0 && ret >= 0)
+			return restore_ret;
+	}
+
+	return (ret < 0) ? ret : 0;
+}
+
 static int qce1204_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 	enum nss_phy_cable_status *status, u32 *cable_len)
 {
@@ -46,9 +96,15 @@ static int qce1204_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 			return ret;
 	}
 
-	/* if PHY link up, the result can be read without CDT */
+	/* When the PHY link is up, hardware will not execute CDT even if software requests it.
+	 * However, CDT status can still be read from the corresponding registers.
+	 */
 	ret = nss_phy_common_cdt_status_get(nss_phydev, mdi_pair, status,
 		cable_len);
+	if (ret < 0)
+		return ret;
+	/* Try to get more accurate cable length using CLD if available */
+	ret = qce1204_phy_cld_cable_length_get(nss_phydev, cable_len);
 
 	return ret;
 }
