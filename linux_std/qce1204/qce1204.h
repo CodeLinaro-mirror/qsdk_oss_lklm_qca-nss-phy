@@ -37,6 +37,9 @@ struct qce1204_clk_data {
 
 struct qce1204_priv {
 	struct qce1204_clk_data clk_data;
+#if IS_ENABLED(CONFIG_HWMON)
+	struct device *hwmon_dev;
+#endif
 };
 
 /* Clock type index for each channel */
@@ -90,6 +93,9 @@ struct qce1204_shared_clk_data {
 struct qce1204_shared_priv {
 	struct qce1204_shared_clk_data shared_clk_data;
 	phy_interface_t package_mode;
+#if IS_ENABLED(CONFIG_HWMON)
+	u64 tem_base_code;
+#endif
 };
 
 enum {
@@ -112,4 +118,9 @@ int __qce1204_soc_modify(struct phy_device *phydev, u32 reg,
 u32 qce1204_soc_read(struct phy_device *phydev, u32 reg);
 int qce1204_soc_modify(struct phy_device *phydev, u32 reg,
 	u32 mask, u32 set);
+int qce1204_phy_channel_get(struct phy_device *phydev);
+#if IS_ENABLED(CONFIG_HWMON)
+int qce1204_hwmon_hw_init(struct phy_device *phydev);
+int qce1204_hwmon_probe(struct phy_device *phydev);
+#endif
 #endif /* _QCE1204_H_ */
