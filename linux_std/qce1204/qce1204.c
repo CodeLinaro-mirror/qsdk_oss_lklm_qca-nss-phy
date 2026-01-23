@@ -1378,8 +1378,12 @@ static int qce1204_ahb_clk_set_rate(struct phy_device *phydev, unsigned long rat
 	int ret;
 
 	clk_data = qce1204_get_shared_clk_data(phydev);
-	if (!clk_data || !clk_data->ahb_clk)
+	if (!clk_data)
 		return -EINVAL;
+
+	/* Clock is optional, return success if not present */
+	if (!clk_data->ahb_clk)
+		return 0;
 
 	ret = clk_set_rate(clk_data->ahb_clk, rate);
 	if (ret < 0) {
@@ -2045,9 +2049,6 @@ int qce1204_phy_probe(struct phy_device *phydev)
 	ret = devm_of_phy_package_join(dev, phydev, sizeof(struct qce1204_shared_priv));
 	if (ret < 0)
 		return ret;
-#if IS_ENABLED(CONFIG_HWMON)
-	qce1204_hwmon_probe(phydev);
-#endif
 
 	/* Allocate private data structure for this PHY */
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
@@ -2078,6 +2079,10 @@ int qce1204_phy_probe(struct phy_device *phydev)
 			return ret;
 		}
 	}
+
+#if IS_ENABLED(CONFIG_HWMON)
+	qce1204_hwmon_probe(phydev);
+#endif
 
 	return 0;
 }
@@ -2340,9 +2345,6 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 		} else if (package_mode == PHY_INTERFACE_MODE_INTERNAL) {
 			ret = qce1204_soc_modify(phydev, QCE1204_WORK_MODE_SEL,
 				QCE1204_SWITCH_MODE_MASK, QCE1204_SWITCH_MODE);
-			if (ret < 0)
-				return ret;
-			ret = qce1204_ahb_clk_set_rate(phydev, QCE1204_CLK_RATE_104M);
 			if (ret < 0)
 				return ret;
 		} else {
