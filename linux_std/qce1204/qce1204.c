@@ -1588,12 +1588,16 @@ static int qce1204_pcs_qusgmii_mode_set(struct phy_device *phydev)
 	ret = _qce1204_pcs_qusgmii_mode_set(phydev);
 	if (ret < 0)
 		return ret;
-	/* enable auto-neg complete interrupt,Mii using mii-4bits, */
-	/* configure as PHY mode, enable autoneg ability */
+	/*
+	* enable auto-neg complete interrupt,Mii using mii-4bits,
+	* configure as PHY mode, enable autoneg ability
+	*/
 	for (channel = 1; channel <= 4; channel++)
 	{
-		/* enable auto-neg complete interrupt,Mii using mii-4bits, */
-		/* configure as PHY mode */
+		/*
+		* enable auto-neg complete interrupt,Mii using mii-4bits,
+		* configure as PHY mode
+		*/
 		ret = qce1204_pcs_modify_channel_mmd(phydev, channel,
 			QCE1204_PCS_MMD_MII_AN_INT_MSK, 0x109,
 			QCE1204_PCS_MMD_AN_COMPLETE_INT |
@@ -1728,9 +1732,11 @@ int qce1204_phy_config_aneg(struct phy_device *phydev)
 
 	if (phydev->autoneg == AUTONEG_DISABLE) {
 		int duplex_val = BMCR_FULLDPLX, duplex_tmp = DUPLEX_FULL;
-		/* genphy_c45_pma_setup_forced only support duplex full, */
-		/* so need to set duplex as full to configure speed */
-		/* when duplex is half */
+		/*
+		* genphy_c45_pma_setup_forced only support duplex full,
+		* so need to set duplex as full to configure speed
+		* when duplex is half
+		*/
 		duplex_tmp = phydev->duplex;
 		if (phydev->duplex == DUPLEX_HALF) {
 			phydev->duplex = DUPLEX_FULL;
@@ -1750,8 +1756,10 @@ int qce1204_phy_config_aneg(struct phy_device *phydev)
 	if (ret > 0)
 		changed = true;
 
-	/* Clause 45 has no standardized support for 1000BaseT, */
-	/* therefore use vendor registers. */
+	/*
+	* Clause 45 has no standardized support for 1000BaseT,
+	* therefore use vendor registers
+	*/
 	if (linkmode_test_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
 		phydev->advertising))
 		reg |= QCE1204_PHY_ADVERTISE_1000FULL;
@@ -2204,44 +2212,6 @@ static int qce1204_switch_clks_reset_assert(struct phy_device *phydev)
 	return 0;
 }
 
-static int qce1204_phy_gcc_init(struct phy_device *phydev)
-{
-	int ret = 0;
-	phy_interface_t package_mode;
-
-	package_mode = qce1204_get_package_mode(phydev);
-	if (package_mode == PHY_INTERFACE_MODE_QUSGMII) {
-		if (phy_package_init_once(phydev)) {
-			/* Assert all switch resets */
-			ret = qce1204_switch_clks_reset_assert(phydev);
-			if (ret < 0)
-				return ret;
-			ret = qce1204_pcs_sys_clk_set(phydev, true);
-			if (ret < 0)
-				return ret;
-			ret = qce1204_pcs_sys_reset(phydev);
-			if (ret < 0)
-				return ret;
-		}
-	}
-	if (phy_package_init_once(phydev)) {
-		/* enable efuse loading into analog circuit */
-		ret = qca81xx_soc_modify(phydev, QCE1204_EPHY_CFG,
-			QCE1204_EPHY_LDO_CTRL, 0);
-		if (ret < 0)
-			return ret;
-		mdelay(10);
-	}
-	ret = qce1204_phy_sys_clk_set(phydev, true);
-	if (ret < 0)
-		return ret;
-	ret = qce1204_phy_sys_reset(phydev);
-	if (ret < 0)
-		return ret;
-
-	return 0;
-}
-
 static int qce1204_phy_eee_init(struct phy_device *phydev)
 {
 	int ret = 0;
@@ -2295,7 +2265,7 @@ static int qce1204_phy_tlmm_init(struct phy_device *phydev)
 		return ret;
 	/* GPIO1~GPIO4, FUNC 1, LED_MODE, DRV_16_MA, NO_PULL */
 	for (pin_id  = QCE1204_GPIO1_P0_LED_0; pin_id <= QCE1204_GPIO4_P3_LED_0; pin_id++) {
-		ret = qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
+		ret = qce1204_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
 			QCE1204_TLMM_GPIO_PULL | QCE1204_TLMM_FUNC_MASK | QCE1204_TLMM_DRV | QCE1204_TLMM_LED_MODE,
 			BIT(2) | QCE1204_TLMM_DRV_16_MA | QCE1204_TLMM_LED_MODE);
 		if (ret < 0)
@@ -2325,15 +2295,22 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 	int ret = 0;
 	phy_interface_t package_mode;
 
-	ret = qce1204_phy_gcc_init(phydev);
-	if (ret < 0)
-		return ret;
-
 	package_mode = qce1204_get_package_mode(phydev);
 	if (phy_package_init_once(phydev)) {
 		if (package_mode == PHY_INTERFACE_MODE_QUSGMII) {
+			/* configure work mode as PHY */
 			ret = qce1204_soc_modify(phydev, QCE1204_WORK_MODE_SEL,
 				QCE1204_PHY_MODE_MASK, QCE1204_PHY_MODE);
+			if (ret < 0)
+				return ret;
+			/* Assert all switch resets */
+			ret = qce1204_switch_clks_reset_assert(phydev);
+			if (ret < 0)
+				return ret;
+			ret = qce1204_pcs_sys_clk_set(phydev, true);
+			if (ret < 0)
+				return ret;
+			ret = qce1204_pcs_sys_reset(phydev);
 			if (ret < 0)
 				return ret;
 			ret = qce1204_pcs_qusgmii_mode_set(phydev);
@@ -2343,6 +2320,7 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 			if (ret < 0)
 				return ret;
 		} else if (package_mode == PHY_INTERFACE_MODE_INTERNAL) {
+			/* configure work mode as switch */
 			ret = qce1204_soc_modify(phydev, QCE1204_WORK_MODE_SEL,
 				QCE1204_SWITCH_MODE_MASK, QCE1204_SWITCH_MODE);
 			if (ret < 0)
@@ -2350,8 +2328,23 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 		} else {
 			return 0;
 		}
+		ret = qce1204_phy_tlmm_init(phydev);
+		if (ret < 0)
+			return ret;
+#if IS_ENABLED(CONFIG_HWMON)
+		qce1204_hwmon_hw_init_once(phydev);
+#endif
+		/* enable efuse loading into analog circuit */
+		ret = qce1204_soc_modify(phydev, QCE1204_EPHY_CFG,
+			QCE1204_EPHY_LDO_CTRL, 0);
+		if (ret < 0)
+			return ret;
+		mdelay(10);
 	}
-	ret = qce1204_phy_tlmm_init(phydev);
+	ret = qce1204_phy_sys_clk_set(phydev, true);
+	if (ret < 0)
+		return ret;
+	ret = qce1204_phy_sys_reset(phydev);
 	if (ret < 0)
 		return ret;
 	ret = qce1204_phy_eee_init(phydev);
@@ -2388,16 +2381,17 @@ static int qce1204_phy_qusgmii_speed_fix_up(struct phy_device *phydev)
 
 	/* channel is from 1 ~ 4 */
 	channel = qce1204_phy_channel_get(phydev);
-	ret = qce1204_pcs_speed_clock_set(phydev, channel, phydev->speed);
-	if (ret < 0)
-		return ret;
-	mdelay(10);
 	/*
 	 * enable pcs clocks and phy clocks for link up
 	 * disable pcs clocks and phy clocks for link down
 	 */
-	if (phydev->link)
+	if (phydev->link) {
+		ret = qce1204_pcs_speed_clock_set(phydev, channel, phydev->speed);
+		if (ret < 0)
+			return ret;
+		mdelay(10);
 		clk_en = true;
+	}
 	ret = qce1204_pcs_clk_set(phydev, channel, clk_en);
 	if (ret < 0) {
 		phydev_err(phydev, "Failed to %s pcs clocks for CH%d, ret: %d\n",
@@ -2509,11 +2503,12 @@ static int qce1204_phy_internal_speed_fix_up(struct phy_device *phydev)
 	bool clk_en = false;
 	int ret;
 
-	ret = qce1204_phy_speed_clock_set(phydev);
-	if (ret < 0)
-		return ret;
-	if (phydev->link)
+	if (phydev->link) {
+		ret = qce1204_phy_speed_clock_set(phydev);
+		if (ret < 0)
+			return ret;
 		clk_en = true;
+	}
 	ret = qce1204_phy_clk_set(phydev, clk_en);
 	if (ret < 0) {
 		phydev_err(phydev, "Failed to %s phy clocks, ret: %d\n",
