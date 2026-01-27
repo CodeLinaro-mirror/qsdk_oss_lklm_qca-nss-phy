@@ -1905,7 +1905,7 @@ static int qce1204_phy_shared_clk_init(struct phy_device *phydev, struct device 
 	/* Initialize all clocks */
 	for (i = 0; i < ARRAY_SIZE(clk_table); i++) {
 		ret = qce1204_clk_get(phydev, dev, clk_table[i].clk_ptr,
-				      clk_table[i].name, clk_table[i].desc);
+				clk_table[i].name, clk_table[i].desc);
 		if (ret < 0)
 			return ret;
 	}
@@ -1933,7 +1933,8 @@ static int qce1204_phy_shared_clk_init(struct phy_device *phydev, struct device 
  */
 static int qce1204_shared_clk_probe(struct phy_device *phydev)
 {
-	struct device *dev;
+	struct device *dev = &phydev->mdio.bus->dev;
+	struct device_node *old_of_node;
 	struct qce1204_shared_clk_data *clk_data;
 	int ret;
 
@@ -1951,10 +1952,16 @@ static int qce1204_shared_clk_probe(struct phy_device *phydev)
 	/* Initialize structure to NULL to ensure consistent state */
 	memset(clk_data, 0, sizeof(*clk_data));
 
-	dev = &phydev->mdio.bus->dev;
+	/* Access package information through phydev->shared->np */
+	old_of_node = dev->of_node;
+	dev->of_node = phydev->shared->np;
 
-	/* Initialize clocks and resets */
+	/* Initialize clocks and resets using the correct device node */
 	ret = qce1204_phy_shared_clk_init(phydev, dev, clk_data);
+
+	/* Restore original of_node */
+	dev->of_node = old_of_node;
+
 	if (ret < 0)
 		return ret;
 
@@ -2039,7 +2046,7 @@ static int qce1204_phy_clk_init(struct phy_device *phydev, struct device *dev,
 	/* Initialize all clocks */
 	for (i = 0; i < ARRAY_SIZE(clk_table); i++) {
 		ret = qce1204_clk_get(phydev, dev, clk_table[i].clk_ptr,
-				      clk_table[i].name, clk_table[i].desc);
+					clk_table[i].name, clk_table[i].desc);
 		if (ret < 0)
 			return ret;
 	}
