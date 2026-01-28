@@ -145,7 +145,7 @@ struct reset_init_entry {
 #define QCE1204_CLK_RATE_2P5M						2500000
 #define QCE1204_CLK_RATE_25M						25000000
 #define QCE1204_CLK_RATE_78P125M					78125000
-#define QCE1204_CLK_RATE_104M						104000000
+#define QCE1204_CLK_RATE_104M						104166666
 #define QCE1204_CLK_RATE_125M						125000000
 #define QCE1204_CLK_RATE_312P5M						312500000
 
@@ -169,10 +169,12 @@ static int qce1204_validate_clock_rate(unsigned long rate)
 	case QCE1204_CLK_RATE_2P5M:
 	case QCE1204_CLK_RATE_25M:
 	case QCE1204_CLK_RATE_78P125M:
+	case QCE1204_CLK_RATE_104M:
 	case QCE1204_CLK_RATE_125M:
 	case QCE1204_CLK_RATE_312P5M:
 		return 0;
 	default:
+		pr_err("Invalid clock rate: %lu Hz\n", rate);
 		return -EINVAL;
 	}
 }
@@ -1385,6 +1387,13 @@ static int qce1204_ahb_clk_set_rate(struct phy_device *phydev, unsigned long rat
 	if (!clk_data->ahb_clk)
 		return 0;
 
+	/* Validate clock rate */
+	ret = qce1204_validate_clock_rate(rate);
+	if (ret < 0) {
+		phydev_err(phydev, "Invalid AHB clock rate: %lu Hz\n", rate);
+		return ret;
+	}
+
 	ret = clk_set_rate(clk_data->ahb_clk, rate);
 	if (ret < 0) {
 		phydev_err(phydev, "Failed to set AHB clock rate to %lu Hz: %d\n", rate, ret);
@@ -1477,6 +1486,42 @@ static int qce1204_pcs_sys_reset(struct phy_device *phydev)
 	return 0;
 }
 
+/**
+ * qce1204_pcs_sys_clk_set_rate - Set PCS system clock rate
+ * @phydev: PHY device
+ * @rate: Clock rate in Hz
+ * Returns: 0 on success, negative error code on failure
+ */
+static int qce1204_pcs_sys_clk_set_rate(struct phy_device *phydev, unsigned long rate)
+{
+	struct qce1204_shared_clk_data *clk_data;
+	int ret;
+
+	clk_data = qce1204_get_shared_clk_data(phydev);
+	if (!clk_data)
+		return -EINVAL;
+
+	/* Clock is optional, return success if not present */
+	if (!clk_data->pcs_sys_clk)
+		return 0;
+
+	/* Validate clock rate */
+	ret = qce1204_validate_clock_rate(rate);
+	if (ret < 0) {
+		phydev_err(phydev, "Invalid PCS system clock rate: %lu Hz\n", rate);
+		return ret;
+	}
+
+	ret = clk_set_rate(clk_data->pcs_sys_clk, rate);
+	if (ret < 0) {
+		phydev_err(phydev, "Failed to set pcs system clock rate to %lu Hz: %d\n", rate, ret);
+		return ret;
+	}
+
+	phydev_info(phydev, "Set pcs system clock rate to %lu Hz\n", rate);
+	return 0;
+}
+
 static int _qce1204_pcs_qusgmii_mode_set(struct phy_device *phydev)
 {
 	int ret = 0, channel = 0;
@@ -1490,12 +1535,6 @@ static int _qce1204_pcs_qusgmii_mode_set(struct phy_device *phydev)
 		QCE1204_PCS_MMD1_MS_LDO1, 0x7f6d);
 	if (ret < 0)
 		return ret;
-	/* disable PCS GMII XGMIII clock */
-	for (channel = 1; channel <= 4; channel++) {
-		ret = qce1204_pcs_clk_set(phydev, channel, false);
-		if (ret < 0)
-			return ret;
-	}
 	/* assert xpcs */
 	ret = qce1204_xpcs_reset_assert(phydev, true);
 	if (ret < 0)
@@ -2297,13 +2336,16 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 
 	package_mode = qce1204_get_package_mode(phydev);
 	if (phy_package_init_once(phydev)) {
+		ret = qce1204_pcs_sys_clk_set_rate(phydev, QCE1204_CLK_RATE_25M);
+		if (ret < 0)
+			return ret;
 		if (package_mode == PHY_INTERFACE_MODE_QUSGMII) {
 			/* configure work mode as PHY */
 			ret = qce1204_soc_modify(phydev, QCE1204_WORK_MODE_SEL,
 				QCE1204_PHY_MODE_MASK, QCE1204_PHY_MODE);
 			if (ret < 0)
 				return ret;
-			/* Assert all switch resets */
+			/* Assert all unused resets */
 			ret = qce1204_switch_clks_reset_assert(phydev);
 			if (ret < 0)
 				return ret;
@@ -2326,7 +2368,8 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 			if (ret < 0)
 				return ret;
 		} else {
-			return 0;
+			phydev_err(phydev, "Unsupported package mode: 0x%x\n", package_mode);
+			return -EINVAL;
 		}
 		ret = qce1204_phy_tlmm_init(phydev);
 		if (ret < 0)
