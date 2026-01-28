@@ -128,12 +128,90 @@ static const struct hwmon_chip_info qce1204_hwmon_chip_info = {
 	.info = qce1204_hwmon_info,
 };
 
-int qce1204_hwmon_hw_init(struct phy_device *phydev)
+/**
+ * qce1204_hwmon_parse_calibration - Parse calibration data and calculate slope
+ * @phydev: PHY device
+ * @tem_base_code: Temperature base code from QFPROM
+ * @slope: Output parameter for calculated slope
+ *
+ * Returns: 0 on success, negative error code on failure
+ */
+static int qce1204_hwmon_parse_calibration(struct phy_device *phydev,
+					    u64 tem_base_code, u32 *slope)
 {
-	u32 base_code_120c, base_code_30c, tsens_offset, cal_result, index;
-	u32 slope  = QCE1204_SLOPE_DEFAULT, czero = QCE1204_CZERO_DEFAULT;
+	u32 base_code_30c, base_code_120c, cal_result;
+
+	cal_result = ((u32)tem_base_code & QCE1204_TSENSOR_CAL_RESULT_MASK) >> 20;
+	if (cal_result != QCE1204_TSENSOR_CAL_RESULT_DONE) {
+		*slope = QCE1204_SLOPE_DEFAULT;
+		return 0;
+	}
+
+	base_code_30c = (u32)(tem_base_code >> 32) & QCE1204_TSENSOR_BASE_CODE_30C;
+	base_code_120c = ((u32)(tem_base_code >> 32) & QCE1204_TSENSOR_BASE_CODE_120C) >> 10;
+
+	if (base_code_120c <= base_code_30c) {
+		phydev_err(phydev, "Invalid calibration data: base_code_120c=%u, base_code_30c=%u\n",
+			   base_code_120c, base_code_30c);
+		return -EINVAL;
+	}
+
+	*slope = 921600 / (base_code_120c - base_code_30c);
+	return 0;
+}
+
+/**
+ * qce1204_hwmon_get_tsensor_offset - Get temperature sensor offset
+ * @tem_base_code: Temperature base code from QFPROM
+ * @sensor_index: Sensor index (0 for SOC, 1-4 for PHY)
+ *
+ * Returns: Temperature sensor offset value
+ */
+static u32 qce1204_hwmon_get_tsensor_offset(u64 tem_base_code, u32 sensor_index)
+{
+	u32 cal_result;
+
+	cal_result = ((u32)tem_base_code & QCE1204_TSENSOR_CAL_RESULT_MASK) >> 20;
+	if (cal_result != QCE1204_TSENSOR_CAL_RESULT_DONE)
+		return 0;
+
+	if (sensor_index == 0) {
+		/* SOC sensor offset from MSB */
+		return ((u32)(tem_base_code >> 32) & QCE1204_TSENSOR0_OFFSET) >> 20;
+	} else {
+		/* PHY sensor offset from LSB, index 1-4 */
+		u32 shift = (sensor_index - 1) * 4;
+		return ((u32)tem_base_code >> shift) & QCE1204_TSENSOR1_OFFSET;
+	}
+}
+
+/**
+ * qce1204_hwmon_calculate_czero - Calculate czero value
+ * @tem_base_code: Temperature base code from QFPROM
+ * @sensor_index: Sensor index (0 for SOC, 1-4 for PHY)
+ *
+ * Returns: Calculated czero value
+ */
+static u32 qce1204_hwmon_calculate_czero(u64 tem_base_code, u32 sensor_index)
+{
+	u32 base_code_30c, tsens_offset, cal_result;
+
+	cal_result = ((u32)tem_base_code & QCE1204_TSENSOR_CAL_RESULT_MASK) >> 20;
+	if (cal_result != QCE1204_TSENSOR_CAL_RESULT_DONE)
+		return QCE1204_CZERO_DEFAULT;
+
+	base_code_30c = (u32)(tem_base_code >> 32) & QCE1204_TSENSOR_BASE_CODE_30C;
+	tsens_offset = qce1204_hwmon_get_tsensor_offset(tem_base_code, sensor_index);
+
+	return base_code_30c + tsens_offset;
+}
+
+int qce1204_hwmon_hw_init_once(struct phy_device *phydev)
+{
 	struct phy_package_shared *shared = phydev->shared;
 	struct qce1204_shared_priv *priv;
+	u32 slope, czero, msb, lsb;
+	int ret;
 
 	if (!shared)
 		return -EINVAL;
@@ -142,55 +220,75 @@ int qce1204_hwmon_hw_init(struct phy_device *phydev)
 	if (!priv)
 		return -EINVAL;
 
-	if (phy_package_init_once(phydev)) {
-		u32 msb, lsb;
-		/* configure the ready time of qfproom as 10us */
-		qce1204_soc_modify(phydev, QCE1204_QFPROM_BLOW_TIMER,
-			QCE1204_BELOW_TIMER_MASK, QCE1204_BELOW_TIMER_10US);
-		/* enable power */
-		qce1204_soc_modify(phydev, QCE1204_VDD4BLOW_EN,
-			QCE1204_POWER_DOWN | QCE1204_POWER_EN, QCE1204_POWER_EN);
-		mdelay(1);
-		msb = qce1204_soc_read(phydev,
-			QCE1204_QFPROM_RAW_CALIBRATION_ROW6_MSB);
-		lsb = qce1204_soc_read(phydev,
-			QCE1204_QFPROM_RAW_CALIBRATION_ROW7_LSB);
-		priv->tem_base_code = ((u64)msb << 32) | lsb;
-		/* disable power */
-		qce1204_soc_modify(phydev, QCE1204_VDD4BLOW_EN,
-			QCE1204_POWER_DOWN | QCE1204_POWER_EN, QCE1204_POWER_DOWN);
-	}
-	cal_result = ((u32)priv->tem_base_code & QCE1204_TSENSOR_CAL_RESULT_MASK) >> 20;
-	if (cal_result == QCE1204_TSENSOR_CAL_RESULT_DONE) {
-		base_code_30c = (u32)(priv->tem_base_code >> 32) & QCE1204_TSENSOR_BASE_CODE_30C;
-		base_code_120c = ((u32)(priv->tem_base_code >> 32) & QCE1204_TSENSOR_BASE_CODE_120C) >> 10;
-		if (base_code_120c > base_code_30c) {
-			slope = 921600/(base_code_120c - base_code_30c);
-		} else {
-			phydev_err(phydev, "Invalid calibration data: base_code_120c=%u, base_code_30c=%u\n",
-				   base_code_120c, base_code_30c);
-			return -EINVAL;
-		}
+	/* Configure the ready time of QFPROM as 10us */
+	qce1204_soc_modify(phydev, QCE1204_QFPROM_BLOW_TIMER,
+			   QCE1204_BELOW_TIMER_MASK, QCE1204_BELOW_TIMER_10US);
+
+	/* Enable power for QFPROM read */
+	qce1204_soc_modify(phydev, QCE1204_VDD4BLOW_EN,
+			   QCE1204_POWER_DOWN | QCE1204_POWER_EN,
+			   QCE1204_POWER_EN);
+	mdelay(1);
+
+	/* Read calibration data from QFPROM */
+	msb = qce1204_soc_read(phydev, QCE1204_QFPROM_RAW_CALIBRATION_ROW6_MSB);
+	lsb = qce1204_soc_read(phydev, QCE1204_QFPROM_RAW_CALIBRATION_ROW7_LSB);
+	priv->tem_base_code = ((u64)msb << 32) | lsb;
+
+	/* Disable power after reading */
+	qce1204_soc_modify(phydev, QCE1204_VDD4BLOW_EN,
+			   QCE1204_POWER_DOWN | QCE1204_POWER_EN,
+			   QCE1204_POWER_DOWN);
+
+	/* Parse calibration data and calculate slope */
+	ret = qce1204_hwmon_parse_calibration(phydev, priv->tem_base_code, &slope);
+	if (ret)
+		return ret;
+
+	/* Calculate czero for SOC sensor (index 0) */
+	czero = qce1204_hwmon_calculate_czero(priv->tem_base_code, 0);
+
+	/* Configure SOC temperature sensor */
+	qce1204_soc_modify(phydev, QCE1204_TSENS_0_CONVERSION,
+			   QCE1204_CZERO_MASK | QCE1204_SLOPE_MASK,
+			   czero | (slope << 10));
+
+	return 0;
+}
+
+int qce1204_hwmon_hw_init(struct phy_device *phydev)
+{
+	struct phy_package_shared *shared = phydev->shared;
+	struct qce1204_shared_priv *priv;
+	u32 slope, czero, index;
+	int ret;
+
+	if (!shared)
+		return -EINVAL;
+
+	priv = (struct qce1204_shared_priv *)shared->priv;
+	if (!priv)
+		return -EINVAL;
+
+	/* Get PHY channel index */
+	index = qce1204_phy_channel_get(phydev);
+	if (index < 1 || index > 4) {
+		phydev_err(phydev, "Invalid PHY channel index: %u\n", index);
+		return -EINVAL;
 	}
 
-	/* this tsensor is for SOC, need init one time */
-	if (phy_package_init_once(phydev)) {
-		if (cal_result == QCE1204_TSENSOR_CAL_RESULT_DONE) {
-			tsens_offset = ((u32)(priv->tem_base_code >> 32) & QCE1204_TSENSOR0_OFFSET) >> 20;
-			czero = base_code_30c + tsens_offset;
-		}
-		qce1204_soc_modify(phydev, QCE1204_TSENS_0_CONVERSION,
-			QCE1204_CZERO_MASK | QCE1204_SLOPE_MASK, czero | (slope << 10));
-	}
-	/* init the tsensor for PHY */
-	index = qce1204_phy_channel_get(phydev);
-	if (cal_result == QCE1204_TSENSOR_CAL_RESULT_DONE) {
-		tsens_offset = ((u32)priv->tem_base_code & (QCE1204_TSENSOR1_OFFSET << ((index - 1) * 4)))
-			>> ((index - 1) * 4);
-		czero = base_code_30c + tsens_offset;
-	}
+	/* Parse calibration data and calculate slope */
+	ret = qce1204_hwmon_parse_calibration(phydev, priv->tem_base_code, &slope);
+	if (ret)
+		return ret;
+
+	/* Calculate czero for PHY sensor */
+	czero = qce1204_hwmon_calculate_czero(priv->tem_base_code, index);
+
+	/* Configure PHY temperature sensor */
 	qce1204_soc_modify(phydev, QCE1204_TSENS_0_CONVERSION + index * 4,
-		QCE1204_CZERO_MASK | QCE1204_SLOPE_MASK, czero | (slope <<10));
+			   QCE1204_CZERO_MASK | QCE1204_SLOPE_MASK,
+			   czero | (slope << 10));
 
 	return 0;
 }

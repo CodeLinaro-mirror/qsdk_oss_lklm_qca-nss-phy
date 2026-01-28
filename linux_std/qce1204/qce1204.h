@@ -120,6 +120,7 @@ int qce1204_soc_modify(struct phy_device *phydev, u32 reg,
 	u32 mask, u32 set);
 int qce1204_phy_channel_get(struct phy_device *phydev);
 #if IS_ENABLED(CONFIG_HWMON)
+int qce1204_hwmon_hw_init_once(struct phy_device *phydev);
 int qce1204_hwmon_hw_init(struct phy_device *phydev);
 int qce1204_hwmon_probe(struct phy_device *phydev);
 #endif
