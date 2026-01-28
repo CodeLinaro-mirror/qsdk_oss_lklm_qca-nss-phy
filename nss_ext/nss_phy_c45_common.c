@@ -12,6 +12,9 @@ int nss_phy_c45_common_eee_adv_set(struct nss_phy_device *nss_phydev,
 	u16 phy_data = 0;
 	int ret;
 
+	if (!nss_phydev_eee_support(nss_phydev))
+		return -NSS_PHY_EOPNOTSUPP;
+
 	if (adv & EEE_100BASE_T)
 		phy_data |= NSS_PHY_MMD7_EEE_ADV_100M;
 	if (adv & EEE_1000BASE_T)

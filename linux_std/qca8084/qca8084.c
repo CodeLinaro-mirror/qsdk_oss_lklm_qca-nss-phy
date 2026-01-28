@@ -471,6 +471,8 @@ static int qca8084_get_features(struct phy_device *phydev)
 	linkmode_set_bit_array(features, ARRAY_SIZE(features),
 		phydev->supported);
 
+	genphy_c45_read_eee_abilities(phydev);
+
 	return 0;
 }
 
