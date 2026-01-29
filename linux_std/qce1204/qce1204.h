@@ -29,6 +29,8 @@ struct qce1204_clk_data {
 	struct clk *tx_clk;
 	struct clk *rx_clk;
 	struct clk *sys_clk;
+	struct clk *tx_src_clk;
+	struct clk *rx_src_clk;
 	/* Reset control */
 	struct reset_control *tx_reset;
 	struct reset_control *rx_reset;
@@ -61,6 +63,8 @@ struct qce1204_shared_clk_data {
 	struct qce1204_channel_clk channels[4];
 	struct clk *pcs_sys_clk;
 	struct clk *ahb_clk;
+	struct clk *tx_parent;
+	struct clk *rx_parent;
 	struct reset_control *pcs_sys_reset;
 	struct reset_control *xpcs_reset;
 	/* switch clocks */

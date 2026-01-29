@@ -596,6 +596,33 @@ static int qce1204_phy_rx_clk_set(struct phy_device *phydev, bool enable)
 	return ret;
 }
 
+static int qce1204_phy_clk_parent_init(struct phy_device *phydev)
+{
+	struct qce1204_shared_clk_data *clk_shared_data;
+	struct qce1204_clk_data *clk_data;
+	int ret;
+
+	clk_shared_data = qce1204_get_shared_clk_data(phydev);
+	if (!clk_shared_data)
+		return -EINVAL;
+
+	if (!clk_shared_data->tx_parent || !clk_shared_data->rx_parent)
+		return 0;
+
+	clk_data = qce1204_get_clk_data(phydev);
+	if (!clk_data)
+		return -EINVAL;
+
+	if (!clk_data->tx_src_clk || !clk_data->rx_src_clk)
+		return 0;
+
+	ret = clk_set_parent(clk_data->tx_src_clk, clk_shared_data->tx_parent);
+	if (ret)
+		return ret;
+
+	return clk_set_parent(clk_data->rx_src_clk, clk_shared_data->rx_parent);
+}
+
 /**
  * qce1204_phy_sys_clk_set - Enable/disable PHY SYS clock
  * @phydev: PHY device
@@ -1854,6 +1881,8 @@ static int qce1204_phy_shared_clk_init(struct phy_device *phydev, struct device 
 		{&clk_data->channels[3].clks[QCE1204_CLK_XGMII_RX], "ch3_xgmii_rx_clk", "CH3 XGMII RX clock"},
 		{&clk_data->pcs_sys_clk, "pcs_sys_clk", "PCS SYS clock"},
 		{&clk_data->ahb_clk, "ahb_clk", "AHB clock"},
+		{&clk_data->tx_parent, "tx_parent", "TX parent clock"},
+		{&clk_data->rx_parent, "rx_parent", "RX parent clock"},
 	};
 	struct reset_init_entry reset_table[] = {
 		{&clk_data->channels[0].resets[QCE1204_CLK_GMII_TX], "ch0_gmii_tx_reset", "CH0 GMII TX reset"},
@@ -2028,6 +2057,8 @@ static int qce1204_phy_clk_init(struct phy_device *phydev, struct device *dev,
 		{&clk_data->tx_clk, "tx_clk", "TX clock"},
 		{&clk_data->rx_clk, "rx_clk", "RX clock"},
 		{&clk_data->sys_clk, "sys_clk", "SYS clock"},
+		{&clk_data->tx_src_clk, "tx_src_clk", "TX SRC clock"},
+		{&clk_data->rx_src_clk, "rx_src_clk", "RX SRC clock"},
 	};
 	struct reset_init_entry reset_table[] = {
 		{&clk_data->tx_reset, "tx_reset", "TX reset"},
@@ -2384,6 +2415,11 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 			return ret;
 		mdelay(10);
 	}
+
+	ret = qce1204_phy_clk_parent_init(phydev);
+	if (ret < 0)
+		return ret;
+
 	ret = qce1204_phy_sys_clk_set(phydev, true);
 	if (ret < 0)
 		return ret;
