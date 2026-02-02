@@ -79,6 +79,8 @@ struct reset_init_entry {
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL2_VAL				0xa4a4
 #define QCE1204_DEBUG_ANA_2P5G_TX_GAIN_CTRL				0xbb80
 #define QCE1204_DEBUG_ANA_2P5G_TX_GAIN_VAL				0xf33
+#define QCE1204_DEBUG_PLL_CTRL						0x1f
+#define QCE1204_DEBUG_PLL0_FORCE_ON					BIT(2)
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL3					0xc980
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL3_VAL				0xc0
 
@@ -2319,6 +2321,11 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 	/* adjust the tx gain to improve 2.5G performance */
 	ret = qca81xx_phy_debug_write(phydev, QCE1204_DEBUG_ANA_2P5G_TX_GAIN_CTRL,
 		QCE1204_DEBUG_ANA_2P5G_TX_GAIN_VAL);
+	if (ret < 0)
+		return ret;
+	/* force pll0 on to improve traffic performance */
+	ret = qca81xx_phy_debug_modify(phydev, QCE1204_DEBUG_PLL_CTRL,
+		QCE1204_DEBUG_PLL0_FORCE_ON, QCE1204_DEBUG_PLL0_FORCE_ON);
 	if (ret < 0)
 		return ret;
 	ret = qce1204_phy_cdt_thresh_init(phydev);
