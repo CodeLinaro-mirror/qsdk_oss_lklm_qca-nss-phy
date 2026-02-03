@@ -63,31 +63,6 @@ struct qce1204_shared_clk_data {
 	struct clk *ahb_clk;
 	struct reset_control *pcs_sys_reset;
 	struct reset_control *xpcs_reset;
-	/* switch clocks */
-	struct reset_control *switch_btq_reset;
-	struct reset_control *switch_cfg_reset;
-	struct reset_control *switch_core_reset;
-	struct reset_control *switch_ipe_reset;
-	struct reset_control *switch_mac0_reset;
-	struct reset_control *switch_mac1_reset;
-	struct reset_control *switch_mac2_reset;
-	struct reset_control *switch_mac3_reset;
-	struct reset_control *switch_mac4_reset;
-	struct reset_control *switch_mac5_reset;
-	struct reset_control *xgmac0_ptp_ref_reset;
-	struct reset_control *xgmac1_ptp_ref_reset;
-	struct reset_control *mac0_tx_reset;
-	struct reset_control *mac0_rx_reset;
-	struct reset_control *mac1_tx_reset;
-	struct reset_control *mac1_rx_reset;
-	struct reset_control *mac2_tx_reset;
-	struct reset_control *mac2_rx_reset;
-	struct reset_control *mac3_tx_reset;
-	struct reset_control *mac3_rx_reset;
-	struct reset_control *mac4_tx_reset;
-	struct reset_control *mac4_rx_reset;
-	struct reset_control *mac5_tx_reset;
-	struct reset_control *mac5_rx_reset;
 };
 
 struct qce1204_shared_priv {
