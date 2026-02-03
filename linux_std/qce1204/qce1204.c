@@ -68,12 +68,17 @@ struct reset_init_entry {
 #define QCE1204_MMD3_CDT_THRESH_CTRL13					0x807e
 #define QCE1204_MMD3_CDT_THRESH_CTRL13_VAL				0xb060
 
+#define QCE1204_MMD7_LED0_CTRL						0x8078
+#define QCE1204_SPEED_10M_ON						BIT(4)
+
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL0					0x2880
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL0_VAL				0x7777
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL1					0x3880
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL1_VAL				0xa4a4
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL2					0x3980
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL2_VAL				0xa4a4
+#define QCE1204_DEBUG_ANA_10M_DAC_CTRL3					0xc980
+#define QCE1204_DEBUG_ANA_10M_DAC_CTRL3_VAL				0xc0
 
 #define QCE1204_PCS_MMD1_CDA_CONTROL1					0x20
 #define QCE1204_PCS_MMD1_CALIBRATION4					0x78
@@ -2296,6 +2301,10 @@ static int qce1204_phy_10m_dac_init(struct phy_device *phydev)
 		return ret;
 	ret = qca81xx_phy_debug_write(phydev, QCE1204_DEBUG_ANA_10M_DAC_CTRL2,
 		QCE1204_DEBUG_ANA_10M_DAC_CTRL2_VAL);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_debug_write(phydev, QCE1204_DEBUG_ANA_10M_DAC_CTRL3,
+		QCE1204_DEBUG_ANA_10M_DAC_CTRL3_VAL);
 
 	return ret;
 }
@@ -2404,6 +2413,11 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 	if (ret < 0)
 		return ret;
 	ret = qce1204_phy_cdt_thresh_init(phydev);
+	if (ret < 0)
+		return ret;
+	/* 10M speed also use led0 in default as other speeds */
+	ret = phy_modify_mmd(phydev, MDIO_MMD_AN, QCE1204_MMD7_LED0_CTRL,
+		QCE1204_SPEED_10M_ON, QCE1204_SPEED_10M_ON);
 	if (ret < 0)
 		return ret;
 	 if (package_mode == PHY_INTERFACE_MODE_QUSGMII) {
