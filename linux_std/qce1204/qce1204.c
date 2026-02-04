@@ -767,8 +767,6 @@ static int qce1204_phy_clk_reset_assert(struct phy_device *phydev, bool assert)
 	if (ret < 0)
 		return ret;
 
-	phydev_info(phydev, "Succeed to %s PHY clock resets\n",
-		    assert ? "assert" : "deassert");
 	return 0;
 }
 
@@ -911,9 +909,6 @@ static int qce1204_pcs_clk_set_rate(struct phy_device *phydev, u32 channel,
 		}
 	}
 
-	phydev_info(phydev, "Set clock rates (GMII: %lu Hz, XGMII: %lu Hz) for CH%d on PHY@%d\n",
-		    gmii_clk_rate, xgmii_clk_rate, channel, phydev->mdio.addr);
-
 	return 0;
 }
 
@@ -946,8 +941,6 @@ static int qce1204_xpcs_reset_assert(struct phy_device *phydev, bool assert)
 		return ret;
 	}
 
-	phydev_info(phydev, "Succeed to %s XPCS reset\n",
-		    assert ? "assert" : "deassert");
 	return 0;
 }
 
@@ -990,8 +983,6 @@ static int qce1204_pcs_gmii_tx_reset_assert(struct phy_device *phydev, u32 chann
 		return ret;
 	}
 
-	phydev_info(phydev, "Succeed to %s CH%d GMII TX reset\n",
-		    assert ? "assert" : "deassert", channel);
 	return 0;
 }
 
@@ -1034,8 +1025,6 @@ static int qce1204_pcs_gmii_rx_reset_assert(struct phy_device *phydev, u32 chann
 		return ret;
 	}
 
-	phydev_info(phydev, "Succeed to %s CH%d GMII RX reset\n",
-		    assert ? "assert" : "deassert", channel);
 	return 0;
 }
 
@@ -1078,8 +1067,6 @@ static int qce1204_pcs_xgmii_tx_reset_assert(struct phy_device *phydev, u32 chan
 		return ret;
 	}
 
-	phydev_info(phydev, "Succeed to %s CH%d XGMII TX reset\n",
-		    assert ? "assert" : "deassert", channel);
 	return 0;
 }
 
@@ -1122,8 +1109,6 @@ static int qce1204_pcs_xgmii_rx_reset_assert(struct phy_device *phydev, u32 chan
 		return ret;
 	}
 
-	phydev_info(phydev, "Succeed to %s CH%d XGMII RX reset\n",
-		    assert ? "assert" : "deassert", channel);
 	return 0;
 }
 
@@ -1164,8 +1149,6 @@ static int qce1204_pcs_clk_reset_assert(struct phy_device *phydev, u32 channel, 
 	if (ret < 0)
 		return ret;
 
-	phydev_info(phydev, "Succeed to %s PCS resets for CH%d\n",
-		    assert ? "assert" : "deassert", channel);
 	return 0;
 }
 
@@ -1222,8 +1205,6 @@ static int qce1204_pcs_gmii_tx_clk_set(struct phy_device *phydev, u32 channel, b
 		clk_disable_unprepare(clk);
 	}
 
-	phydev_info(phydev, "Succeed to %s CH%d GMII TX clock\n",
-		    enable ? "enable" : "disable", channel);
 	return 0;
 }
 
@@ -1267,8 +1248,6 @@ static int qce1204_pcs_gmii_rx_clk_set(struct phy_device *phydev, u32 channel, b
 		clk_disable_unprepare(clk);
 	}
 
-	phydev_info(phydev, "Succeed to %s CH%d GMII RX clock\n",
-		    enable ? "enable" : "disable", channel);
 	return 0;
 }
 
@@ -1312,8 +1291,6 @@ static int qce1204_pcs_xgmii_tx_clk_set(struct phy_device *phydev, u32 channel, 
 		clk_disable_unprepare(clk);
 	}
 
-	phydev_info(phydev, "Succeed to %s CH%d XGMII TX clock\n",
-		    enable ? "enable" : "disable", channel);
 	return 0;
 }
 
@@ -1357,8 +1334,6 @@ static int qce1204_pcs_xgmii_rx_clk_set(struct phy_device *phydev, u32 channel, 
 		clk_disable_unprepare(clk);
 	}
 
-	phydev_info(phydev, "Succeed to %s CH%d XGMII RX clock\n",
-		    enable ? "enable" : "disable", channel);
 	return 0;
 }
 
@@ -1399,8 +1374,6 @@ static int qce1204_pcs_clk_set(struct phy_device *phydev, u32 channel, bool enab
 	if (ret < 0)
 		return ret;
 
-	phydev_info(phydev, "Succeed to %s PCS clocks for CH%d\n",
-		    enable ? "enable" : "disable", channel);
 	return 0;
 }
 
@@ -1436,7 +1409,6 @@ static int qce1204_ahb_clk_set_rate(struct phy_device *phydev, unsigned long rat
 		return ret;
 	}
 
-	phydev_info(phydev, "Set AHB clock rate to %lu Hz\n", rate);
 	return 0;
 }
 
@@ -1554,7 +1526,6 @@ static int qce1204_pcs_sys_clk_set_rate(struct phy_device *phydev, unsigned long
 		return ret;
 	}
 
-	phydev_info(phydev, "Set pcs system clock rate to %lu Hz\n", rate);
 	return 0;
 }
 
@@ -1978,7 +1949,6 @@ static int qce1204_shared_clk_probe(struct phy_device *phydev)
 	if (ret < 0)
 		return ret;
 
-	phydev_info(phydev, "Shared clock initialization completed\n");
 	return 0;
 }
 
@@ -2030,7 +2000,6 @@ static int qce1204_phy_package_mode_probe(struct phy_device *phydev)
 		return -EINVAL;
 	}
 
-	phydev_info(phydev, "Package mode set to: %s\n", mode_str);
 	return 0;
 }
 
@@ -2101,9 +2070,6 @@ static int qce1204_clk_probe(struct phy_device *phydev)
 	ret = qce1204_phy_clk_init(phydev, dev, clk_data);
 	if (ret < 0)
 		return ret;
-
-	phydev_info(phydev, "Clock initialization completed for PHY@%d\n",
-		phydev->mdio.addr);
 
 	return 0;
 }
