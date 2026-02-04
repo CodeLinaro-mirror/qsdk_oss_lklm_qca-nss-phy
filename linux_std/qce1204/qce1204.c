@@ -2388,6 +2388,9 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 #if IS_ENABLED(CONFIG_HWMON)
 	qce1204_hwmon_hw_init(phydev);
 #endif
+	ret = qca81xx_phy_stats_enable(phydev);
+	if (ret < 0)
+		return ret;
 	ret = qce1204_phy_soft_reset(phydev);
 	if (ret < 0)
 		return ret;

@@ -70,7 +70,7 @@ int qca81xx_soc_modify(struct phy_device *phydev, u32 reg,
 int qca81xx_hwmon_hw_init(struct phy_device *phydev);
 int qca81xx_hwmon_probe(struct phy_device *phydev);
 #endif
-
+int qca81xx_phy_stats_enable(struct phy_device *phydev);
 enum qca81xx_init_state {
 	QCA81XX_INIT_START = 0,
 	QCA81XX_INIT_GCC_PRE_INIT_FAILURE,

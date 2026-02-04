@@ -628,7 +628,7 @@ u32 __qca81xx_soc_read(struct phy_device *phydev, u32 reg)
 	addr = qca81xx_soc_address(phydev);
 	reg_e = TO_QCA81XX_PHY_SOC_ADDR(addr, reg);
 
-	if(strstr(phydev->mdio.bus->id, "i2c")) {
+	if (strstr(phydev->mdio.bus->id, "i2c")) {
 		if (mdio_priv && mdio_priv->sw_read)
 			val = mdio_priv->sw_read(phydev->mdio.bus, reg_e);
 	} else {
@@ -660,7 +660,7 @@ int __qca81xx_soc_write(struct phy_device *phydev,
 	reg_e = TO_QCA81XX_PHY_SOC_ADDR(addr, reg);
 
 	if (strstr(phydev->mdio.bus->id, "i2c")) {
-		if(mdio_priv && mdio_priv->sw_write)
+		if (mdio_priv && mdio_priv->sw_write)
 			mdio_priv->sw_write(phydev->mdio.bus, reg_e, val);
 		else
 			return -EINVAL;
@@ -1454,14 +1454,7 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 	qca81xx_hwmon_hw_init(phydev);
 #endif
 	/*enable phy counter check*/
-	phy_modify_mmd(phydev, MDIO_MMD_PCS,
-		QCA81XX_MMD3_10G_FRAME_CHECK_CTRL,
-		QCA81XX_MMD3_10G_FRAME_CHECK_EN,
-		QCA81XX_MMD3_10G_FRAME_CHECK_EN);
-	phy_modify_mmd(phydev, MDIO_MMD_AN,
-		QCA81XX_MMD7_COUNTER_CTRL,
-		QCA81XX_MMD7_FRAME_CHECK_EN | QCA81XX_MMD7_CNT_SELFCLR,
-		QCA81XX_MMD7_FRAME_CHECK_EN | QCA81XX_MMD7_CNT_SELFCLR);
+	qca81xx_phy_stats_enable(phydev);
 
 	qca81xx_phy_ana_capacitance_update(phydev);
 	ret = qca81xx_phy_resume(phydev);
@@ -1870,7 +1863,7 @@ static ssize_t qca81xx_phy_show_snr(struct device *dev,
 	char pair_name[][10] = {"Pair A","Pair B","Pair C","Pair D"};
 	struct phy_device *phydev = to_phy_device(dev);
 
-	if(!phydev)
+	if (!phydev)
 		return 0;
 
 	/* enable the monitor of SNR */
@@ -2144,58 +2137,107 @@ static struct qca81xx_phy_stat qca81xx_phy_xgmii_stats[] = {
 	},
 };
 
+/**
+ * qca81xx_phy_stats_enable - Enable PHY statistics collection
+ * @phydev: PHY device
+ *
+ * Enables frame check and counter functionality for PHY statistics.
+ * This function configures both 10G and GMII frame checking and enables
+ * self-clearing counters for statistics collection.
+ *
+ * Returns: 0 on success, negative error code on failure
+ */
+int qca81xx_phy_stats_enable(struct phy_device *phydev)
+{
+	int ret = 0;
+
+	ret = phy_modify_mmd(phydev, MDIO_MMD_PCS,
+		QCA81XX_MMD3_10G_FRAME_CHECK_CTRL,
+		QCA81XX_MMD3_10G_FRAME_CHECK_EN,
+		QCA81XX_MMD3_10G_FRAME_CHECK_EN);
+	if (ret < 0)
+		return ret;
+	ret = phy_modify_mmd(phydev, MDIO_MMD_AN,
+		QCA81XX_MMD7_COUNTER_CTRL,
+		QCA81XX_MMD7_FRAME_CHECK_EN | QCA81XX_MMD7_CNT_SELFCLR,
+		QCA81XX_MMD7_FRAME_CHECK_EN | QCA81XX_MMD7_CNT_SELFCLR);
+
+	return ret;
+}
+
+static int qca81xx_phy_xgmii_get_sset_count(struct phy_device *phydev)
+{
+	return ARRAY_SIZE(qca81xx_phy_xgmii_stats);
+}
+
+static int qca81xx_phy_gmii_get_sset_count(struct phy_device *phydev)
+{
+	return ARRAY_SIZE(qca81xx_phy_gmii_stats);
+}
+
 static int qca81xx_phy_get_sset_count(struct phy_device *phydev)
 {
-	if(phydev->speed >= SPEED_2500)
-		return ARRAY_SIZE(qca81xx_phy_xgmii_stats);
+	if (phydev->speed >= SPEED_2500)
+		return qca81xx_phy_xgmii_get_sset_count(phydev);
 	else
-		return ARRAY_SIZE(qca81xx_phy_gmii_stats);
+		return qca81xx_phy_gmii_get_sset_count(phydev);
+}
+
+static void qca81xx_phy_xgmii_get_strings(struct phy_device *phydev,
+	u8 *data)
+{
+	int i, size;
+
+	size = qca81xx_phy_xgmii_get_sset_count(phydev);
+
+	for (i = 0; i < size; i++)
+		strscpy(data + i * ETH_GSTRING_LEN, qca81xx_phy_xgmii_stats[i].name,
+			ETH_GSTRING_LEN);
+}
+
+static void qca81xx_phy_gmii_get_strings(struct phy_device *phydev,
+	u8 *data)
+{
+	int i, size;
+
+	size = qca81xx_phy_gmii_get_sset_count(phydev);
+
+	for (i = 0; i < size; i++)
+		strscpy(data + i * ETH_GSTRING_LEN, qca81xx_phy_gmii_stats[i].name,
+			ETH_GSTRING_LEN);
 }
 
 static void qca81xx_phy_get_strings(struct phy_device *phydev,
 	u8 *data)
 {
-	int i, size;
-
-	size = qca81xx_phy_get_sset_count(phydev);
-
-	for (i = 0; i < size; i++) {
-		if(phydev->speed >= SPEED_2500)
-			strscpy(data + i * ETH_GSTRING_LEN,
-				qca81xx_phy_xgmii_stats[i].name,
-				ETH_GSTRING_LEN);
-		else
-			strscpy(data + i * ETH_GSTRING_LEN,
-				qca81xx_phy_gmii_stats[i].name,
-				ETH_GSTRING_LEN);
-	}
+	if (phydev->speed >= SPEED_2500)
+		qca81xx_phy_xgmii_get_strings(phydev, data);
+	else
+		qca81xx_phy_gmii_get_strings(phydev, data);
 }
 
-static void qca81xx_phy_get_stats(struct phy_device *phydev,
+static void qca81xx_phy_xgmii_get_stats(struct phy_device *phydev,
 	struct ethtool_stats *stats, u64 *data)
 {
 	struct qca81xx_phy_stat phy_stat = {0};
 	u16 reg_32_47 = 0, reg_16_31 = 0, reg_0_15 = 0;
 	int i = 0, size = 0;
 
-	size = qca81xx_phy_get_sset_count(phydev);
+	size = qca81xx_phy_xgmii_get_sset_count(phydev);
 	for (i = 0; i < size; i++) {
 		reg_32_47 = reg_16_31 = reg_0_15 = 0;
 
-		if(phydev->speed >= SPEED_2500)
-			phy_stat = qca81xx_phy_xgmii_stats[i];
-		else
-			phy_stat = qca81xx_phy_gmii_stats[i];
+		phy_stat = qca81xx_phy_xgmii_stats[i];
 
-		if(phy_stat.reg_32_47 != INVALID_MMD_REG)
+		if (phy_stat.reg_32_47 != INVALID_MMD_REG)
 			reg_32_47 = phy_read_mmd(phydev,
 			phy_stat.mmd,
 			phy_stat.reg_32_47);
-		if(phy_stat.reg_16_31 != INVALID_MMD_REG)
+		if (phy_stat.reg_16_31 != INVALID_MMD_REG)
 			reg_16_31 = phy_read_mmd(phydev,
 			phy_stat.mmd,
 			phy_stat.reg_16_31);
-		if(phy_stat.reg_0_15 != INVALID_MMD_REG)
+		if (phy_stat.reg_0_15 != INVALID_MMD_REG)
 			reg_0_15 = phy_read_mmd(phydev,
 			phy_stat.mmd,
 			phy_stat.reg_0_15);
@@ -2203,8 +2245,41 @@ static void qca81xx_phy_get_stats(struct phy_device *phydev,
 		data[i] = ((u64)reg_32_47 << 32) | (reg_16_31 << 16) |
 			reg_0_15;
 	}
+}
 
-	return;
+static void qca81xx_phy_gmii_get_stats(struct phy_device *phydev,
+	struct ethtool_stats *stats, u64 *data)
+{
+	struct qca81xx_phy_stat phy_stat = {0};
+	u16 reg_16_31 = 0, reg_0_15 = 0;
+	int i = 0, size = 0;
+
+	size = qca81xx_phy_gmii_get_sset_count(phydev);
+	for (i = 0; i < size; i++) {
+		reg_16_31 = reg_0_15 = 0;
+
+		phy_stat = qca81xx_phy_gmii_stats[i];
+
+		if (phy_stat.reg_16_31 != INVALID_MMD_REG)
+			reg_16_31 = phy_read_mmd(phydev,
+			phy_stat.mmd,
+			phy_stat.reg_16_31);
+		if (phy_stat.reg_0_15 != INVALID_MMD_REG)
+			reg_0_15 = phy_read_mmd(phydev,
+			phy_stat.mmd,
+			phy_stat.reg_0_15);
+
+		data[i] = ((u64)reg_16_31 << 16) | reg_0_15;
+	}
+}
+
+static void qca81xx_phy_get_stats(struct phy_device *phydev,
+	struct ethtool_stats *stats, u64 *data)
+{
+	if (phydev->speed >= SPEED_2500)
+		qca81xx_phy_xgmii_get_stats(phydev, stats, data);
+	else
+		qca81xx_phy_gmii_get_stats(phydev, stats, data);
 }
 
 static int qca81xx_phy_cable_test_completion(struct phy_device *phydev)
@@ -3026,6 +3101,9 @@ static struct phy_driver qcom_phy_driver[] = {
 	.get_wol = qca81xx_phy_get_wol,
 	.get_tunable = qca81xx_phy_get_tunable,
 	.set_tunable = qca81xx_phy_set_tunable,
+	.get_sset_count = qca81xx_phy_gmii_get_sset_count,
+	.get_strings = qca81xx_phy_gmii_get_strings,
+	.get_stats = qca81xx_phy_gmii_get_stats,
 	.led_brightness_set = qca81xx_led_brightness_set,
 	.led_blink_set = qca81xx_led_blink_set,
 	.led_hw_is_supported = qca81xx_led_hw_is_supported,
@@ -3048,6 +3126,9 @@ static struct phy_driver qcom_phy_driver[] = {
 	.get_wol = qca81xx_phy_get_wol,
 	.get_tunable = qca81xx_phy_get_tunable,
 	.set_tunable = qca81xx_phy_set_tunable,
+	.get_sset_count = qca81xx_phy_gmii_get_sset_count,
+	.get_strings = qca81xx_phy_gmii_get_strings,
+	.get_stats = qca81xx_phy_gmii_get_stats,
 	.led_brightness_set = qca81xx_led_brightness_set,
 	.led_blink_set = qca81xx_led_blink_set,
 	.led_hw_is_supported = qca81xx_led_hw_is_supported,
