@@ -20,6 +20,11 @@ struct reset_init_entry {
 	const char *desc;
 };
 
+#define QCE1204_PHY_SPEC_CONTROL					0x10
+#define QCE1204_PHY_MDI_MASK						GENMASK(6, 5)
+#define QCE1204_PHY_MDI_AUTO						0x3
+#define QCE1204_PHY_MDI_X						0x1
+#define QCE1204_PHY_MDI							0
 #define QCE1204_PHY_SPEC_STATUS						0x11
 #define QCE1204_PHY_SS_LINK_STATUS					0x400
 #define QCE1204_PHY_INTR_DOWNSHIFT					0x20
@@ -29,6 +34,7 @@ struct reset_init_entry {
 #define QCE1204_PHY_SS_SPEED_1000					0x100
 #define QCE1204_PHY_SS_SPEED_100					0x80
 #define QCE1204_PHY_SS_SPEED_10						0
+#define QCE1204_PHY_SS_MDIX						0x40
 #define QCE1204_PHY_INTR_MASK						0x12
 
 #define QCE1204_PHY_INTR_STATUS						0x13
@@ -92,7 +98,6 @@ struct reset_init_entry {
 #define QCE1204_PCS_MMD1_BYPASS_TUNING_IPG_EN				0x0fff
 #define QCE1204_PCS_MMD1_XPCS_MODE					0x1000
 #define QCE1204_PCS_MMD1_CALIBRATION_DONE				0x80
-#define QCE1204_PCS_MMD1_QUSGMII_FUNC_RESET				0x10
 #define QCE1204_PCS_MMD1_SSCG_ENABLE					0x8
 #define QCE1204_PCS_MMD1_PLL_POWER_ON_AND_RESET				0x1e0
 #define QCE1204_PCS_MMD1_ANA_SOFT_RESET_MASK				0x40
@@ -1742,23 +1747,7 @@ static int qce1204_pcs_qusgmii_reset(struct phy_device *phydev, u32 channel)
 	return ret;
 }
 
-int qce1204_pcs_ipg_tune_reset(struct phy_device *phydev)
-{
-	int ret = 0;
-
-	ret = qce1204_pcs_modify_mmd(phydev, MDIO_MMD_PMAPMD,
-		QCE1204_PCS_MMD1_QUSGMII_RESET, QCE1204_PCS_MMD1_QUSGMII_FUNC_RESET, 0);
-	if (ret < 0)
-		return ret;
-	mdelay(1);
-	ret = qce1204_pcs_modify_mmd(phydev, MDIO_MMD_PMAPMD,
-		QCE1204_PCS_MMD1_QUSGMII_RESET, QCE1204_PCS_MMD1_QUSGMII_FUNC_RESET,
-		QCE1204_PCS_MMD1_QUSGMII_FUNC_RESET);
-
-	return ret;
-}
-
-int qce1204_phy_fifo_reset(struct phy_device *phydev, bool enable)
+static int qce1204_phy_fifo_reset(struct phy_device *phydev, bool enable)
 {
 	u16 phy_data = 0;
 
@@ -1768,6 +1757,61 @@ int qce1204_phy_fifo_reset(struct phy_device *phydev, bool enable)
 	return phy_modify_mmd(phydev, MDIO_MMD_VEND2,
 		QCE1204_PHY_CONTROL,
 		QCE1204_PHY_FIFO_RESET, phy_data);
+}
+
+int qce1204_phy_soft_reset(struct phy_device *phydev)
+{
+	return phy_modify_mmd(phydev, MDIO_MMD_VEND2,
+		MII_BMCR, BMCR_RESET, BMCR_RESET);
+}
+
+static int qce1204_phy_mdix_ctrl_set(struct phy_device *phydev)
+{
+	int ret;
+	u16 val;
+
+	switch (phydev->mdix_ctrl) {
+	case ETH_TP_MDI:
+		val = QCE1204_PHY_MDI;
+		break;
+	case ETH_TP_MDI_X:
+		val = QCE1204_PHY_MDI_X;
+		break;
+	case ETH_TP_MDI_AUTO:
+		val = QCE1204_PHY_MDI_AUTO;
+		break;
+	default:
+		return 0;
+	}
+	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_VEND2,
+		QCE1204_PHY_SPEC_CONTROL, QCE1204_PHY_MDI_MASK,
+		FIELD_PREP(QCE1204_PHY_MDI_MASK, val));
+	if (ret <= 0)
+		return ret;
+
+	return qce1204_phy_soft_reset(phydev);
+}
+
+static int qce1204_phy_mdix_ctrl_get(struct phy_device *phydev)
+{
+	int ret;
+
+	ret = phy_read_mmd(phydev, MDIO_MMD_VEND2, QCE1204_PHY_SPEC_CONTROL);
+	if (ret < 0)
+		return ret;
+	switch (FIELD_GET(QCE1204_PHY_MDI_MASK, ret)) {
+	case QCE1204_PHY_MDI:
+		phydev->mdix_ctrl = ETH_TP_MDI;
+		break;
+	case QCE1204_PHY_MDI_X:
+		phydev->mdix_ctrl = ETH_TP_MDI_X;
+		break;
+	case QCE1204_PHY_MDI_AUTO:
+		phydev->mdix_ctrl = ETH_TP_MDI_AUTO;
+		break;
+	}
+
+	return 0;
 }
 
 int qce1204_phy_config_aneg(struct phy_device *phydev)
@@ -1818,13 +1862,11 @@ int qce1204_phy_config_aneg(struct phy_device *phydev)
 	if (ret > 0)
 		changed = true;
 
-	return genphy_c45_check_and_restart_aneg(phydev, changed);
-}
+	ret = qce1204_phy_mdix_ctrl_set(phydev);
+	if (ret < 0)
+		return ret;
 
-int qce1204_phy_soft_reset(struct phy_device *phydev)
-{
-	return phy_modify_mmd(phydev, MDIO_MMD_VEND2,
-		MII_BMCR, BMCR_RESET, BMCR_RESET);
+	return genphy_c45_check_and_restart_aneg(phydev, changed);
 }
 
 int qce1204_phy_channel_get(struct phy_device *phydev)
@@ -2570,7 +2612,10 @@ int qce1204_phy_read_status(struct phy_device *phydev)
 		else
 			phydev->duplex = DUPLEX_HALF;
 	}
-
+	phydev->mdix = (ret & QCE1204_PHY_SS_MDIX) ? ETH_TP_MDI_X : ETH_TP_MDI;
+	ret = qce1204_phy_mdix_ctrl_get(phydev);
+	if (ret < 0)
+		return ret;
 	if (phydev->link != old_link) {
 		if (phydev->interface == PHY_INTERFACE_MODE_QUSGMII) {
 			ret = qce1204_phy_qusgmii_speed_fix_up(phydev);
