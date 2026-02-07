@@ -402,7 +402,7 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_CDT_STATUS_STAT_SAME_OPEN	FIELD_PREP_CONST(QCA81XX_CDT_STATUS_STAT_TYPE, 2)
 #define QCA81XX_CDT_STATUS_STAT_SAME_SHORT	FIELD_PREP_CONST(QCA81XX_CDT_STATUS_STAT_TYPE, 3)
 
-bool qca81xx_phy_reg_valid(struct phy_device *phydev,
+static bool qca81xx_phy_reg_valid(struct phy_device *phydev,
 	unsigned int reg)
 {
 	if (reg > 0xFFFF) {
@@ -1894,7 +1894,7 @@ static void qca81xx_phy_remove(struct phy_device *phydev)
 	device_remove_file(&phydev->mdio.dev, &dev_attr_snr);
 }
 
-int qca81xx_phy_set_wol(struct phy_device *phydev,
+static int qca81xx_phy_set_wol(struct phy_device *phydev,
 	struct ethtool_wolinfo *wol)
 {
 	int ret, irq_enabled, i;
@@ -1965,7 +1965,7 @@ int qca81xx_phy_set_wol(struct phy_device *phydev,
 	return 0;
 }
 
-void qca81xx_phy_get_wol(struct phy_device *phydev,
+static void qca81xx_phy_get_wol(struct phy_device *phydev,
 	struct ethtool_wolinfo *wol)
 {
 	int value;

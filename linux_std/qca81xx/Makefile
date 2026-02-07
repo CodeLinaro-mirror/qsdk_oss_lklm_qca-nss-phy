@@ -1,7 +1,7 @@
 ###################################################
 # Makefile for the QCA81XX linux PHY driver
 ###################################################
-ccflags-y += -Werror -Wall
+ccflags-y += -Werror -Wall -Wmissing-prototypes
 TARGET := qca81xx-phy
 obj-m += $(TARGET).o
 $(TARGET)-objs := qca81xx.o
