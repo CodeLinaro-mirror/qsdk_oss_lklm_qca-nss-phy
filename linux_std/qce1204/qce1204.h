@@ -98,6 +98,11 @@ u32 qce1204_soc_read(struct phy_device *phydev, u32 reg);
 int qce1204_soc_modify(struct phy_device *phydev, u32 reg,
 	u32 mask, u32 set);
 int qce1204_phy_channel_get(struct phy_device *phydev);
+int qce1204_phy_soft_reset(struct phy_device *phydev);
+int qce1204_phy_config_aneg(struct phy_device *phydev);
+int qce1204_phy_probe(struct phy_device *phydev);
+int qce1204_phy_config_init(struct phy_device *phydev);
+int qce1204_phy_read_status(struct phy_device *phydev);
 #if IS_ENABLED(CONFIG_HWMON)
 int qce1204_hwmon_hw_init_once(struct phy_device *phydev);
 int qce1204_hwmon_hw_init(struct phy_device *phydev);
