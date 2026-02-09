@@ -1,4 +1,5 @@
-obj-y := qca8084/ ptp/ clock/ macsec/ mdio_ahb/
+obj-y := qca8084/ ptp/ clock/ mdio_ahb/
+obj-$(CONFIG_MACSEC) += macsec/
 #
 # PHY objects
 #
