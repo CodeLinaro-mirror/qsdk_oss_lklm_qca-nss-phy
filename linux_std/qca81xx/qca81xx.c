@@ -3051,6 +3051,10 @@ int qce1204_phy_soft_reset(struct phy_device *phydev);
 /* IPQ52XX Built-in PHY ID and function declarations */
 #define IPQ52XX_PHY			0x004dd120
 
+int ipq52xx_phy_config_init(struct phy_device *phydev);
+int ipq52xx_phy_probe(struct phy_device *phydev);
+int ipq52xx_phy_read_status(struct phy_device *phydev);
+
 static struct phy_driver qcom_phy_driver[] = {
 {
 	PHY_ID_MATCH_EXACT(QCA8111_PHY),
@@ -3116,7 +3120,7 @@ static struct phy_driver qcom_phy_driver[] = {
 	.name = "Qualcomm IPQ52XX internal PHY",
 	.flags = PHY_IS_INTERNAL | PHY_POLL_CABLE_TEST,
 	.config_aneg = qce1204_phy_config_aneg,
-	.read_status = qce1204_phy_read_status,
+	.read_status = ipq52xx_phy_read_status,
 	.soft_reset = qce1204_phy_soft_reset,
 	.suspend = genphy_c45_pma_suspend,
 	.resume = genphy_c45_pma_resume,
@@ -3135,6 +3139,8 @@ static struct phy_driver qcom_phy_driver[] = {
 	.led_hw_control_set = qca81xx_led_hw_control_set,
 	.led_hw_control_get = qca81xx_led_hw_control_get,
 	.led_polarity_set = qca81xx_led_polarity_set,
+	.config_init = ipq52xx_phy_config_init,
+	.probe = ipq52xx_phy_probe,
 },
 };
 module_phy_driver(qcom_phy_driver);

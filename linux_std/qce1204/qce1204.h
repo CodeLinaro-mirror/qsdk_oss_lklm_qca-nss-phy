@@ -108,4 +108,19 @@ int qce1204_hwmon_hw_init_once(struct phy_device *phydev);
 int qce1204_hwmon_hw_init(struct phy_device *phydev);
 int qce1204_hwmon_probe(struct phy_device *phydev);
 #endif
+struct ipq52xx_phy_priv {
+	void __iomem *gmii_rx_reg;	/* NSS_CC_GMII_RX_CBCR */
+	void __iomem *gmii_tx_reg;	/* NSS_CC_GMII_TX_CBCR */
+	void __iomem *ephy_rx_reg;	/* NSS_CC_EPHY_RX_CBCR */
+	void __iomem *ephy_tx_reg;	/* NSS_CC_EPHY_TX_CBCR */
+	void __iomem *sys_clk_reg;	/* NSS_CC_EPHY_SYS_CLK_REG */
+	void __iomem *ldo_bias_reg;	/* TCSR_GPHY_LDO_BIAS_EN */
+	void __iomem *pll_src_sel_reg;	/* CMN_PLL_SRC_SEL_REG */
+	void __iomem *rx_clk_cmd_reg;	/* NSS_CC_RX_CLK_CMD_REG */
+	void __iomem *tx_clk_cmd_reg;	/* NSS_CC_TX_CLK_CMD_REG */
+};
+
+int ipq52xx_phy_probe(struct phy_device *phydev);
+int ipq52xx_phy_config_init(struct phy_device *phydev);
+int ipq52xx_phy_read_status(struct phy_device *phydev);
 #endif /* _QCE1204_H_ */

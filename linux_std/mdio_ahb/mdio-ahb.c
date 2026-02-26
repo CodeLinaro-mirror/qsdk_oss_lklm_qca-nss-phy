@@ -65,7 +65,7 @@ static int mmd_to_ahb_addr_convert(struct mii_bus *bus, int phy_addr, int devad,
 	case MDIO_MMD_AN:
 		ahb_base_addr = AHB_PHY_MMD7_BASE;
 		break;
-	case MDIO_MMD_VEND1:
+	case MDIO_MMD_VEND2:
 		ahb_base_addr = AHB_PHY_MMD31_BASE;
 		break;
 	default:
@@ -248,6 +248,28 @@ err_free_bus:
 	return ERR_PTR(ret);
 }
 
+/* IPQ52xx PHY SYS clock/reset registers */
+#define IPQ52XX_PHY_SYS_CLK_REG					0x182A004
+#define IPQ52XX_PHY_SYS_CLK_EN					BIT(0)
+
+static int ipq52xx_phy_sys_clk_enable(void)
+{
+	void __iomem *reg;
+	u32 val;
+
+	reg = ioremap(IPQ52XX_PHY_SYS_CLK_REG, 4);
+	if (!reg)
+		return -ENOMEM;
+
+	val = readl(reg);
+	val |= IPQ52XX_PHY_SYS_CLK_EN;
+	writel(val, reg);
+
+	iounmap(reg);
+
+	return 0;
+}
+
 /**
  * mdio_ahb_probe() - Platform driver probe function
  * @pdev: Platform device
@@ -263,6 +285,14 @@ static int mdio_ahb_probe(struct platform_device *pdev)
 	struct resource *res;
 	phys_addr_t base_addr;
 	resource_size_t reg_size;
+	int ret;
+
+	/* TODO: Move PHY SYS clock enable to clock driver */
+	ret = ipq52xx_phy_sys_clk_enable();
+	if (ret < 0) {
+		dev_err(&pdev->dev, "Failed to enable PHY SYS clock: %d\n", ret);
+		return ret;
+	}
 
 	/* Get memory resource from device tree */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
