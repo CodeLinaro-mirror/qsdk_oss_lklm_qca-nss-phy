@@ -2563,11 +2563,9 @@ err_disable_clks:
 	return ret;
 }
 
-int qce1204_phy_read_status(struct phy_device *phydev)
+static int qce_phy_read_status(struct phy_device *phydev)
 {
-	int ret = 0, old_link = 0;
-
-	old_link = phydev->link;
+	int ret = 0;
 
 	ret = genphy_c45_read_status(phydev);
 	if (ret < 0)
@@ -2619,6 +2617,19 @@ int qce1204_phy_read_status(struct phy_device *phydev)
 	ret = qce1204_phy_mdix_ctrl_get(phydev);
 	if (ret < 0)
 		return ret;
+
+	return 0;
+}
+
+int qce1204_phy_read_status(struct phy_device *phydev)
+{
+	int ret = 0, old_link = 0;
+
+	old_link = phydev->link;
+
+	ret = qce_phy_read_status(phydev);
+	if (ret < 0)
+		return ret;
 	if (phydev->link != old_link) {
 		if (phydev->interface == PHY_INTERFACE_MODE_QUSGMII) {
 			ret = qce1204_phy_qusgmii_speed_fix_up(phydev);
@@ -2631,6 +2642,387 @@ int qce1204_phy_read_status(struct phy_device *phydev)
 				return ret;
 		}
 	}
+
+	return 0;
+}
+
+/* IPQ52xx NSS CC registers */
+#define NSS_CC_EPHY_SYS_CLK_REG					0x182A004
+#define NSS_CC_CLK_ENABLE					BIT(0)
+#define NSS_CC_CLK_RESET					BIT(2)
+#define NSS_CC_RX_CLK_CMD_REG					0x39B004FC
+#define NSS_CC_TX_CLK_CMD_REG					0x39B00508
+#define NSS_CC_EPHY_RX_CBCR					0x39B00618
+#define NSS_CC_EPHY_TX_CBCR					0x39B0061C
+#define NSS_CC_GMII_RX_CBCR					0x39B00578
+#define NSS_CC_GMII_TX_CBCR					0x39B00580
+/* IPQ52xx TCSR GPHY LDO registers */
+#define TCSR_GPHY_LDO_BIAS_EN					0x1961000
+#define GPHY_LDO_BIAS_EN					BIT(0)
+/* IPQ52xx CMN PLL source select register */
+#define CMN_PLL_SRC_SEL_REG					0x9B42c
+#define CMN_PLL_312P5M_SEL					BIT(10)
+
+static int ipq52xx_phy_gmii_clk_set(struct phy_device *phydev, bool enable)
+{
+	struct ipq52xx_phy_priv *priv = phydev->priv;
+	u32 val;
+
+	if (!priv || !priv->gmii_rx_reg || !priv->gmii_tx_reg)
+		return -EINVAL;
+
+	/* Enable/disable GMII RX clock (bit 0) */
+	val = readl(priv->gmii_rx_reg);
+	if (enable)
+		val |= NSS_CC_CLK_ENABLE;
+	else
+		val &= ~NSS_CC_CLK_ENABLE;
+	writel(val, priv->gmii_rx_reg);
+
+	/* Enable/disable GMII TX clock (bit 0) */
+	val = readl(priv->gmii_tx_reg);
+	if (enable)
+		val |= NSS_CC_CLK_ENABLE;
+	else
+		val &= ~NSS_CC_CLK_ENABLE;
+	writel(val, priv->gmii_tx_reg);
+
+	return 0;
+}
+
+static int ipq52xx_phy_gmii_clk_reset(struct phy_device *phydev)
+{
+	struct ipq52xx_phy_priv *priv = phydev->priv;
+	u32 val;
+
+	if (!priv || !priv->gmii_rx_reg || !priv->gmii_tx_reg)
+		return -EINVAL;
+
+	/* Assert reset: set bit 2 of GMII RX and TX CBCR */
+	val = readl(priv->gmii_rx_reg);
+	val |= NSS_CC_CLK_RESET;
+	writel(val, priv->gmii_rx_reg);
+
+	val = readl(priv->gmii_tx_reg);
+	val |= NSS_CC_CLK_RESET;
+	writel(val, priv->gmii_tx_reg);
+
+	mdelay(1);
+
+	/* Deassert reset: clear bit 2 of GMII RX and TX CBCR */
+	val = readl(priv->gmii_rx_reg);
+	val &= ~NSS_CC_CLK_RESET;
+	writel(val, priv->gmii_rx_reg);
+
+	val = readl(priv->gmii_tx_reg);
+	val &= ~NSS_CC_CLK_RESET;
+	writel(val, priv->gmii_tx_reg);
+
+	return 0;
+}
+
+static int ipq52xx_phy_clk_set(struct phy_device *phydev, bool enable)
+{
+	struct ipq52xx_phy_priv *priv = phydev->priv;
+	u32 val;
+
+	if (!priv || !priv->ephy_rx_reg || !priv->ephy_tx_reg)
+		return -EINVAL;
+
+	/* Enable/disable RX clock (bit 0) */
+	val = readl(priv->ephy_rx_reg);
+	if (enable)
+		val |= NSS_CC_CLK_ENABLE;
+	else
+		val &= ~NSS_CC_CLK_ENABLE;
+	writel(val, priv->ephy_rx_reg);
+
+	/* Enable/disable TX clock (bit 0) */
+	val = readl(priv->ephy_tx_reg);
+	if (enable)
+		val |= NSS_CC_CLK_ENABLE;
+	else
+		val &= ~NSS_CC_CLK_ENABLE;
+	writel(val, priv->ephy_tx_reg);
+
+	return 0;
+}
+
+static int ipq52xx_phy_clk_reset(struct phy_device *phydev)
+{
+	struct ipq52xx_phy_priv *priv = phydev->priv;
+	u32 val;
+
+	if (!priv || !priv->ephy_rx_reg || !priv->ephy_tx_reg)
+		return -EINVAL;
+
+	/* Assert reset: set bit 2 of RX and TX CBCR */
+	val = readl(priv->ephy_rx_reg);
+	val |= NSS_CC_CLK_RESET;
+	writel(val, priv->ephy_rx_reg);
+
+	val = readl(priv->ephy_tx_reg);
+	val |= NSS_CC_CLK_RESET;
+	writel(val, priv->ephy_tx_reg);
+
+	mdelay(1);
+
+	/* Deassert reset: clear bit 2 of RX and TX CBCR */
+	val = readl(priv->ephy_rx_reg);
+	val &= ~NSS_CC_CLK_RESET;
+	writel(val, priv->ephy_rx_reg);
+
+	val = readl(priv->ephy_tx_reg);
+	val &= ~NSS_CC_CLK_RESET;
+	writel(val, priv->ephy_tx_reg);
+
+	return 0;
+}
+
+static int ipq52xx_phy_sys_reset(struct phy_device *phydev)
+{
+	struct ipq52xx_phy_priv *priv = phydev->priv;
+	u32 val;
+
+	if (!priv || !priv->sys_clk_reg)
+		return -EINVAL;
+
+	/* Assert reset (set bit 2) */
+	val = readl(priv->sys_clk_reg);
+	val |= NSS_CC_CLK_RESET;
+	writel(val, priv->sys_clk_reg);
+
+	mdelay(10);
+
+	/* Deassert reset (clear bit 2) */
+	val = readl(priv->sys_clk_reg);
+	val &= ~NSS_CC_CLK_RESET;
+	writel(val, priv->sys_clk_reg);
+
+	return 0;
+}
+
+static int ipq52xx_phy_ldo_loading_enble(struct phy_device *phydev)
+{
+	struct ipq52xx_phy_priv *priv = phydev->priv;
+	u32 val;
+
+	if (!priv || !priv->ldo_bias_reg)
+		return -EINVAL;
+
+	/* Enable efuse loading into analog circuit (active low: clear bit 0) */
+	val = readl(priv->ldo_bias_reg);
+	val &= ~GPHY_LDO_BIAS_EN;
+	writel(val, priv->ldo_bias_reg);
+
+	return 0;
+}
+
+static int ipq52xx_phy_speed_clock_set(struct phy_device *phydev)
+{
+	struct ipq52xx_phy_priv *priv = phydev->priv;
+	u32 rx_clk = 0, tx_clk = 0, clk_div = 0, val = 0;
+	bool need_sel_312p5m = false;
+
+	if (!priv || !priv->pll_src_sel_reg || !priv->rx_clk_cmd_reg || !priv->tx_clk_cmd_reg)
+		return -EINVAL;
+
+	/* Determine clock rates based on speed */
+	switch (phydev->speed) {
+	case SPEED_2500:
+		need_sel_312p5m = true;
+		rx_clk = 0x101;
+		tx_clk = 0x501;
+		break;
+	case SPEED_1000:
+		rx_clk = 0x101;
+		tx_clk = 0x501;
+		break;
+	case SPEED_100:
+		rx_clk = 0x109;
+		tx_clk = 0x509;
+		break;
+	case SPEED_10:
+		rx_clk = 0x109;
+		tx_clk = 0x509;
+		clk_div = 9;
+		break;
+	default:
+		phydev_err(phydev, "Unsupported speed: %d\n", phydev->speed);
+		return -EOPNOTSUPP;
+	}
+	/* select source clock */
+	val = readl(priv->pll_src_sel_reg);
+	if (need_sel_312p5m)
+		val |= CMN_PLL_312P5M_SEL;
+	else
+		val &= ~CMN_PLL_312P5M_SEL;
+	writel(val, priv->pll_src_sel_reg);
+	/* rx speed clock configuration */
+	writel(rx_clk, priv->rx_clk_cmd_reg + 4);
+	writel(clk_div, priv->rx_clk_cmd_reg + 8);
+	writel(1, priv->rx_clk_cmd_reg);
+	/* tx speed clock configuration */
+	writel(tx_clk, priv->tx_clk_cmd_reg + 4);
+	writel(clk_div, priv->tx_clk_cmd_reg + 8);
+	writel(1, priv->tx_clk_cmd_reg);
+
+	return 0;
+}
+
+static int ipq52xx_phy_internal_speed_fix_up(struct phy_device *phydev)
+{
+	bool clk_en = false;
+	int ret;
+
+	if (phydev->link) {
+		ret = ipq52xx_phy_speed_clock_set(phydev);
+		if (ret < 0)
+			return ret;
+		clk_en = true;
+	}
+	ret = ipq52xx_phy_clk_set(phydev, clk_en);
+	if (ret < 0)
+		return ret;
+	/* reset phy clocks */
+	ret = ipq52xx_phy_clk_reset(phydev);
+	if (ret < 0)
+		return ret;
+	mdelay(1);
+	ret = ipq52xx_phy_gmii_clk_set(phydev, clk_en);
+	if (ret < 0)
+		return ret;
+	ret = ipq52xx_phy_gmii_clk_reset(phydev);
+	if (ret < 0)
+		return ret;
+	ret = qce1204_phy_fifo_reset(phydev, true);
+	if (ret < 0)
+		return ret;
+	mdelay(1);
+	ret = qce1204_phy_fifo_reset(phydev, false);
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
+int ipq52xx_phy_read_status(struct phy_device *phydev)
+{
+	int ret = 0, old_link = 0;
+
+	old_link = phydev->link;
+
+	ret = qce_phy_read_status(phydev);
+	if (ret < 0)
+		return ret;
+	if (phydev->link != old_link) {
+		ret = ipq52xx_phy_internal_speed_fix_up(phydev);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
+/**
+ * ipq52xx_phy_probe - Probe IPQ52xx built-in PHY, map registers once
+ * @phydev: PHY device
+ * Returns: 0 on success, negative error code on failure
+ *
+ * Maps all hardware registers using devm_ioremap so they are available
+ * for the lifetime of the driver without repeated ioremap/iounmap calls.
+ */
+int ipq52xx_phy_probe(struct phy_device *phydev)
+{
+	struct device *dev = &phydev->mdio.dev;
+	struct ipq52xx_phy_priv *priv;
+
+	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
+	if (!priv)
+		return -ENOMEM;
+
+	priv->gmii_rx_reg = devm_ioremap(dev, NSS_CC_GMII_RX_CBCR, 4);
+	if (!priv->gmii_rx_reg) {
+		phydev_err(phydev, "Failed to map GMII RX clock register\n");
+		return -ENOMEM;
+	}
+
+	priv->gmii_tx_reg = devm_ioremap(dev, NSS_CC_GMII_TX_CBCR, 4);
+	if (!priv->gmii_tx_reg) {
+		phydev_err(phydev, "Failed to map GMII TX clock register\n");
+		return -ENOMEM;
+	}
+
+	priv->ephy_rx_reg = devm_ioremap(dev, NSS_CC_EPHY_RX_CBCR, 4);
+	if (!priv->ephy_rx_reg) {
+		phydev_err(phydev, "Failed to map EPHY RX clock register\n");
+		return -ENOMEM;
+	}
+
+	priv->ephy_tx_reg = devm_ioremap(dev, NSS_CC_EPHY_TX_CBCR, 4);
+	if (!priv->ephy_tx_reg) {
+		phydev_err(phydev, "Failed to map EPHY TX clock register\n");
+		return -ENOMEM;
+	}
+
+	priv->sys_clk_reg = devm_ioremap(dev, NSS_CC_EPHY_SYS_CLK_REG, 4);
+	if (!priv->sys_clk_reg) {
+		phydev_err(phydev, "Failed to map PHY SYS clock register\n");
+		return -ENOMEM;
+	}
+
+	priv->ldo_bias_reg = devm_ioremap(dev, TCSR_GPHY_LDO_BIAS_EN, 4);
+	if (!priv->ldo_bias_reg) {
+		phydev_err(phydev, "Failed to map LDO bias register\n");
+		return -ENOMEM;
+	}
+
+	priv->pll_src_sel_reg = devm_ioremap(dev, CMN_PLL_SRC_SEL_REG, 4);
+	if (!priv->pll_src_sel_reg) {
+		phydev_err(phydev, "Failed to map PLL source select register\n");
+		return -ENOMEM;
+	}
+
+	priv->rx_clk_cmd_reg = devm_ioremap(dev, NSS_CC_RX_CLK_CMD_REG, 12);
+	if (!priv->rx_clk_cmd_reg) {
+		phydev_err(phydev, "Failed to map RX clock command register\n");
+		return -ENOMEM;
+	}
+
+	priv->tx_clk_cmd_reg = devm_ioremap(dev, NSS_CC_TX_CLK_CMD_REG, 12);
+	if (!priv->tx_clk_cmd_reg) {
+		phydev_err(phydev, "Failed to map TX clock command register\n");
+		return -ENOMEM;
+	}
+
+	phydev->priv = priv;
+	return 0;
+}
+
+int ipq52xx_phy_config_init(struct phy_device *phydev)
+{
+	int ret = 0;
+
+	/* enable efuse loading into analog circuit */
+	ret = ipq52xx_phy_ldo_loading_enble(phydev);
+	if (ret < 0)
+		return ret;
+	mdelay(10);
+	ret = ipq52xx_phy_sys_reset(phydev);
+	if (ret < 0)
+		return ret;
+	ret = qce1204_phy_eee_init(phydev);
+	if (ret < 0)
+		return ret;
+	ret = qce1204_phy_10m_dac_init(phydev);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_stats_enable(phydev);
+	if (ret < 0)
+		return ret;
+	ret = qce1204_phy_soft_reset(phydev);
+	if (ret < 0)
+		return ret;
 
 	return 0;
 }
