@@ -74,6 +74,9 @@ struct reset_init_entry {
 #define QCE1204_MMD3_CDT_THRESH_CTRL13					0x807e
 #define QCE1204_MMD3_CDT_THRESH_CTRL13_VAL				0xb060
 
+#define QCE1204_MMD3_FORCE_LINK_CTRL					0xa05a
+#define QCE1204_FORCE_LINK_EN						BIT(6)
+
 #define QCE1204_MMD7_LED0_CTRL						0x8078
 #define QCE1204_SPEED_10M_ON						BIT(4)
 
@@ -2365,6 +2368,11 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 	/* adjust the tx gain to improve 2.5G performance */
 	ret = qca81xx_phy_debug_write(phydev, QCE1204_DEBUG_ANA_2P5G_TX_GAIN_CTRL,
 		QCE1204_DEBUG_ANA_2P5G_TX_GAIN_VAL);
+	if (ret < 0)
+		return ret;
+	/* disable force link to improve 2.5G performance */
+	ret = phy_modify_mmd(phydev, MDIO_MMD_PCS, QCE1204_MMD3_FORCE_LINK_CTRL,
+		QCE1204_FORCE_LINK_EN, 0);
 	if (ret < 0)
 		return ret;
 	/* force pll0 on to improve traffic performance */
