@@ -252,6 +252,45 @@ err_free_bus:
 #define IPQ52XX_PHY_SYS_CLK_REG					0x182A004
 #define IPQ52XX_PHY_SYS_CLK_EN					BIT(0)
 
+#define GCC_PCNOC_BFDCD_CMD_RCGR				0x1831004
+#define GCC_MDIO_GEPHY_AHB_CBCR					0x1817098
+
+static int mdio_ahb_clk_init(struct device *dev)
+{
+	void __iomem *pcnoc_bfdcd;
+	void __iomem *mdio_gephy_ahb;
+	u32 val;
+
+	/* Map 8 bytes to cover CMD (offset 0) and CFG (offset 4) registers */
+	pcnoc_bfdcd = ioremap(GCC_PCNOC_BFDCD_CMD_RCGR, 8);
+	if (!pcnoc_bfdcd)
+		return -ENOMEM;
+
+	/* Configure RCG to 100MHz (0x10f) */
+	writel(0x10f, pcnoc_bfdcd + 4);
+
+	/* Update CMD register */
+	val = readl(pcnoc_bfdcd);
+	val |= BIT(0);
+	writel(val, pcnoc_bfdcd);
+
+	iounmap(pcnoc_bfdcd);
+
+	mdio_gephy_ahb = ioremap(GCC_MDIO_GEPHY_AHB_CBCR, 4);
+	if (!mdio_gephy_ahb)
+		return -ENOMEM;
+
+	/* Enable MDIO AHB clock branch */
+	val = readl(mdio_gephy_ahb);
+	val |= BIT(0);
+	writel(val, mdio_gephy_ahb);
+
+	iounmap(mdio_gephy_ahb);
+
+	dev_info(dev, "MDIO AHB clock init successfully\n");
+	return 0;
+}
+
 static int ipq52xx_phy_sys_clk_enable(void)
 {
 	void __iomem *reg;
@@ -286,6 +325,8 @@ static int mdio_ahb_probe(struct platform_device *pdev)
 	phys_addr_t base_addr;
 	resource_size_t reg_size;
 
+	/* init the clock for mdio ahb bus */
+	mdio_ahb_clk_init(&pdev->dev);
 	/* will check  to enable it in clock driver */
 	ipq52xx_phy_sys_clk_enable();
 	/* Get memory resource from device tree */
