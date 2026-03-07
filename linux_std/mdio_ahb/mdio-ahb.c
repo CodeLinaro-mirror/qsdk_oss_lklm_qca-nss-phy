@@ -5,6 +5,7 @@
 
 #include <linux/module.h>
 #include <linux/io.h>
+#include <linux/iopoll.h>
 #include <linux/platform_device.h>
 #include <linux/of.h>
 #include <linux/phy.h>
@@ -252,10 +253,92 @@ err_free_bus:
 #define IPQ52XX_PHY_SYS_CLK_REG					0x182A004
 #define IPQ52XX_PHY_SYS_CLK_EN					BIT(0)
 
-static int ipq52xx_phy_sys_clk_enable(void)
+#define GCC_PCNOC_BFDCD_CMD_RCGR				0x1831004
+#define GCC_PCNOC_BFDCD_CFG_RCGR_OFFSET				4
+#define GCC_MDIO_GEPHY_AHB_CBCR					0x1817098
+
+/* RCG update bit */
+#define GCC_PCNOC_BFDCD_CMD_UPDATE				BIT(0)
+
+/* Clock branch enable bit */
+#define GCC_MDIO_GEPHY_AHB_CLK_ENABLE				BIT(0)
+
+/* RCG update polling parameters */
+#define GCC_RCG_UPDATE_DELAY_US					1
+#define GCC_RCG_UPDATE_TIMEOUT_US				100
+
+/* GCC_PCNOC_BFDCD CFG register encoding for 100MHz:
+ * Bits [10:8]: src_sel = 1 (GPLL0)
+ * Bits [4:0]:  src_div = 0xf (actual divider = (src_div+1)/2 = (15+1)/2 = 8, for 100MHz from 800MHz GPLL0)
+ */
+#define GCC_PCNOC_BFDCD_CFG_SRC_SEL				BIT(8)     /* Source: GPLL0 */
+#define GCC_PCNOC_BFDCD_CFG_SRC_DIV				0xf        /* src_div=0xf encodes divider /8 */
+#define GCC_PCNOC_BFDCD_CFG_100MHZ				(GCC_PCNOC_BFDCD_CFG_SRC_SEL | GCC_PCNOC_BFDCD_CFG_SRC_DIV)
+
+/* TODO: Replace direct register manipulation with Linux clock framework API calls
+ * (e.g., clk_get(), clk_set_rate(), clk_prepare_enable()) once the GCC clock
+ * driver supports GCC_PCNOC_BFDCD and GCC_MDIO_GEPHY_AHB clocks for IPQ52xx.
+ */
+static int mdio_ahb_clk_init(struct device *dev)
+{
+	void __iomem *pcnoc_bfdcd;
+	void __iomem *mdio_gephy_ahb;
+	u32 val;
+	int ret;
+
+	/* Only applicable to IPQ52xx */
+	if (!of_device_is_compatible(dev->of_node, "qcom,mdio-ahb-ipq52xx"))
+		return 0;
+
+	/* Map 8 bytes to cover CMD (offset 0) and CFG (offset 4) registers */
+	pcnoc_bfdcd = ioremap(GCC_PCNOC_BFDCD_CMD_RCGR, 8);
+	if (!pcnoc_bfdcd)
+		return -ENOMEM;
+
+	/* Configure RCG to 100MHz: source GPLL0 (src_sel=1), divider /8 (src_div=0xf) */
+	writel(GCC_PCNOC_BFDCD_CFG_100MHZ, pcnoc_bfdcd + GCC_PCNOC_BFDCD_CFG_RCGR_OFFSET);
+
+	/* Trigger RCG configuration update */
+	val = readl(pcnoc_bfdcd);
+	val |= GCC_PCNOC_BFDCD_CMD_UPDATE;
+	writel(val, pcnoc_bfdcd);
+
+	/* Poll until UPDATE bit self-clears, confirming hardware has latched new config */
+	ret = readl_poll_timeout(pcnoc_bfdcd, val, !(val & GCC_PCNOC_BFDCD_CMD_UPDATE),
+				 GCC_RCG_UPDATE_DELAY_US, GCC_RCG_UPDATE_TIMEOUT_US);
+	iounmap(pcnoc_bfdcd);
+	if (ret) {
+		dev_err(dev, "RCG update timed out: %d\n", ret);
+		return ret;
+	}
+
+	mdio_gephy_ahb = ioremap(GCC_MDIO_GEPHY_AHB_CBCR, 4);
+	if (!mdio_gephy_ahb)
+		return -ENOMEM;
+
+	/* Enable MDIO AHB clock branch */
+	val = readl(mdio_gephy_ahb);
+	val |= GCC_MDIO_GEPHY_AHB_CLK_ENABLE;
+	writel(val, mdio_gephy_ahb);
+
+	iounmap(mdio_gephy_ahb);
+
+	dev_info(dev, "MDIO AHB clock initialized successfully\n");
+	return 0;
+}
+
+/* TODO: Replace direct register manipulation with Linux clock framework API calls
+ * (e.g., clk_get(), clk_prepare_enable()) once the GCC clock driver supports
+ * IPQ52XX_PHY_SYS_CLK for IPQ52xx.
+ */
+static int ipq52xx_phy_sys_clk_enable(struct device *dev)
 {
 	void __iomem *reg;
 	u32 val;
+
+	/* Only applicable to IPQ52xx */
+	if (!of_device_is_compatible(dev->of_node, "qcom,mdio-ahb-ipq52xx"))
+		return 0;
 
 	reg = ioremap(IPQ52XX_PHY_SYS_CLK_REG, 4);
 	if (!reg)
@@ -287,8 +370,14 @@ static int mdio_ahb_probe(struct platform_device *pdev)
 	resource_size_t reg_size;
 	int ret;
 
-	/* TODO: Move PHY SYS clock enable to clock driver */
-	ret = ipq52xx_phy_sys_clk_enable();
+	/* Initialize the clock for MDIO AHB bus */
+	ret = mdio_ahb_clk_init(&pdev->dev);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "Failed to initialize MDIO AHB clock: %d\n", ret);
+		return ret;
+	}
+
+	ret = ipq52xx_phy_sys_clk_enable(&pdev->dev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Failed to enable PHY SYS clock: %d\n", ret);
 		return ret;
@@ -323,6 +412,38 @@ static int mdio_ahb_probe(struct platform_device *pdev)
 }
 
 /**
+ * mdio_ahb_clk_disable() - Disable MDIO AHB clock
+ * @dev: Device pointer
+ *
+ * Disables the MDIO AHB clock that was enabled during probe.
+ * This is the counterpart to mdio_ahb_clk_init().
+ */
+static void mdio_ahb_clk_disable(struct device *dev)
+{
+	void __iomem *mdio_gephy_ahb;
+	u32 val;
+
+	/* Only applicable to IPQ52xx */
+	if (!of_device_is_compatible(dev->of_node, "qcom,mdio-ahb-ipq52xx"))
+		return;
+
+	mdio_gephy_ahb = ioremap(GCC_MDIO_GEPHY_AHB_CBCR, 4);
+	if (!mdio_gephy_ahb) {
+		dev_warn(dev, "Failed to map MDIO AHB clock register for disable\n");
+		return;
+	}
+
+	/* Disable MDIO AHB clock branch */
+	val = readl(mdio_gephy_ahb);
+	val &= ~GCC_MDIO_GEPHY_AHB_CLK_ENABLE;
+	writel(val, mdio_gephy_ahb);
+
+	iounmap(mdio_gephy_ahb);
+
+	dev_info(dev, "MDIO AHB clock disabled\n");
+}
+
+/**
  * mdio_ahb_remove() - Platform driver remove function
  * @pdev: Platform device
  *
@@ -342,6 +463,9 @@ static int mdio_ahb_remove(struct platform_device *pdev)
 	mdiobus_unregister(bus);
 	mdio_ahb_iounmap(bus);
 	mdiobus_free(bus);
+
+	/* Disable the MDIO AHB clock */
+	mdio_ahb_clk_disable(&pdev->dev);
 
 	dev_info(&pdev->dev, "MDIO-AHB bus removed\n");
 
