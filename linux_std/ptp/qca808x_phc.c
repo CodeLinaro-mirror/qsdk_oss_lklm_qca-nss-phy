@@ -1174,8 +1174,6 @@ static int qca808x_hwtstamp(struct mii_timestamper *mii_ts, struct ifreq *ifr)
 			break;
 	}
 
-	mutex_lock(&ptp_info->tsreg_lock);
-
 	switch (ptp_info->hwts_tx_type) {
 		case HWTSTAMP_TX_ONESTEP_SYNC:
 		case HWTSTAMP_TX_ONESTEP_P2P:
@@ -1190,10 +1188,15 @@ static int qca808x_hwtstamp(struct mii_timestamper *mii_ts, struct ifreq *ifr)
 	if (ptp_info->hwts_tx_type || ptp_info->hwts_rx_type)
 		ptp_en = true;
 
+	/* Update the PTP configs aligned with the correct link speed. */
+	qca808x_ptp_change_notify(mii_ts, phydev);
+
+	mutex_lock(&ptp_info->tsreg_lock);
 	qca808x_ptp_enable_set(phydev, ptp_en, one_step);
 	qca808x_ptp_clock_mode_update(phydev, &ptp_info->ptp_mode);
 
-	if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], QCA8111_PHY_ID, 0x00ffffff))
+	if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], QCA8111_PHY_ID, 0x00ffffff) ||
+	    phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], QCE1204_PHY_ID, 0x00ffffff))
 		qca81xx_ptp_clock_set(phydev, ptp_en);
 
 	mutex_unlock(&ptp_info->tsreg_lock);

@@ -29,6 +29,8 @@ struct qce1204_clk_data {
 	struct clk *tx_clk;
 	struct clk *rx_clk;
 	struct clk *sys_clk;
+	struct clk *tx_src_clk;
+	struct clk *rx_src_clk;
 	/* Reset control */
 	struct reset_control *tx_reset;
 	struct reset_control *rx_reset;
@@ -61,33 +63,10 @@ struct qce1204_shared_clk_data {
 	struct qce1204_channel_clk channels[4];
 	struct clk *pcs_sys_clk;
 	struct clk *ahb_clk;
+	struct clk *tx_parent;
+	struct clk *rx_parent;
 	struct reset_control *pcs_sys_reset;
 	struct reset_control *xpcs_reset;
-	/* switch clocks */
-	struct reset_control *switch_btq_reset;
-	struct reset_control *switch_cfg_reset;
-	struct reset_control *switch_core_reset;
-	struct reset_control *switch_ipe_reset;
-	struct reset_control *switch_mac0_reset;
-	struct reset_control *switch_mac1_reset;
-	struct reset_control *switch_mac2_reset;
-	struct reset_control *switch_mac3_reset;
-	struct reset_control *switch_mac4_reset;
-	struct reset_control *switch_mac5_reset;
-	struct reset_control *xgmac0_ptp_ref_reset;
-	struct reset_control *xgmac1_ptp_ref_reset;
-	struct reset_control *mac0_tx_reset;
-	struct reset_control *mac0_rx_reset;
-	struct reset_control *mac1_tx_reset;
-	struct reset_control *mac1_rx_reset;
-	struct reset_control *mac2_tx_reset;
-	struct reset_control *mac2_rx_reset;
-	struct reset_control *mac3_tx_reset;
-	struct reset_control *mac3_rx_reset;
-	struct reset_control *mac4_tx_reset;
-	struct reset_control *mac4_rx_reset;
-	struct reset_control *mac5_tx_reset;
-	struct reset_control *mac5_rx_reset;
 };
 
 struct qce1204_shared_priv {
@@ -119,8 +98,29 @@ u32 qce1204_soc_read(struct phy_device *phydev, u32 reg);
 int qce1204_soc_modify(struct phy_device *phydev, u32 reg,
 	u32 mask, u32 set);
 int qce1204_phy_channel_get(struct phy_device *phydev);
+int qce1204_phy_soft_reset(struct phy_device *phydev);
+int qce1204_phy_config_aneg(struct phy_device *phydev);
+int qce1204_phy_probe(struct phy_device *phydev);
+int qce1204_phy_config_init(struct phy_device *phydev);
+int qce1204_phy_read_status(struct phy_device *phydev);
 #if IS_ENABLED(CONFIG_HWMON)
+int qce1204_hwmon_hw_init_once(struct phy_device *phydev);
 int qce1204_hwmon_hw_init(struct phy_device *phydev);
 int qce1204_hwmon_probe(struct phy_device *phydev);
 #endif
+struct ipq52xx_phy_priv {
+	void __iomem *gmii_rx_reg;	/* NSS_CC_GMII_RX_CBCR */
+	void __iomem *gmii_tx_reg;	/* NSS_CC_GMII_TX_CBCR */
+	void __iomem *ephy_rx_reg;	/* NSS_CC_EPHY_RX_CBCR */
+	void __iomem *ephy_tx_reg;	/* NSS_CC_EPHY_TX_CBCR */
+	void __iomem *sys_clk_reg;	/* NSS_CC_EPHY_SYS_CLK_REG */
+	void __iomem *ldo_bias_reg;	/* TCSR_GPHY_LDO_BIAS_EN */
+	void __iomem *pll_src_sel_reg;	/* CMN_PLL_SRC_SEL_REG */
+	void __iomem *rx_clk_cmd_reg;	/* NSS_CC_RX_CLK_CMD_REG */
+	void __iomem *tx_clk_cmd_reg;	/* NSS_CC_TX_CLK_CMD_REG */
+};
+
+int ipq52xx_phy_probe(struct phy_device *phydev);
+int ipq52xx_phy_config_init(struct phy_device *phydev);
+int ipq52xx_phy_read_status(struct phy_device *phydev);
 #endif /* _QCE1204_H_ */

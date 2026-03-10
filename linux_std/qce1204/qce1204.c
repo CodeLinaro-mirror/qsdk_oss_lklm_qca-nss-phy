@@ -20,6 +20,11 @@ struct reset_init_entry {
 	const char *desc;
 };
 
+#define QCE1204_PHY_SPEC_CONTROL					0x10
+#define QCE1204_PHY_MDI_MASK						GENMASK(6, 5)
+#define QCE1204_PHY_MDI_AUTO						0x3
+#define QCE1204_PHY_MDI_X						0x1
+#define QCE1204_PHY_MDI							0
 #define QCE1204_PHY_SPEC_STATUS						0x11
 #define QCE1204_PHY_SS_LINK_STATUS					0x400
 #define QCE1204_PHY_INTR_DOWNSHIFT					0x20
@@ -29,6 +34,7 @@ struct reset_init_entry {
 #define QCE1204_PHY_SS_SPEED_1000					0x100
 #define QCE1204_PHY_SS_SPEED_100					0x80
 #define QCE1204_PHY_SS_SPEED_10						0
+#define QCE1204_PHY_SS_MDIX						0x40
 #define QCE1204_PHY_INTR_MASK						0x12
 
 #define QCE1204_PHY_INTR_STATUS						0x13
@@ -50,7 +56,7 @@ struct reset_init_entry {
 #define QCE1024_PHY_2P5G_EEE_TX_WAKE_TIME				0x2fc
 
 #define QCE1204_MMD3_CDT_THRESH_CTRL14					0x807f
-#define QCE1204_MMD3_CDT_THRESH_CTRL14_VAL				0xb6b0
+#define QCE1204_MMD3_CDT_THRESH_CTRL14_VAL				0x9ab0
 #define QCE1204_MMD3_CDT_THRESH_CTRL2					0x8073
 #define QCE1204_MMD3_CDT_THRESH_CTRL2_VAL				0xb03f
 #define QCE1204_MMD3_CDT_THRESH_CTRL3					0x8074
@@ -68,12 +74,24 @@ struct reset_init_entry {
 #define QCE1204_MMD3_CDT_THRESH_CTRL13					0x807e
 #define QCE1204_MMD3_CDT_THRESH_CTRL13_VAL				0xb060
 
+#define QCE1204_MMD3_FORCE_LINK_CTRL					0xa05a
+#define QCE1204_FORCE_LINK_EN						BIT(6)
+
+#define QCE1204_MMD7_LED0_CTRL						0x8078
+#define QCE1204_SPEED_10M_ON						BIT(4)
+
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL0					0x2880
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL0_VAL				0x7777
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL1					0x3880
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL1_VAL				0xa4a4
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL2					0x3980
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL2_VAL				0xa4a4
+#define QCE1204_DEBUG_ANA_2P5G_TX_GAIN_CTRL				0xbb80
+#define QCE1204_DEBUG_ANA_2P5G_TX_GAIN_VAL				0xf33
+#define QCE1204_DEBUG_PLL_CTRL						0x1f
+#define QCE1204_DEBUG_PLL0_FORCE_ON					BIT(2)
+#define QCE1204_DEBUG_ANA_10M_DAC_CTRL3					0xc980
+#define QCE1204_DEBUG_ANA_10M_DAC_CTRL3_VAL				0xc0
 
 #define QCE1204_PCS_MMD1_CDA_CONTROL1					0x20
 #define QCE1204_PCS_MMD1_CALIBRATION4					0x78
@@ -83,7 +101,6 @@ struct reset_init_entry {
 #define QCE1204_PCS_MMD1_BYPASS_TUNING_IPG_EN				0x0fff
 #define QCE1204_PCS_MMD1_XPCS_MODE					0x1000
 #define QCE1204_PCS_MMD1_CALIBRATION_DONE				0x80
-#define QCE1204_PCS_MMD1_QUSGMII_FUNC_RESET				0x10
 #define QCE1204_PCS_MMD1_SSCG_ENABLE					0x8
 #define QCE1204_PCS_MMD1_PLL_POWER_ON_AND_RESET				0x1e0
 #define QCE1204_PCS_MMD1_ANA_SOFT_RESET_MASK				0x40
@@ -145,7 +162,7 @@ struct reset_init_entry {
 #define QCE1204_CLK_RATE_2P5M						2500000
 #define QCE1204_CLK_RATE_25M						25000000
 #define QCE1204_CLK_RATE_78P125M					78125000
-#define QCE1204_CLK_RATE_104M						104000000
+#define QCE1204_CLK_RATE_104M						104166666
 #define QCE1204_CLK_RATE_125M						125000000
 #define QCE1204_CLK_RATE_312P5M						312500000
 
@@ -169,10 +186,12 @@ static int qce1204_validate_clock_rate(unsigned long rate)
 	case QCE1204_CLK_RATE_2P5M:
 	case QCE1204_CLK_RATE_25M:
 	case QCE1204_CLK_RATE_78P125M:
+	case QCE1204_CLK_RATE_104M:
 	case QCE1204_CLK_RATE_125M:
 	case QCE1204_CLK_RATE_312P5M:
 		return 0;
 	default:
+		pr_err("Invalid clock rate: %lu Hz\n", rate);
 		return -EINVAL;
 	}
 }
@@ -594,6 +613,33 @@ static int qce1204_phy_rx_clk_set(struct phy_device *phydev, bool enable)
 	return ret;
 }
 
+static int qce1204_phy_clk_parent_init(struct phy_device *phydev)
+{
+	struct qce1204_shared_clk_data *clk_shared_data;
+	struct qce1204_clk_data *clk_data;
+	int ret;
+
+	clk_shared_data = qce1204_get_shared_clk_data(phydev);
+	if (!clk_shared_data)
+		return -EINVAL;
+
+	if (!clk_shared_data->tx_parent || !clk_shared_data->rx_parent)
+		return 0;
+
+	clk_data = qce1204_get_clk_data(phydev);
+	if (!clk_data)
+		return -EINVAL;
+
+	if (!clk_data->tx_src_clk || !clk_data->rx_src_clk)
+		return 0;
+
+	ret = clk_set_parent(clk_data->tx_src_clk, clk_shared_data->tx_parent);
+	if (ret)
+		return ret;
+
+	return clk_set_parent(clk_data->rx_src_clk, clk_shared_data->rx_parent);
+}
+
 /**
  * qce1204_phy_sys_clk_set - Enable/disable PHY SYS clock
  * @phydev: PHY device
@@ -729,8 +775,6 @@ static int qce1204_phy_clk_reset_assert(struct phy_device *phydev, bool assert)
 	if (ret < 0)
 		return ret;
 
-	phydev_info(phydev, "Succeed to %s PHY clock resets\n",
-		    assert ? "assert" : "deassert");
 	return 0;
 }
 
@@ -873,9 +917,6 @@ static int qce1204_pcs_clk_set_rate(struct phy_device *phydev, u32 channel,
 		}
 	}
 
-	phydev_info(phydev, "Set clock rates (GMII: %lu Hz, XGMII: %lu Hz) for CH%d on PHY@%d\n",
-		    gmii_clk_rate, xgmii_clk_rate, channel, phydev->mdio.addr);
-
 	return 0;
 }
 
@@ -908,8 +949,6 @@ static int qce1204_xpcs_reset_assert(struct phy_device *phydev, bool assert)
 		return ret;
 	}
 
-	phydev_info(phydev, "Succeed to %s XPCS reset\n",
-		    assert ? "assert" : "deassert");
 	return 0;
 }
 
@@ -952,8 +991,6 @@ static int qce1204_pcs_gmii_tx_reset_assert(struct phy_device *phydev, u32 chann
 		return ret;
 	}
 
-	phydev_info(phydev, "Succeed to %s CH%d GMII TX reset\n",
-		    assert ? "assert" : "deassert", channel);
 	return 0;
 }
 
@@ -996,8 +1033,6 @@ static int qce1204_pcs_gmii_rx_reset_assert(struct phy_device *phydev, u32 chann
 		return ret;
 	}
 
-	phydev_info(phydev, "Succeed to %s CH%d GMII RX reset\n",
-		    assert ? "assert" : "deassert", channel);
 	return 0;
 }
 
@@ -1040,8 +1075,6 @@ static int qce1204_pcs_xgmii_tx_reset_assert(struct phy_device *phydev, u32 chan
 		return ret;
 	}
 
-	phydev_info(phydev, "Succeed to %s CH%d XGMII TX reset\n",
-		    assert ? "assert" : "deassert", channel);
 	return 0;
 }
 
@@ -1084,8 +1117,6 @@ static int qce1204_pcs_xgmii_rx_reset_assert(struct phy_device *phydev, u32 chan
 		return ret;
 	}
 
-	phydev_info(phydev, "Succeed to %s CH%d XGMII RX reset\n",
-		    assert ? "assert" : "deassert", channel);
 	return 0;
 }
 
@@ -1126,8 +1157,6 @@ static int qce1204_pcs_clk_reset_assert(struct phy_device *phydev, u32 channel, 
 	if (ret < 0)
 		return ret;
 
-	phydev_info(phydev, "Succeed to %s PCS resets for CH%d\n",
-		    assert ? "assert" : "deassert", channel);
 	return 0;
 }
 
@@ -1184,8 +1213,6 @@ static int qce1204_pcs_gmii_tx_clk_set(struct phy_device *phydev, u32 channel, b
 		clk_disable_unprepare(clk);
 	}
 
-	phydev_info(phydev, "Succeed to %s CH%d GMII TX clock\n",
-		    enable ? "enable" : "disable", channel);
 	return 0;
 }
 
@@ -1229,8 +1256,6 @@ static int qce1204_pcs_gmii_rx_clk_set(struct phy_device *phydev, u32 channel, b
 		clk_disable_unprepare(clk);
 	}
 
-	phydev_info(phydev, "Succeed to %s CH%d GMII RX clock\n",
-		    enable ? "enable" : "disable", channel);
 	return 0;
 }
 
@@ -1274,8 +1299,6 @@ static int qce1204_pcs_xgmii_tx_clk_set(struct phy_device *phydev, u32 channel, 
 		clk_disable_unprepare(clk);
 	}
 
-	phydev_info(phydev, "Succeed to %s CH%d XGMII TX clock\n",
-		    enable ? "enable" : "disable", channel);
 	return 0;
 }
 
@@ -1319,8 +1342,6 @@ static int qce1204_pcs_xgmii_rx_clk_set(struct phy_device *phydev, u32 channel, 
 		clk_disable_unprepare(clk);
 	}
 
-	phydev_info(phydev, "Succeed to %s CH%d XGMII RX clock\n",
-		    enable ? "enable" : "disable", channel);
 	return 0;
 }
 
@@ -1361,8 +1382,6 @@ static int qce1204_pcs_clk_set(struct phy_device *phydev, u32 channel, bool enab
 	if (ret < 0)
 		return ret;
 
-	phydev_info(phydev, "Succeed to %s PCS clocks for CH%d\n",
-		    enable ? "enable" : "disable", channel);
 	return 0;
 }
 
@@ -1378,8 +1397,19 @@ static int qce1204_ahb_clk_set_rate(struct phy_device *phydev, unsigned long rat
 	int ret;
 
 	clk_data = qce1204_get_shared_clk_data(phydev);
-	if (!clk_data || !clk_data->ahb_clk)
+	if (!clk_data)
 		return -EINVAL;
+
+	/* Clock is optional, return success if not present */
+	if (!clk_data->ahb_clk)
+		return 0;
+
+	/* Validate clock rate */
+	ret = qce1204_validate_clock_rate(rate);
+	if (ret < 0) {
+		phydev_err(phydev, "Invalid AHB clock rate: %lu Hz\n", rate);
+		return ret;
+	}
 
 	ret = clk_set_rate(clk_data->ahb_clk, rate);
 	if (ret < 0) {
@@ -1387,7 +1417,6 @@ static int qce1204_ahb_clk_set_rate(struct phy_device *phydev, unsigned long rat
 		return ret;
 	}
 
-	phydev_info(phydev, "Set AHB clock rate to %lu Hz\n", rate);
 	return 0;
 }
 
@@ -1473,6 +1502,41 @@ static int qce1204_pcs_sys_reset(struct phy_device *phydev)
 	return 0;
 }
 
+/**
+ * qce1204_pcs_sys_clk_set_rate - Set PCS system clock rate
+ * @phydev: PHY device
+ * @rate: Clock rate in Hz
+ * Returns: 0 on success, negative error code on failure
+ */
+static int qce1204_pcs_sys_clk_set_rate(struct phy_device *phydev, unsigned long rate)
+{
+	struct qce1204_shared_clk_data *clk_data;
+	int ret;
+
+	clk_data = qce1204_get_shared_clk_data(phydev);
+	if (!clk_data)
+		return -EINVAL;
+
+	/* Clock is optional, return success if not present */
+	if (!clk_data->pcs_sys_clk)
+		return 0;
+
+	/* Validate clock rate */
+	ret = qce1204_validate_clock_rate(rate);
+	if (ret < 0) {
+		phydev_err(phydev, "Invalid PCS system clock rate: %lu Hz\n", rate);
+		return ret;
+	}
+
+	ret = clk_set_rate(clk_data->pcs_sys_clk, rate);
+	if (ret < 0) {
+		phydev_err(phydev, "Failed to set pcs system clock rate to %lu Hz: %d\n", rate, ret);
+		return ret;
+	}
+
+	return 0;
+}
+
 static int _qce1204_pcs_qusgmii_mode_set(struct phy_device *phydev)
 {
 	int ret = 0, channel = 0;
@@ -1486,12 +1550,6 @@ static int _qce1204_pcs_qusgmii_mode_set(struct phy_device *phydev)
 		QCE1204_PCS_MMD1_MS_LDO1, 0x7f6d);
 	if (ret < 0)
 		return ret;
-	/* disable PCS GMII XGMIII clock */
-	for (channel = 1; channel <= 4; channel++) {
-		ret = qce1204_pcs_clk_set(phydev, channel, false);
-		if (ret < 0)
-			return ret;
-	}
 	/* assert xpcs */
 	ret = qce1204_xpcs_reset_assert(phydev, true);
 	if (ret < 0)
@@ -1584,12 +1642,16 @@ static int qce1204_pcs_qusgmii_mode_set(struct phy_device *phydev)
 	ret = _qce1204_pcs_qusgmii_mode_set(phydev);
 	if (ret < 0)
 		return ret;
-	/* enable auto-neg complete interrupt,Mii using mii-4bits, */
-	/* configure as PHY mode, enable autoneg ability */
+	/*
+	* enable auto-neg complete interrupt,Mii using mii-4bits,
+	* configure as PHY mode, enable autoneg ability
+	*/
 	for (channel = 1; channel <= 4; channel++)
 	{
-		/* enable auto-neg complete interrupt,Mii using mii-4bits, */
-		/* configure as PHY mode */
+		/*
+		* enable auto-neg complete interrupt,Mii using mii-4bits,
+		* configure as PHY mode
+		*/
 		ret = qce1204_pcs_modify_channel_mmd(phydev, channel,
 			QCE1204_PCS_MMD_MII_AN_INT_MSK, 0x109,
 			QCE1204_PCS_MMD_AN_COMPLETE_INT |
@@ -1688,23 +1750,7 @@ static int qce1204_pcs_qusgmii_reset(struct phy_device *phydev, u32 channel)
 	return ret;
 }
 
-int qce1204_pcs_ipg_tune_reset(struct phy_device *phydev)
-{
-	int ret = 0;
-
-	ret = qce1204_pcs_modify_mmd(phydev, MDIO_MMD_PMAPMD,
-		QCE1204_PCS_MMD1_QUSGMII_RESET, QCE1204_PCS_MMD1_QUSGMII_FUNC_RESET, 0);
-	if (ret < 0)
-		return ret;
-	mdelay(1);
-	ret = qce1204_pcs_modify_mmd(phydev, MDIO_MMD_PMAPMD,
-		QCE1204_PCS_MMD1_QUSGMII_RESET, QCE1204_PCS_MMD1_QUSGMII_FUNC_RESET,
-		QCE1204_PCS_MMD1_QUSGMII_FUNC_RESET);
-
-	return ret;
-}
-
-int qce1204_phy_fifo_reset(struct phy_device *phydev, bool enable)
+static int qce1204_phy_fifo_reset(struct phy_device *phydev, bool enable)
 {
 	u16 phy_data = 0;
 
@@ -1716,6 +1762,61 @@ int qce1204_phy_fifo_reset(struct phy_device *phydev, bool enable)
 		QCE1204_PHY_FIFO_RESET, phy_data);
 }
 
+int qce1204_phy_soft_reset(struct phy_device *phydev)
+{
+	return phy_modify_mmd(phydev, MDIO_MMD_VEND2,
+		MII_BMCR, BMCR_RESET, BMCR_RESET);
+}
+
+static int qce1204_phy_mdix_ctrl_set(struct phy_device *phydev)
+{
+	int ret;
+	u16 val;
+
+	switch (phydev->mdix_ctrl) {
+	case ETH_TP_MDI:
+		val = QCE1204_PHY_MDI;
+		break;
+	case ETH_TP_MDI_X:
+		val = QCE1204_PHY_MDI_X;
+		break;
+	case ETH_TP_MDI_AUTO:
+		val = QCE1204_PHY_MDI_AUTO;
+		break;
+	default:
+		return 0;
+	}
+	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_VEND2,
+		QCE1204_PHY_SPEC_CONTROL, QCE1204_PHY_MDI_MASK,
+		FIELD_PREP(QCE1204_PHY_MDI_MASK, val));
+	if (ret <= 0)
+		return ret;
+
+	return qce1204_phy_soft_reset(phydev);
+}
+
+static int qce1204_phy_mdix_ctrl_get(struct phy_device *phydev)
+{
+	int ret;
+
+	ret = phy_read_mmd(phydev, MDIO_MMD_VEND2, QCE1204_PHY_SPEC_CONTROL);
+	if (ret < 0)
+		return ret;
+	switch (FIELD_GET(QCE1204_PHY_MDI_MASK, ret)) {
+	case QCE1204_PHY_MDI:
+		phydev->mdix_ctrl = ETH_TP_MDI;
+		break;
+	case QCE1204_PHY_MDI_X:
+		phydev->mdix_ctrl = ETH_TP_MDI_X;
+		break;
+	case QCE1204_PHY_MDI_AUTO:
+		phydev->mdix_ctrl = ETH_TP_MDI_AUTO;
+		break;
+	}
+
+	return 0;
+}
+
 int qce1204_phy_config_aneg(struct phy_device *phydev)
 {
 	bool changed = false;
@@ -1724,9 +1825,11 @@ int qce1204_phy_config_aneg(struct phy_device *phydev)
 
 	if (phydev->autoneg == AUTONEG_DISABLE) {
 		int duplex_val = BMCR_FULLDPLX, duplex_tmp = DUPLEX_FULL;
-		/* genphy_c45_pma_setup_forced only support duplex full, */
-		/* so need to set duplex as full to configure speed */
-		/* when duplex is half */
+		/*
+		* genphy_c45_pma_setup_forced only support duplex full,
+		* so need to set duplex as full to configure speed
+		* when duplex is half
+		*/
 		duplex_tmp = phydev->duplex;
 		if (phydev->duplex == DUPLEX_HALF) {
 			phydev->duplex = DUPLEX_FULL;
@@ -1746,8 +1849,10 @@ int qce1204_phy_config_aneg(struct phy_device *phydev)
 	if (ret > 0)
 		changed = true;
 
-	/* Clause 45 has no standardized support for 1000BaseT, */
-	/* therefore use vendor registers. */
+	/*
+	* Clause 45 has no standardized support for 1000BaseT,
+	* therefore use vendor registers
+	*/
 	if (linkmode_test_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
 		phydev->advertising))
 		reg |= QCE1204_PHY_ADVERTISE_1000FULL;
@@ -1760,13 +1865,11 @@ int qce1204_phy_config_aneg(struct phy_device *phydev)
 	if (ret > 0)
 		changed = true;
 
-	return genphy_c45_check_and_restart_aneg(phydev, changed);
-}
+	ret = qce1204_phy_mdix_ctrl_set(phydev);
+	if (ret < 0)
+		return ret;
 
-int qce1204_phy_soft_reset(struct phy_device *phydev)
-{
-	return phy_modify_mmd(phydev, MDIO_MMD_VEND2,
-		MII_BMCR, BMCR_RESET, BMCR_RESET);
+	return genphy_c45_check_and_restart_aneg(phydev, changed);
 }
 
 int qce1204_phy_channel_get(struct phy_device *phydev)
@@ -1803,6 +1906,8 @@ static int qce1204_phy_shared_clk_init(struct phy_device *phydev, struct device 
 		{&clk_data->channels[3].clks[QCE1204_CLK_XGMII_RX], "ch3_xgmii_rx_clk", "CH3 XGMII RX clock"},
 		{&clk_data->pcs_sys_clk, "pcs_sys_clk", "PCS SYS clock"},
 		{&clk_data->ahb_clk, "ahb_clk", "AHB clock"},
+		{&clk_data->tx_parent, "tx_parent", "TX parent clock"},
+		{&clk_data->rx_parent, "rx_parent", "RX parent clock"},
 	};
 	struct reset_init_entry reset_table[] = {
 		{&clk_data->channels[0].resets[QCE1204_CLK_GMII_TX], "ch0_gmii_tx_reset", "CH0 GMII TX reset"},
@@ -1823,38 +1928,13 @@ static int qce1204_phy_shared_clk_init(struct phy_device *phydev, struct device 
 		{&clk_data->channels[3].resets[QCE1204_CLK_XGMII_RX], "ch3_xgmii_rx_reset", "CH3 XGMII RX reset"},
 		{&clk_data->pcs_sys_reset, "pcs_sys_reset", "PCS SYS reset"},
 		{&clk_data->xpcs_reset, "xpcs", "XPCS reset"},
-		/* Switch resets */
-		{&clk_data->switch_btq_reset, "switch_btq_reset", "Switch BTQ reset"},
-		{&clk_data->switch_cfg_reset, "switch_cfg_reset", "Switch CFG reset"},
-		{&clk_data->switch_core_reset, "switch_core_reset", "Switch CORE reset"},
-		{&clk_data->switch_ipe_reset, "switch_ipe_reset", "Switch IPE reset"},
-		{&clk_data->switch_mac0_reset, "switch_mac0_reset", "Switch MAC0 reset"},
-		{&clk_data->switch_mac1_reset, "switch_mac1_reset", "Switch MAC1 reset"},
-		{&clk_data->switch_mac2_reset, "switch_mac2_reset", "Switch MAC2 reset"},
-		{&clk_data->switch_mac3_reset, "switch_mac3_reset", "Switch MAC3 reset"},
-		{&clk_data->switch_mac4_reset, "switch_mac4_reset", "Switch MAC4 reset"},
-		{&clk_data->switch_mac5_reset, "switch_mac5_reset", "Switch MAC5 reset"},
-		{&clk_data->xgmac0_ptp_ref_reset, "xgmac0_ptp_ref_reset", "XGMAC0 PTP REF reset"},
-		{&clk_data->xgmac1_ptp_ref_reset, "xgmac1_ptp_ref_reset", "XGMAC1 PTP REF reset"},
-		{&clk_data->mac0_tx_reset, "mac0_tx_reset", "MAC0 TX reset"},
-		{&clk_data->mac0_rx_reset, "mac0_rx_reset", "MAC0 RX reset"},
-		{&clk_data->mac1_tx_reset, "mac1_tx_reset", "MAC1 TX reset"},
-		{&clk_data->mac1_rx_reset, "mac1_rx_reset", "MAC1 RX reset"},
-		{&clk_data->mac2_tx_reset, "mac2_tx_reset", "MAC2 TX reset"},
-		{&clk_data->mac2_rx_reset, "mac2_rx_reset", "MAC2 RX reset"},
-		{&clk_data->mac3_tx_reset, "mac3_tx_reset", "MAC3 TX reset"},
-		{&clk_data->mac3_rx_reset, "mac3_rx_reset", "MAC3 RX reset"},
-		{&clk_data->mac4_tx_reset, "mac4_tx_reset", "MAC4 TX reset"},
-		{&clk_data->mac4_rx_reset, "mac4_rx_reset", "MAC4 RX reset"},
-		{&clk_data->mac5_tx_reset, "mac5_tx_reset", "MAC5 TX reset"},
-		{&clk_data->mac5_rx_reset, "mac5_rx_reset", "MAC5 RX reset"},
 	};
 	int ret, i;
 
 	/* Initialize all clocks */
 	for (i = 0; i < ARRAY_SIZE(clk_table); i++) {
 		ret = qce1204_clk_get(phydev, dev, clk_table[i].clk_ptr,
-				      clk_table[i].name, clk_table[i].desc);
+				clk_table[i].name, clk_table[i].desc);
 		if (ret < 0)
 			return ret;
 	}
@@ -1882,7 +1962,8 @@ static int qce1204_phy_shared_clk_init(struct phy_device *phydev, struct device 
  */
 static int qce1204_shared_clk_probe(struct phy_device *phydev)
 {
-	struct device *dev;
+	struct device *dev = &phydev->mdio.bus->dev;
+	struct device_node *old_of_node;
 	struct qce1204_shared_clk_data *clk_data;
 	int ret;
 
@@ -1900,14 +1981,19 @@ static int qce1204_shared_clk_probe(struct phy_device *phydev)
 	/* Initialize structure to NULL to ensure consistent state */
 	memset(clk_data, 0, sizeof(*clk_data));
 
-	dev = &phydev->mdio.bus->dev;
+	/* Access package information through phydev->shared->np */
+	old_of_node = dev->of_node;
+	dev->of_node = phydev->shared->np;
 
-	/* Initialize clocks and resets */
+	/* Initialize clocks and resets using the correct device node */
 	ret = qce1204_phy_shared_clk_init(phydev, dev, clk_data);
+
+	/* Restore original of_node */
+	dev->of_node = old_of_node;
+
 	if (ret < 0)
 		return ret;
 
-	phydev_info(phydev, "Shared clock initialization completed\n");
 	return 0;
 }
 
@@ -1959,7 +2045,6 @@ static int qce1204_phy_package_mode_probe(struct phy_device *phydev)
 		return -EINVAL;
 	}
 
-	phydev_info(phydev, "Package mode set to: %s\n", mode_str);
 	return 0;
 }
 
@@ -1977,6 +2062,8 @@ static int qce1204_phy_clk_init(struct phy_device *phydev, struct device *dev,
 		{&clk_data->tx_clk, "tx_clk", "TX clock"},
 		{&clk_data->rx_clk, "rx_clk", "RX clock"},
 		{&clk_data->sys_clk, "sys_clk", "SYS clock"},
+		{&clk_data->tx_src_clk, "tx_src_clk", "TX SRC clock"},
+		{&clk_data->rx_src_clk, "rx_src_clk", "RX SRC clock"},
 	};
 	struct reset_init_entry reset_table[] = {
 		{&clk_data->tx_reset, "tx_reset", "TX reset"},
@@ -1988,7 +2075,7 @@ static int qce1204_phy_clk_init(struct phy_device *phydev, struct device *dev,
 	/* Initialize all clocks */
 	for (i = 0; i < ARRAY_SIZE(clk_table); i++) {
 		ret = qce1204_clk_get(phydev, dev, clk_table[i].clk_ptr,
-				      clk_table[i].name, clk_table[i].desc);
+					clk_table[i].name, clk_table[i].desc);
 		if (ret < 0)
 			return ret;
 	}
@@ -2029,9 +2116,6 @@ static int qce1204_clk_probe(struct phy_device *phydev)
 	if (ret < 0)
 		return ret;
 
-	phydev_info(phydev, "Clock initialization completed for PHY@%d\n",
-		phydev->mdio.addr);
-
 	return 0;
 }
 
@@ -2045,9 +2129,6 @@ int qce1204_phy_probe(struct phy_device *phydev)
 	ret = devm_of_phy_package_join(dev, phydev, sizeof(struct qce1204_shared_priv));
 	if (ret < 0)
 		return ret;
-#if IS_ENABLED(CONFIG_HWMON)
-	qce1204_hwmon_probe(phydev);
-#endif
 
 	/* Allocate private data structure for this PHY */
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
@@ -2078,6 +2159,10 @@ int qce1204_phy_probe(struct phy_device *phydev)
 			return ret;
 		}
 	}
+
+#if IS_ENABLED(CONFIG_HWMON)
+	qce1204_hwmon_probe(phydev);
+#endif
 
 	return 0;
 }
@@ -2130,113 +2215,6 @@ static int qce1204_phy_cdt_thresh_init(struct phy_device *phydev)
 	return 0;
 }
 
-/**
- * qce1204_switch_clks_reset_assert - Assert all switch clks
- * @phydev: PHY device
- * Returns: 0 on success, negative error code on failure
- *
- * This function asserts all switch-related resets including:
- * - BTQ, CFG, CORE resets
- * - MAC0-5 resets
- * - XGMAC PTP reference resets
- * - GMAC TX/RX resets
- */
-static int qce1204_switch_clks_reset_assert(struct phy_device *phydev)
-{
-	struct qce1204_shared_clk_data *clk_data;
-	int ret, i;
-
-	clk_data = qce1204_get_shared_clk_data(phydev);
-	if (!clk_data)
-		return -EINVAL;
-
-	/* Switch reset control table */
-	struct {
-		struct reset_control **reset_ptr;
-		const char *name;
-	} reset_table[] = {
-		{&clk_data->switch_btq_reset, "switch BTQ"},
-		{&clk_data->switch_cfg_reset, "switch CFG"},
-		{&clk_data->switch_core_reset, "switch CORE"},
-		{&clk_data->switch_ipe_reset, "switch IPE"},
-		{&clk_data->switch_mac0_reset, "switch MAC0"},
-		{&clk_data->switch_mac1_reset, "switch MAC1"},
-		{&clk_data->switch_mac2_reset, "switch MAC2"},
-		{&clk_data->switch_mac3_reset, "switch MAC3"},
-		{&clk_data->switch_mac4_reset, "switch MAC4"},
-		{&clk_data->switch_mac5_reset, "switch MAC5"},
-		{&clk_data->xgmac0_ptp_ref_reset, "XGMAC0 PTP REF"},
-		{&clk_data->xgmac1_ptp_ref_reset, "XGMAC1 PTP REF"},
-		{&clk_data->mac0_tx_reset, "MAC0 TX"},
-		{&clk_data->mac0_rx_reset, "MAC0 RX"},
-		{&clk_data->mac1_tx_reset, "MAC1 TX"},
-		{&clk_data->mac1_rx_reset, "MAC1 RX"},
-		{&clk_data->mac2_tx_reset, "MAC2 TX"},
-		{&clk_data->mac2_rx_reset, "MAC2 RX"},
-		{&clk_data->mac3_tx_reset, "MAC3 TX"},
-		{&clk_data->mac3_rx_reset, "MAC3 RX"},
-		{&clk_data->mac4_tx_reset, "MAC4 TX"},
-		{&clk_data->mac4_rx_reset, "MAC4 RX"},
-		{&clk_data->mac5_tx_reset, "MAC5 TX"},
-		{&clk_data->mac5_rx_reset, "MAC5 RX"},
-	};
-
-	/* Assert all resets using table-driven approach */
-	for (i = 0; i < ARRAY_SIZE(reset_table); i++) {
-		struct reset_control *reset = *reset_table[i].reset_ptr;
-
-		if (reset) {
-			ret = reset_control_assert(reset);
-			if (ret < 0) {
-				phydev_err(phydev, "Failed to assert %s reset: %d\n",
-					   reset_table[i].name, ret);
-				return ret;
-			}
-		}
-	}
-
-	phydev_info(phydev, "Successfully asserted all switch resets\n");
-	return 0;
-}
-
-static int qce1204_phy_gcc_init(struct phy_device *phydev)
-{
-	int ret = 0;
-	phy_interface_t package_mode;
-
-	package_mode = qce1204_get_package_mode(phydev);
-	if (package_mode == PHY_INTERFACE_MODE_QUSGMII) {
-		if (phy_package_init_once(phydev)) {
-			/* Assert all switch resets */
-			ret = qce1204_switch_clks_reset_assert(phydev);
-			if (ret < 0)
-				return ret;
-			ret = qce1204_pcs_sys_clk_set(phydev, true);
-			if (ret < 0)
-				return ret;
-			ret = qce1204_pcs_sys_reset(phydev);
-			if (ret < 0)
-				return ret;
-		}
-	}
-	if (phy_package_init_once(phydev)) {
-		/* enable efuse loading into analog circuit */
-		ret = qca81xx_soc_modify(phydev, QCE1204_EPHY_CFG,
-			QCE1204_EPHY_LDO_CTRL, 0);
-		if (ret < 0)
-			return ret;
-		mdelay(10);
-	}
-	ret = qce1204_phy_sys_clk_set(phydev, true);
-	if (ret < 0)
-		return ret;
-	ret = qce1204_phy_sys_reset(phydev);
-	if (ret < 0)
-		return ret;
-
-	return 0;
-}
-
 static int qce1204_phy_eee_init(struct phy_device *phydev)
 {
 	int ret = 0;
@@ -2275,6 +2253,10 @@ static int qce1204_phy_10m_dac_init(struct phy_device *phydev)
 		return ret;
 	ret = qca81xx_phy_debug_write(phydev, QCE1204_DEBUG_ANA_10M_DAC_CTRL2,
 		QCE1204_DEBUG_ANA_10M_DAC_CTRL2_VAL);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_debug_write(phydev, QCE1204_DEBUG_ANA_10M_DAC_CTRL3,
+		QCE1204_DEBUG_ANA_10M_DAC_CTRL3_VAL);
 
 	return ret;
 }
@@ -2290,7 +2272,7 @@ static int qce1204_phy_tlmm_init(struct phy_device *phydev)
 		return ret;
 	/* GPIO1~GPIO4, FUNC 1, LED_MODE, DRV_16_MA, NO_PULL */
 	for (pin_id  = QCE1204_GPIO1_P0_LED_0; pin_id <= QCE1204_GPIO4_P3_LED_0; pin_id++) {
-		ret = qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
+		ret = qce1204_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
 			QCE1204_TLMM_GPIO_PULL | QCE1204_TLMM_FUNC_MASK | QCE1204_TLMM_DRV | QCE1204_TLMM_LED_MODE,
 			BIT(2) | QCE1204_TLMM_DRV_16_MA | QCE1204_TLMM_LED_MODE);
 		if (ret < 0)
@@ -2320,15 +2302,21 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 	int ret = 0;
 	phy_interface_t package_mode;
 
-	ret = qce1204_phy_gcc_init(phydev);
-	if (ret < 0)
-		return ret;
-
 	package_mode = qce1204_get_package_mode(phydev);
 	if (phy_package_init_once(phydev)) {
+		ret = qce1204_pcs_sys_clk_set_rate(phydev, QCE1204_CLK_RATE_25M);
+		if (ret < 0)
+			return ret;
 		if (package_mode == PHY_INTERFACE_MODE_QUSGMII) {
+			/* configure work mode as PHY */
 			ret = qce1204_soc_modify(phydev, QCE1204_WORK_MODE_SEL,
 				QCE1204_PHY_MODE_MASK, QCE1204_PHY_MODE);
+			if (ret < 0)
+				return ret;
+			ret = qce1204_pcs_sys_clk_set(phydev, true);
+			if (ret < 0)
+				return ret;
+			ret = qce1204_pcs_sys_reset(phydev);
 			if (ret < 0)
 				return ret;
 			ret = qce1204_pcs_qusgmii_mode_set(phydev);
@@ -2338,18 +2326,37 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 			if (ret < 0)
 				return ret;
 		} else if (package_mode == PHY_INTERFACE_MODE_INTERNAL) {
+			/* configure work mode as switch */
 			ret = qce1204_soc_modify(phydev, QCE1204_WORK_MODE_SEL,
 				QCE1204_SWITCH_MODE_MASK, QCE1204_SWITCH_MODE);
 			if (ret < 0)
 				return ret;
-			ret = qce1204_ahb_clk_set_rate(phydev, QCE1204_CLK_RATE_104M);
-			if (ret < 0)
-				return ret;
 		} else {
-			return 0;
+			phydev_err(phydev, "Unsupported package mode: 0x%x\n", package_mode);
+			return -EINVAL;
 		}
+		ret = qce1204_phy_tlmm_init(phydev);
+		if (ret < 0)
+			return ret;
+#if IS_ENABLED(CONFIG_HWMON)
+		qce1204_hwmon_hw_init_once(phydev);
+#endif
+		/* enable efuse loading into analog circuit */
+		ret = qce1204_soc_modify(phydev, QCE1204_EPHY_CFG,
+			QCE1204_EPHY_LDO_CTRL, 0);
+		if (ret < 0)
+			return ret;
+		mdelay(10);
 	}
-	ret = qce1204_phy_tlmm_init(phydev);
+
+	ret = qce1204_phy_clk_parent_init(phydev);
+	if (ret < 0)
+		return ret;
+
+	ret = qce1204_phy_sys_clk_set(phydev, true);
+	if (ret < 0)
+		return ret;
+	ret = qce1204_phy_sys_reset(phydev);
 	if (ret < 0)
 		return ret;
 	ret = qce1204_phy_eee_init(phydev);
@@ -2358,7 +2365,27 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 	ret = qce1204_phy_10m_dac_init(phydev);
 	if (ret < 0)
 		return ret;
+	/* adjust the tx gain to improve 2.5G performance */
+	ret = qca81xx_phy_debug_write(phydev, QCE1204_DEBUG_ANA_2P5G_TX_GAIN_CTRL,
+		QCE1204_DEBUG_ANA_2P5G_TX_GAIN_VAL);
+	if (ret < 0)
+		return ret;
+	/* disable force link to improve 2.5G performance */
+	ret = phy_modify_mmd(phydev, MDIO_MMD_PCS, QCE1204_MMD3_FORCE_LINK_CTRL,
+		QCE1204_FORCE_LINK_EN, 0);
+	if (ret < 0)
+		return ret;
+	/* force pll0 on to improve traffic performance */
+	ret = qca81xx_phy_debug_modify(phydev, QCE1204_DEBUG_PLL_CTRL,
+		QCE1204_DEBUG_PLL0_FORCE_ON, QCE1204_DEBUG_PLL0_FORCE_ON);
+	if (ret < 0)
+		return ret;
 	ret = qce1204_phy_cdt_thresh_init(phydev);
+	if (ret < 0)
+		return ret;
+	/* 10M speed also use led0 in default as other speeds */
+	ret = phy_modify_mmd(phydev, MDIO_MMD_AN, QCE1204_MMD7_LED0_CTRL,
+		QCE1204_SPEED_10M_ON, QCE1204_SPEED_10M_ON);
 	if (ret < 0)
 		return ret;
 	 if (package_mode == PHY_INTERFACE_MODE_QUSGMII) {
@@ -2369,6 +2396,9 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 #if IS_ENABLED(CONFIG_HWMON)
 	qce1204_hwmon_hw_init(phydev);
 #endif
+	ret = qca81xx_phy_stats_enable(phydev);
+	if (ret < 0)
+		return ret;
 	ret = qce1204_phy_soft_reset(phydev);
 	if (ret < 0)
 		return ret;
@@ -2386,16 +2416,17 @@ static int qce1204_phy_qusgmii_speed_fix_up(struct phy_device *phydev)
 
 	/* channel is from 1 ~ 4 */
 	channel = qce1204_phy_channel_get(phydev);
-	ret = qce1204_pcs_speed_clock_set(phydev, channel, phydev->speed);
-	if (ret < 0)
-		return ret;
-	mdelay(10);
 	/*
 	 * enable pcs clocks and phy clocks for link up
 	 * disable pcs clocks and phy clocks for link down
 	 */
-	if (phydev->link)
+	if (phydev->link) {
+		ret = qce1204_pcs_speed_clock_set(phydev, channel, phydev->speed);
+		if (ret < 0)
+			return ret;
+		mdelay(10);
 		clk_en = true;
+	}
 	ret = qce1204_pcs_clk_set(phydev, channel, clk_en);
 	if (ret < 0) {
 		phydev_err(phydev, "Failed to %s pcs clocks for CH%d, ret: %d\n",
@@ -2507,11 +2538,12 @@ static int qce1204_phy_internal_speed_fix_up(struct phy_device *phydev)
 	bool clk_en = false;
 	int ret;
 
-	ret = qce1204_phy_speed_clock_set(phydev);
-	if (ret < 0)
-		return ret;
-	if (phydev->link)
+	if (phydev->link) {
+		ret = qce1204_phy_speed_clock_set(phydev);
+		if (ret < 0)
+			return ret;
 		clk_en = true;
+	}
 	ret = qce1204_phy_clk_set(phydev, clk_en);
 	if (ret < 0) {
 		phydev_err(phydev, "Failed to %s phy clocks, ret: %d\n",
@@ -2539,11 +2571,9 @@ err_disable_clks:
 	return ret;
 }
 
-int qce1204_phy_read_status(struct phy_device *phydev)
+static int qce_phy_read_status(struct phy_device *phydev)
 {
-	int ret = 0, old_link = 0;
-
-	old_link = phydev->link;
+	int ret = 0;
 
 	ret = genphy_c45_read_status(phydev);
 	if (ret < 0)
@@ -2591,7 +2621,23 @@ int qce1204_phy_read_status(struct phy_device *phydev)
 		else
 			phydev->duplex = DUPLEX_HALF;
 	}
+	phydev->mdix = (ret & QCE1204_PHY_SS_MDIX) ? ETH_TP_MDI_X : ETH_TP_MDI;
+	ret = qce1204_phy_mdix_ctrl_get(phydev);
+	if (ret < 0)
+		return ret;
 
+	return 0;
+}
+
+int qce1204_phy_read_status(struct phy_device *phydev)
+{
+	int ret = 0, old_link = 0;
+
+	old_link = phydev->link;
+
+	ret = qce_phy_read_status(phydev);
+	if (ret < 0)
+		return ret;
 	if (phydev->link != old_link) {
 		if (phydev->interface == PHY_INTERFACE_MODE_QUSGMII) {
 			ret = qce1204_phy_qusgmii_speed_fix_up(phydev);
@@ -2604,6 +2650,409 @@ int qce1204_phy_read_status(struct phy_device *phydev)
 				return ret;
 		}
 	}
+
+	return 0;
+}
+
+/* IPQ52xx NSS CC registers */
+#define NSS_CC_EPHY_SYS_CLK_REG					0x182A004
+#define NSS_CC_CLK_ENABLE					BIT(0)
+#define NSS_CC_CLK_RESET					BIT(2)
+#define NSS_CC_RX_CLK_CMD_REG					0x39B004FC
+#define NSS_CC_TX_CLK_CMD_REG					0x39B00508
+#define NSS_CC_EPHY_RX_CBCR					0x39B00618
+#define NSS_CC_EPHY_TX_CBCR					0x39B0061C
+#define NSS_CC_GMII_RX_CBCR					0x39B00578
+#define NSS_CC_GMII_TX_CBCR					0x39B00580
+/* IPQ52xx TCSR GPHY LDO registers */
+#define TCSR_GPHY_LDO_BIAS_EN					0x1961000
+#define GPHY_LDO_BIAS_EN					BIT(0)
+/* IPQ52xx CMN PLL source select register */
+#define CMN_PLL_SRC_SEL_REG					0x9B42c
+#define CMN_PLL_312P5M_SEL					BIT(10)
+
+static int ipq52xx_phy_gmii_clk_set(struct phy_device *phydev, bool enable)
+{
+	struct ipq52xx_phy_priv *priv = phydev->priv;
+	u32 val;
+
+	if (!priv || !priv->gmii_rx_reg || !priv->gmii_tx_reg)
+		return -EINVAL;
+
+	/* Enable/disable GMII RX clock (bit 0) */
+	val = readl(priv->gmii_rx_reg);
+	if (enable)
+		val |= NSS_CC_CLK_ENABLE;
+	else
+		val &= ~NSS_CC_CLK_ENABLE;
+	writel(val, priv->gmii_rx_reg);
+
+	/* Enable/disable GMII TX clock (bit 0) */
+	val = readl(priv->gmii_tx_reg);
+	if (enable)
+		val |= NSS_CC_CLK_ENABLE;
+	else
+		val &= ~NSS_CC_CLK_ENABLE;
+	writel(val, priv->gmii_tx_reg);
+
+	return 0;
+}
+
+static int ipq52xx_phy_gmii_clk_reset(struct phy_device *phydev)
+{
+	struct ipq52xx_phy_priv *priv = phydev->priv;
+	u32 val;
+
+	if (!priv || !priv->gmii_rx_reg || !priv->gmii_tx_reg)
+		return -EINVAL;
+
+	/* Assert reset: set bit 2 of GMII RX and TX CBCR */
+	val = readl(priv->gmii_rx_reg);
+	val |= NSS_CC_CLK_RESET;
+	writel(val, priv->gmii_rx_reg);
+
+	val = readl(priv->gmii_tx_reg);
+	val |= NSS_CC_CLK_RESET;
+	writel(val, priv->gmii_tx_reg);
+
+	mdelay(1);
+
+	/* Deassert reset: clear bit 2 of GMII RX and TX CBCR */
+	val = readl(priv->gmii_rx_reg);
+	val &= ~NSS_CC_CLK_RESET;
+	writel(val, priv->gmii_rx_reg);
+
+	val = readl(priv->gmii_tx_reg);
+	val &= ~NSS_CC_CLK_RESET;
+	writel(val, priv->gmii_tx_reg);
+
+	return 0;
+}
+
+static int ipq52xx_phy_clk_set(struct phy_device *phydev, bool enable)
+{
+	struct ipq52xx_phy_priv *priv = phydev->priv;
+	u32 val;
+
+	if (!priv || !priv->ephy_rx_reg || !priv->ephy_tx_reg)
+		return -EINVAL;
+
+	/* Enable/disable RX clock (bit 0) */
+	val = readl(priv->ephy_rx_reg);
+	if (enable)
+		val |= NSS_CC_CLK_ENABLE;
+	else
+		val &= ~NSS_CC_CLK_ENABLE;
+	writel(val, priv->ephy_rx_reg);
+
+	/* Enable/disable TX clock (bit 0) */
+	val = readl(priv->ephy_tx_reg);
+	if (enable)
+		val |= NSS_CC_CLK_ENABLE;
+	else
+		val &= ~NSS_CC_CLK_ENABLE;
+	writel(val, priv->ephy_tx_reg);
+
+	return 0;
+}
+
+static int ipq52xx_phy_clk_reset(struct phy_device *phydev)
+{
+	struct ipq52xx_phy_priv *priv = phydev->priv;
+	u32 val;
+
+	if (!priv || !priv->ephy_rx_reg || !priv->ephy_tx_reg)
+		return -EINVAL;
+
+	/* Assert reset: set bit 2 of RX and TX CBCR */
+	val = readl(priv->ephy_rx_reg);
+	val |= NSS_CC_CLK_RESET;
+	writel(val, priv->ephy_rx_reg);
+
+	val = readl(priv->ephy_tx_reg);
+	val |= NSS_CC_CLK_RESET;
+	writel(val, priv->ephy_tx_reg);
+
+	mdelay(1);
+
+	/* Deassert reset: clear bit 2 of RX and TX CBCR */
+	val = readl(priv->ephy_rx_reg);
+	val &= ~NSS_CC_CLK_RESET;
+	writel(val, priv->ephy_rx_reg);
+
+	val = readl(priv->ephy_tx_reg);
+	val &= ~NSS_CC_CLK_RESET;
+	writel(val, priv->ephy_tx_reg);
+
+	return 0;
+}
+
+static int ipq52xx_phy_sys_reset(struct phy_device *phydev)
+{
+	struct ipq52xx_phy_priv *priv = phydev->priv;
+	u32 val;
+
+	if (!priv || !priv->sys_clk_reg)
+		return -EINVAL;
+
+	/* Assert reset (set bit 2) */
+	val = readl(priv->sys_clk_reg);
+	val |= NSS_CC_CLK_RESET;
+	writel(val, priv->sys_clk_reg);
+
+	mdelay(10);
+
+	/* Deassert reset (clear bit 2) */
+	val = readl(priv->sys_clk_reg);
+	val &= ~NSS_CC_CLK_RESET;
+	writel(val, priv->sys_clk_reg);
+
+	return 0;
+}
+
+static int ipq52xx_phy_ldo_loading_enable(struct phy_device *phydev)
+{
+	struct ipq52xx_phy_priv *priv = phydev->priv;
+	u32 val;
+
+	if (!priv || !priv->ldo_bias_reg)
+		return -EINVAL;
+
+	/* Enable efuse loading into analog circuit (active low: clear bit 0) */
+	val = readl(priv->ldo_bias_reg);
+	val &= ~GPHY_LDO_BIAS_EN;
+	writel(val, priv->ldo_bias_reg);
+
+	return 0;
+}
+
+static int ipq52xx_phy_speed_clock_set(struct phy_device *phydev)
+{
+	struct ipq52xx_phy_priv *priv = phydev->priv;
+	u32 rx_clk = 0, tx_clk = 0, clk_div = 0, val = 0;
+	bool need_sel_312p5m = false;
+
+	if (!priv || !priv->pll_src_sel_reg || !priv->rx_clk_cmd_reg || !priv->tx_clk_cmd_reg)
+		return -EINVAL;
+
+	/*
+	 * Determine clock rates based on speed.
+	 *  - 0x101/0x501: Use 1:1 divider for 1G/2.5G speeds.
+	 *  - 0x109/0x509: Use 1:5 divider for 100M speed.
+	 *  - clk_div = 9: Additional 1:10 divider for 10M speed (total 1:50).
+	 */
+	switch (phydev->speed) {
+	case SPEED_2500:
+		need_sel_312p5m = true;
+		rx_clk = 0x101;
+		tx_clk = 0x501;
+		break;
+	case SPEED_1000:
+		rx_clk = 0x101;
+		tx_clk = 0x501;
+		break;
+	case SPEED_100:
+		rx_clk = 0x109;
+		tx_clk = 0x509;
+		break;
+	case SPEED_10:
+		rx_clk = 0x109;
+		tx_clk = 0x509;
+		clk_div = 9;
+		break;
+	default:
+		phydev_err(phydev, "Unsupported speed: %d\n", phydev->speed);
+		return -EOPNOTSUPP;
+	}
+	/* select source clock */
+	val = readl(priv->pll_src_sel_reg);
+	if (need_sel_312p5m)
+		val |= CMN_PLL_312P5M_SEL;
+	else
+		val &= ~CMN_PLL_312P5M_SEL;
+	writel(val, priv->pll_src_sel_reg);
+	/* rx speed clock configuration */
+	writel(rx_clk, priv->rx_clk_cmd_reg + 4);
+	writel(clk_div, priv->rx_clk_cmd_reg + 8);
+	writel(1, priv->rx_clk_cmd_reg);
+	/* tx speed clock configuration */
+	writel(tx_clk, priv->tx_clk_cmd_reg + 4);
+	writel(clk_div, priv->tx_clk_cmd_reg + 8);
+	writel(1, priv->tx_clk_cmd_reg);
+
+	return 0;
+}
+
+static int ipq52xx_phy_internal_speed_fix_up(struct phy_device *phydev)
+{
+	bool clk_en = false;
+	bool ephy_clk_enabled = false;
+	bool gmii_clk_enabled = false;
+	int ret;
+
+	if (phydev->link) {
+		ret = ipq52xx_phy_speed_clock_set(phydev);
+		if (ret < 0)
+			return ret;
+		clk_en = true;
+	}
+	ret = ipq52xx_phy_clk_set(phydev, clk_en);
+	if (ret < 0) {
+		phydev_err(phydev, "Failed to %s EPHY clocks, ret: %d\n",
+			   clk_en ? "enable" : "disable", ret);
+		return ret;
+	}
+	ephy_clk_enabled = clk_en;
+	/* reset phy clocks */
+	ret = ipq52xx_phy_clk_reset(phydev);
+	if (ret < 0)
+		goto err_disable_clks;
+	mdelay(1);
+	ret = ipq52xx_phy_gmii_clk_set(phydev, clk_en);
+	if (ret < 0) {
+		phydev_err(phydev, "Failed to %s GMII clocks, ret: %d\n",
+			   clk_en ? "enable" : "disable", ret);
+		goto err_disable_clks;
+	}
+	gmii_clk_enabled = clk_en;
+	ret = ipq52xx_phy_gmii_clk_reset(phydev);
+	if (ret < 0)
+		goto err_disable_clks;
+	ret = qce1204_phy_fifo_reset(phydev, true);
+	if (ret < 0)
+		goto err_disable_clks;
+	mdelay(1);
+	ret = qce1204_phy_fifo_reset(phydev, false);
+	if (ret < 0)
+		goto err_disable_clks;
+
+	return 0;
+
+err_disable_clks:
+	if (gmii_clk_enabled)
+		ipq52xx_phy_gmii_clk_set(phydev, false);
+	if (ephy_clk_enabled)
+		ipq52xx_phy_clk_set(phydev, false);
+	return ret;
+}
+
+int ipq52xx_phy_read_status(struct phy_device *phydev)
+{
+	int ret = 0, old_link = 0;
+
+	old_link = phydev->link;
+
+	ret = qce_phy_read_status(phydev);
+	if (ret < 0)
+		return ret;
+	if (phydev->link != old_link) {
+		ret = ipq52xx_phy_internal_speed_fix_up(phydev);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
+/**
+ * ipq52xx_phy_probe - Probe IPQ52xx built-in PHY, map registers once
+ * @phydev: PHY device
+ * Returns: 0 on success, negative error code on failure
+ *
+ * Maps all hardware registers using devm_ioremap so they are available
+ * for the lifetime of the driver without repeated ioremap/iounmap calls.
+ */
+int ipq52xx_phy_probe(struct phy_device *phydev)
+{
+	struct device *dev = &phydev->mdio.dev;
+	struct ipq52xx_phy_priv *priv;
+
+	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
+	if (!priv)
+		return -ENOMEM;
+
+	priv->gmii_rx_reg = devm_ioremap(dev, NSS_CC_GMII_RX_CBCR, 4);
+	if (!priv->gmii_rx_reg) {
+		phydev_err(phydev, "Failed to map GMII RX clock register\n");
+		return -ENOMEM;
+	}
+
+	priv->gmii_tx_reg = devm_ioremap(dev, NSS_CC_GMII_TX_CBCR, 4);
+	if (!priv->gmii_tx_reg) {
+		phydev_err(phydev, "Failed to map GMII TX clock register\n");
+		return -ENOMEM;
+	}
+
+	priv->ephy_rx_reg = devm_ioremap(dev, NSS_CC_EPHY_RX_CBCR, 4);
+	if (!priv->ephy_rx_reg) {
+		phydev_err(phydev, "Failed to map EPHY RX clock register\n");
+		return -ENOMEM;
+	}
+
+	priv->ephy_tx_reg = devm_ioremap(dev, NSS_CC_EPHY_TX_CBCR, 4);
+	if (!priv->ephy_tx_reg) {
+		phydev_err(phydev, "Failed to map EPHY TX clock register\n");
+		return -ENOMEM;
+	}
+
+	priv->sys_clk_reg = devm_ioremap(dev, NSS_CC_EPHY_SYS_CLK_REG, 4);
+	if (!priv->sys_clk_reg) {
+		phydev_err(phydev, "Failed to map PHY SYS clock register\n");
+		return -ENOMEM;
+	}
+
+	priv->ldo_bias_reg = devm_ioremap(dev, TCSR_GPHY_LDO_BIAS_EN, 4);
+	if (!priv->ldo_bias_reg) {
+		phydev_err(phydev, "Failed to map LDO bias register\n");
+		return -ENOMEM;
+	}
+
+	priv->pll_src_sel_reg = devm_ioremap(dev, CMN_PLL_SRC_SEL_REG, 4);
+	if (!priv->pll_src_sel_reg) {
+		phydev_err(phydev, "Failed to map PLL source select register\n");
+		return -ENOMEM;
+	}
+
+	priv->rx_clk_cmd_reg = devm_ioremap(dev, NSS_CC_RX_CLK_CMD_REG, 12);
+	if (!priv->rx_clk_cmd_reg) {
+		phydev_err(phydev, "Failed to map RX clock command register\n");
+		return -ENOMEM;
+	}
+
+	priv->tx_clk_cmd_reg = devm_ioremap(dev, NSS_CC_TX_CLK_CMD_REG, 12);
+	if (!priv->tx_clk_cmd_reg) {
+		phydev_err(phydev, "Failed to map TX clock command register\n");
+		return -ENOMEM;
+	}
+
+	phydev->priv = priv;
+	return 0;
+}
+
+int ipq52xx_phy_config_init(struct phy_device *phydev)
+{
+	int ret = 0;
+
+	/* enable efuse loading into analog circuit */
+	ret = ipq52xx_phy_ldo_loading_enable(phydev);
+	if (ret < 0)
+		return ret;
+	mdelay(10);
+	ret = ipq52xx_phy_sys_reset(phydev);
+	if (ret < 0)
+		return ret;
+	ret = qce1204_phy_eee_init(phydev);
+	if (ret < 0)
+		return ret;
+	ret = qce1204_phy_10m_dac_init(phydev);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_stats_enable(phydev);
+	if (ret < 0)
+		return ret;
+	ret = qce1204_phy_soft_reset(phydev);
+	if (ret < 0)
+		return ret;
 
 	return 0;
 }
