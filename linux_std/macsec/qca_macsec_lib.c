@@ -1149,6 +1149,7 @@ static int qca_macsec_secy_ctrl_set(struct phy_device *phydev, bool enable)
 {
 	int ret = 0;
 	u16 val = enable ? SYS_MACSEC_EN : SYS_BYPASS;
+	u32 phyid = 0;
 
 	ret = phy_modify_mmd(phydev, MDIO_MMD_PCS,
 			     MACSEC_SYS_PACKET_CTRL,
@@ -1157,16 +1158,18 @@ static int qca_macsec_secy_ctrl_set(struct phy_device *phydev, bool enable)
 	if (ret)
 		return ret;
 
-	val = enable ?
-	      (MACSEC_SHADOW_DUPLEX_EN | MACSEC_SHADOW_LEGACY_DUPLEX_EN) : 0;
-	ret = phy_modify_mmd(phydev, MDIO_MMD_AN,
-			     MACSEC_SHADOW_REGISTER,
-			     MACSEC_SHADOW_DUPLEX_EN |
-			     MACSEC_SHADOW_LEGACY_DUPLEX_EN,
-			     val);
-	if (ret)
-		return ret;
-
+	phyid = qca_macsec_get_phy_id(phydev);
+	if ((phyid & phydev->drv->phy_id_mask) == QCA8081_PHY) {
+		val = enable ?
+		      (MACSEC_SHADOW_DUPLEX_EN | MACSEC_SHADOW_LEGACY_DUPLEX_EN) : 0;
+		ret = phy_modify_mmd(phydev, MDIO_MMD_AN,
+				     MACSEC_SHADOW_REGISTER,
+				     MACSEC_SHADOW_DUPLEX_EN |
+				     MACSEC_SHADOW_LEGACY_DUPLEX_EN,
+				     val);
+		if (ret)
+			return ret;
+	}
 	val = enable ? SYS_PORT_EN : 0;
 	return phy_modify_mmd(phydev, MDIO_MMD_PCS,
 			      MACSEC_SYS_PORT_CTRL, SYS_PORT_EN, val);
