@@ -79,6 +79,8 @@ struct reset_init_entry {
 
 #define QCE1204_MMD7_LED0_CTRL						0x8078
 #define QCE1204_SPEED_10M_ON						BIT(4)
+#define QCE1204_MMD7_LED_POLARITY_CTRL					0x901a
+#define QCE1204_LED_ACTIVE_HIGH						BIT(6)
 
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL0					0x2880
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL0_VAL				0x7777
@@ -3046,6 +3048,16 @@ int ipq52xx_phy_config_init(struct phy_device *phydev)
 	/* Enable pll to improve traffic performance */
 	ret = qca81xx_phy_debug_modify(phydev, QCE1204_DEBUG_PLL_CTRL,
 		QCE1204_DEBUG_PLL_EN, QCE1204_DEBUG_PLL_EN);
+	if (ret < 0)
+		return ret;
+	/* 10M speed also use led0 in default as other speeds */
+	ret = phy_modify_mmd(phydev, MDIO_MMD_AN, QCE1204_MMD7_LED0_CTRL,
+		QCE1204_SPEED_10M_ON, QCE1204_SPEED_10M_ON);
+	if (ret < 0)
+		return ret;
+	/* config the led as active high in default */
+	ret = phy_modify_mmd(phydev, MDIO_MMD_AN, QCE1204_MMD7_LED_POLARITY_CTRL,
+		QCE1204_LED_ACTIVE_HIGH, QCE1204_LED_ACTIVE_HIGH);
 	if (ret < 0)
 		return ret;
 	ret = qce1204_phy_soft_reset(phydev);
