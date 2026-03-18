@@ -33,6 +33,8 @@ struct qca_common_private {
 #define QCA8084_PHY	0x004DD180
 #define QCA81xx_PHY	0x004DD1C0
 #define QCE1204_PHY	0x004DD190
+#define IPQ52XX_PHY	0x004DD120
+
 
 /* ===================== Chip Info Lookup ===================== */
 
@@ -80,6 +82,12 @@ static bool qca_macsec_get_chip_info(u32 phy_id,
 		info->capabilities = 0;
 		info->init = qce1204_macsec_config_init;
 		info->name = "QCE1204";
+		return true;
+
+	case IPQ52XX_PHY:
+		info->capabilities = 0;
+		info->init = qce1204_macsec_config_init;
+		info->name = "IPQ52xx";
 		return true;
 
 	default:
