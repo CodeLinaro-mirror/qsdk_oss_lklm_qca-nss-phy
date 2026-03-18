@@ -85,6 +85,14 @@
 #define QCA8084_CALIBRATION_PHY4_EFUSE		0xC900068
 #define QCA8084_PTE_EFUSE			0xC900014
 
+#define QCA8084_DEBUG_ANEG_STAT			0x1f
+#define QCA8084_DEBUG_AUTONEG_FAIL_CNT_MASK	GENMASK(7, 4)
+
+#define QCA8084_PCS_STATUS1			0x1
+#define QCA8084_EEE_TX_LPI			BIT(11)
+
+#define QCA8084_ANEG_FAIL_CNT_THRESHOLD		2
+
 enum qca8084_init_state {
 	QCA8084_INIT_STATE_START = 0,
 	QCA8084_INIT_STATE_ICC_EFUSE_FAILURE,
@@ -103,6 +111,7 @@ struct qca8084_priv {
 	u32 icc_value;
 	enum qca8084_init_state init_state;
 	struct qca8084_debug_stats debug_stats;
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(eee_disabled_by_wa);
 };
 
 static void
@@ -306,6 +315,66 @@ static int qca8084_phy_icc_fix_up(struct phy_device *phydev)
 	return ret;
 }
 
+/*
+ * qca8084_phy_eee_wa - Workaround for 2.5G EEE compatibility issue with Intel X550 NIC.
+ *
+ * When TX LPI is active and auto-negotiation failures exceed the threshold,
+ * disable 2.5G EEE advertisement to allow stable 2.5G link negotiation.
+ * Re-enable 2.5G EEE when conditions normalize (no TX LPI or low failure count).
+ */
+static int qca8084_phy_eee_wa(struct phy_device *phydev)
+{
+	int ret;
+	u32 cnt = 0;
+	u16 eee_2p5_adv = 0;
+	bool txlpi = false;
+	struct qca8084_priv *priv = phydev->priv;
+
+	if (!priv)
+		return 0;
+
+	if (!phydev->eee_enabled)
+		return 0;
+
+	ret = qca8084_debug_reg_read(phydev, QCA8084_DEBUG_ANEG_STAT);
+	if (ret < 0)
+		return ret;
+	cnt = FIELD_GET(QCA8084_DEBUG_AUTONEG_FAIL_CNT_MASK, ret);
+
+	ret = phy_read_mmd(phydev, MDIO_MMD_PCS, QCA8084_PCS_STATUS1);
+	if (ret < 0)
+		return ret;
+	txlpi = !!(ret & QCA8084_EEE_TX_LPI);
+
+	if (txlpi && (cnt >= QCA8084_ANEG_FAIL_CNT_THRESHOLD)) {
+		if (linkmode_test_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT, priv->eee_disabled_by_wa))
+			return 0;
+		eee_2p5_adv = 0;
+	} else if (linkmode_test_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT, priv->eee_disabled_by_wa)) {
+		eee_2p5_adv = MDIO_EEE_2_5GT;
+	} else {
+		return 0;
+	}
+
+	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_AN,
+		MDIO_AN_EEE_ADV2, MDIO_EEE_2_5GT, eee_2p5_adv);
+	if (ret < 0)
+		return ret;
+
+	if (eee_2p5_adv == 0) {
+		linkmode_set_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT, priv->eee_disabled_by_wa);
+		linkmode_clear_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT, phydev->advertising_eee);
+	} else {
+		linkmode_clear_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT, priv->eee_disabled_by_wa);
+		linkmode_set_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT, phydev->advertising_eee);
+	}
+
+	if (ret > 0)
+		return genphy_restart_aneg(phydev);
+
+	return ret;
+}
+
 static int qca8084_link_change(struct phy_device *phydev)
 {
 	int ret;
@@ -327,6 +396,12 @@ static int qca8084_link_change(struct phy_device *phydev)
 		break;
 	default:
 		break;
+	}
+
+	if (!phydev->link) {
+		ret = qca8084_phy_eee_wa(phydev);
+		if (ret < 0)
+			return ret;
 	}
 
 	return 0;
@@ -663,6 +738,13 @@ static int qca8084_config_init(struct phy_device *phydev)
 
 	state = QCA8084_INIT_STATE_SUCCESS;
 
+	/* Reset the EEE workaround state on (re-)initialization to avoid
+	 * stale state if config_init is called while the workaround has
+	 * disabled 2.5G EEE.
+	 */
+	if (phydev->priv)
+		linkmode_zero(((struct qca8084_priv *)phydev->priv)->eee_disabled_by_wa);
+
 err_out:
 	qca8084_set_init_state(phydev, state);
 	return ret;
@@ -723,6 +805,13 @@ static ssize_t qca8084_phy_show_debug_module_state(struct device *dev,
 		"    %-20s : %s\n", "eee_enabled", phydev->eee_enabled ? "true" : "false");
 	len += scnprintf(buf + len, PAGE_SIZE - len,
 		"    %-20s : 0x%08x\n", "eee_broken_modes", phydev->eee_broken_modes);
+	len += scnprintf(buf + len, PAGE_SIZE - len,
+		"    %-20s : ", "eee_disabled_by_wa");
+	if (linkmode_test_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT, priv->eee_disabled_by_wa))
+		len += scnprintf(buf + len, PAGE_SIZE - len, "2.5G EEE");
+	else
+		len += scnprintf(buf + len, PAGE_SIZE - len, "none");
+	len += scnprintf(buf + len, PAGE_SIZE - len, "\n");
 
 	len += scnprintf(buf + len, PAGE_SIZE - len,
 		"\n%s\n", "AFE Configuration");
