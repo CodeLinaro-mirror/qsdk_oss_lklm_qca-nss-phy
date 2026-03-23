@@ -145,6 +145,18 @@
 #define QCA808X_INTR_PPS_IN			BIT(5)
 #define QCA808X_INTR_PPS_OUT			BIT(6)
 
+/* TX PTP timestamp ready interrupt status register (register 19 / 0x13), bit2.
+ * Bit2 is set by PHY hardware when a TX PTP timestamp has been captured.
+ * This bit is read-to-clear: reading the register automatically clears bit2,
+ * allowing the next TX PTP packet to set it again.
+ *
+ * Access method differs by PHY family:
+ *   QCA8081, QCA8084: MII clause 22 direct register read (phy_read)
+ *   QCA8111, QCE1204: MMD 0x1f (MDIO_MMD_VEND2) clause 45 read (phy_read_mmd)
+ */
+#define QCA808X_INTR_STATUS			0x13
+#define QCA808X_PTP_TX_TS_READY			BIT(2)
+
 #define QCA808X_RTC_PRELOAD_SEC_HI		0x8101
 #define QCA808X_RTC_PRELOAD_SEC_MID		0x8102
 #define QCA808X_RTC_PRELOAD_SEC_LO		0x8103
@@ -173,6 +185,9 @@
 #define QCA808X_PTP_BACKUP_CONFIG		0x9036
 #define QCA808X_PTP_P2P_TC_EN			BIT(0)
 
+/* Maximum time (ms) to wait for a TX PTP timestamp before dropping the SKB */
+#define QCA808X_TX_TS_TIMEOUT_MS		200
+
 struct qca808x_ptp_info {
 	int hwts_tx_type;
 	int hwts_rx_type;
@@ -194,6 +209,7 @@ struct qca808x_ptp_info {
 struct qca808x_ptp_cb {
 	int ptp_type;
 	struct ptp_header *header;
+	unsigned long enqueue_time;	/* jiffies when SKB was queued for TX timestamp */
 };
 
 struct qca808x_hwts {
@@ -368,7 +384,7 @@ static int qca808x_ptp_portid_get(struct phy_device *phydev, int ts_type,
 
 {
 	u64 clock_id_value = 0;
-	int data, index;
+	int data;
 	u32 reg;
 
 	switch (ts_type) {
@@ -391,13 +407,21 @@ static int qca808x_ptp_portid_get(struct phy_device *phydev, int ts_type,
 		return -EINVAL;
 	}
 
-	for (index = 0; index < 4; index++) {
-		data = phy_read_mmd(phydev, MDIO_MMD_PCS, reg + index);
-		if (data < 0)
-			return data;
+	/* clock_id is not used, just comment it out to save the time of
+	 * getting HW timestamp.
+	 */
+#if 0
+	{
+		int inddex;
+		for (index = 0; index < 4; index++) {
+			data = phy_read_mmd(phydev, MDIO_MMD_PCS, reg + index);
+			if (data < 0)
+				return data;
 
-		clock_id_value |= data << (16 * (3 - index));
+			clock_id_value |= data << (16 * (3 - index));
+		}
 	}
+#endif
 
 	data = phy_read_mmd(phydev, MDIO_MMD_PCS, reg + 4);
 	if (data < 0)
@@ -475,8 +499,8 @@ static int qca808x_ptp_msgtype_timestamp_get(struct phy_device *phydev, int ts_t
 static int qca808x_read_hwts(struct phy_device *phydev, int ts_type,
 			     struct qca808x_hwts *hwts)
 {
-	u16 port_num, seq_id;
-	u64 clock_id;
+	u16 port_num = 0, seq_id;
+	u64 clock_id = 0;
 	int ret;
 
 	ret = qca808x_ptp_msgtype_timestamp_get(phydev, ts_type, hwts);
@@ -506,53 +530,136 @@ static bool qca808x_match_hwts(struct ptp_header *header, int type,
 	       be16_to_cpu(header->source_port_identity.port_number) == hwts->port_number;
 }
 
+/**
+ * qca808x_ptp_tx_ts_ready - Read TX PTP timestamp ready interrupt status.
+ *
+ * Reads register 0x13 bit2 which is set by the PHY hardware when a TX PTP
+ * timestamp has been captured. This bit is read-to-clear, so reading it also
+ * clears it, allowing the next TX PTP packet to set it again.
+ *
+ * The register access method differs by PHY family:
+ *   QCA8081, QCA8084: MII clause 22 direct register (phy_read)
+ *   QCA8111, QCE1204: MMD 0x1f (MDIO_MMD_VEND2) clause 45 (phy_read_mmd)
+ *
+ * Returns 1 if timestamp is ready, 0 if not ready, negative on error.
+ */
+static int qca808x_ptp_tx_ts_ready(struct phy_device *phydev)
+{
+	int status;
+
+	if (phydev_id_compare(phydev, QCA8081_PHY_ID) ||
+	    phydev_id_compare(phydev, QCA8084_PHY_ID)) {
+		/* QCA8081/QCA8084: MII clause 22 direct register access */
+		status = phy_read(phydev, QCA808X_INTR_STATUS);
+	} else {
+		/* QCA8111/QCE1204: MMD 0x1f (MDIO_MMD_VEND2) clause 45 access */
+		status = phy_read_mmd(phydev, MDIO_MMD_VEND2, QCA808X_INTR_STATUS);
+	}
+
+	return (status & QCA808X_PTP_TX_TS_READY) ? 1 : 0;
+}
+
+/**
+ * tx_timestamp_work - Process pending TX PTP timestamp SKBs.
+ *
+ * The PHY's TX timestamp interrupt bit (QCA808X_INTR_STATUS bit2) is
+ * read-to-clear.  The original implementation polled it up to 100 times
+ * inside a per-SKB loop: once the bit was consumed on a mismatch the
+ * remaining iterations always returned "not ready", causing the SKB to be
+ * dropped and ptp4l to retransmit the Delay_Req with a new sequence ID.
+ *
+ * At 6.25 MHz MDIO, one register read takes ~10 µs, so 100 iterations
+ * provide ~1 ms of polling enough for the PHY to capture the timestamp.
+ * Replacing the loop with a single read caused a regression because the
+ * kworker (a low-priority kthread) is not guaranteed to be rescheduled
+ * within the ~1 ms window the PHY needs.
+ *
+ * This implementation:
+ *  1. Expires timed-out SKBs from the front of the queue.
+ *  2. Polls the interrupt bit up to 100 times (~1 ms), breaking as soon as
+ *     it is set.  The bit is read-to-clear, so we stop immediately after
+ *     the first successful read we do NOT re-read it in the same pass.
+ *  3. If not ready after 100 polls, returns true so do_aux_work reschedules
+ *     after 1 jiffie (better than dropping the SKB immediately).
+ *  4. If ready, reads the timestamp once and walks the queue to find the
+ *     matching SKB, dropping any stale entries whose timestamps were
+ *     overwritten by a newer packet.
+ *  5. Returns true if more SKBs remain, so the work is rescheduled to
+ *     collect the next timestamp.
+ */
 static bool tx_timestamp_work(struct qca808x_ptp_info *ptp_info)
 {
-	bool reschedule = false, ts_match = false;
 	struct skb_shared_hwtstamps shhwtstamps;
 	struct qca808x_hwts hwts = {};
 	struct qca808x_ptp_cb *ptp_cb;
 	struct timespec64 ts;
 	struct sk_buff *skb;
+	bool ts_ready = false;
 	int ret, times;
 
 	memset(&shhwtstamps, 0, sizeof(shhwtstamps));
-	while ((skb = skb_dequeue(&ptp_info->tx_queue))) {
+
+	/* Step 1: Expire timed-out SKBs from the front of the queue. */
+	while ((skb = skb_peek(&ptp_info->tx_queue))) {
 		ptp_cb = (struct qca808x_ptp_cb *)skb->cb;
+		if (!time_after(jiffies, ptp_cb->enqueue_time +
+				msecs_to_jiffies(QCA808X_TX_TS_TIMEOUT_MS)))
+			break;
+		skb_dequeue(&ptp_info->tx_queue);
+		phydev_warn(ptp_info->phydev,
+			    "TX timestamp timeout: seq_id=%d msg_type=%d\n",
+			    be16_to_cpu(ptp_cb->header->sequence_id),
+			    ptp_get_msgtype(ptp_cb->header, ptp_cb->ptp_type));
+		kfree_skb(skb);
+	}
 
-		times = 0;
-		do {
-			times++;
-			ret = qca808x_read_hwts(ptp_info->phydev, PTP_TS_TX0, &hwts);
-			if (ret)
-				continue;
+	if (skb_queue_empty(&ptp_info->tx_queue))
+		return false;
 
-			ts_match = qca808x_match_hwts(ptp_cb->header, ptp_cb->ptp_type, &hwts);
-			if (ts_match)
-				break;
-
-		} while (times < 100);
-
-		if (ts_match) {
-			ts.tv_sec = hwts.sec;
-			ts.tv_nsec = hwts.nsec;
-
-			phydev_dbg(ptp_info->phydev,
-				   "[PHC] txtstamp: [seq: %u msg_type: %u ptp_class: 0x%x ts: %llu.%09u]\n",
-				   hwts.seq_id, hwts.msg_type, ptp_cb->ptp_type,
-				   (unsigned long long)ts.tv_sec, (u32)ts.tv_nsec);
-
-			shhwtstamps.hwtstamp = ns_to_ktime(timespec64_to_ns(&ts));
-			skb_complete_tx_timestamp(skb, &shhwtstamps);
-		} else {
-			phydev_warn(ptp_info->phydev,
-				    "TX timestamp does not match the skb sequence_id %d, msg_type %d\n",
-				    be16_to_cpu(ptp_cb->header->sequence_id),
-				    ptp_get_msgtype(ptp_cb->header, ptp_cb->ptp_type));
+	/* Step 2: Poll for the TX timestamp interrupt bit (read-to-clear).
+	 * At 6.25 MHz MDIO, 100 reads ≈ 1 ms enough for the PHY to capture
+	 * the timestamp.  Break as soon as the bit is set; do NOT re-read the
+	 * register after it has been cleared.
+	 */
+	for (times = 0; times < 100; times++) {
+		if (qca808x_ptp_tx_ts_ready(ptp_info->phydev)) {
+			ts_ready = true;
+			break;
 		}
 	}
 
-	return reschedule;
+	if (!ts_ready)
+		return true;	/* Not ready after ~1 ms reschedule after 1 jiffie */
+
+	/* Step 3: Timestamp is ready read it once. */
+	ret = qca808x_read_hwts(ptp_info->phydev, PTP_TS_TX0, &hwts);
+	if (ret)
+		return !skb_queue_empty(&ptp_info->tx_queue);
+
+	/* Step 4: Walk the queue.  Drop stale SKBs (their timestamp was
+	 * overwritten by a newer packet) until we find the matching one.
+	 */
+	while ((skb = skb_dequeue(&ptp_info->tx_queue))) {
+		ptp_cb = (struct qca808x_ptp_cb *)skb->cb;
+
+		if (qca808x_match_hwts(ptp_cb->header, ptp_cb->ptp_type, &hwts)) {
+			ts.tv_sec  = hwts.sec;
+			ts.tv_nsec = hwts.nsec;
+			shhwtstamps.hwtstamp = ns_to_ktime(timespec64_to_ns(&ts));
+			skb_complete_tx_timestamp(skb, &shhwtstamps);
+			break;
+		}
+
+		/* Stale: this SKB's timestamp was overwritten by a newer packet. */
+		phydev_warn(ptp_info->phydev,
+			    "TX timestamp stale: seq_id=%d msg_type=%d\n",
+			    be16_to_cpu(ptp_cb->header->sequence_id),
+			    ptp_get_msgtype(ptp_cb->header, ptp_cb->ptp_type));
+		kfree_skb(skb);
+	}
+
+	/* Step 5: Reschedule if more SKBs are waiting for their timestamps. */
+	return !skb_queue_empty(&ptp_info->tx_queue);
 }
 
 static bool qca808x_need_ingress_ts_trigger(struct phy_device *phydev, int msg_type)
@@ -1223,6 +1330,9 @@ static int qca808x_hwtstamp(struct mii_timestamper *mii_ts, struct ifreq *ifr)
 	/* Update the PTP configs aligned with the correct link speed. */
 	qca808x_ptp_change_notify(mii_ts, phydev);
 
+	/* Drain pending timestamp interrupt status. */
+	qca808x_ptp_tx_ts_ready(phydev);
+
 	mutex_lock(&ptp_info->tsreg_lock);
 	qca808x_ptp_enable_set(phydev, ptp_en, one_step);
 	qca808x_ptp_clock_mode_update(phydev, &ptp_info->ptp_mode);
@@ -1360,6 +1470,7 @@ static void qca808x_txtstamp(struct mii_timestamper *mii_ts, struct sk_buff *org
 			ptp_cb = (struct qca808x_ptp_cb *)skb->cb;
 			ptp_cb->ptp_type = type;
 			ptp_cb->header = ptp_header;
+			ptp_cb->enqueue_time = jiffies;
 			skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
 			skb_queue_tail(&ptp_info->tx_queue, skb);
 			ptp_schedule_worker(ptp_info->ptp_clock, 0);
