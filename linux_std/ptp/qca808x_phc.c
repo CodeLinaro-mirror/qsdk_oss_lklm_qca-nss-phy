@@ -29,6 +29,7 @@
 #define QCA8084_PHY_ID				0x004dd180
 #define QCA8111_PHY_ID				0x004dd1c0
 #define QCE1204_PHY_ID				0x004dd190
+#define IPQ52XX_PHY_ID				0x004dd120
 
 #define QCA808X_DEBUG_ADDR			0x1d
 #define QCA808X_DEBUG_DATA			0x1e
@@ -236,6 +237,7 @@ static const char *qca_phy_driver_ptp_supported_names[] = {
 	"Qualcomm QCA8084",
 	"Qualcomm QCA81xx",
 	"Qualcomm QCE1204",
+	"Qualcomm IPQ52XX internal PHY",
 };
 
 static int __qca808x_debug_reg_read(struct phy_device *phydev, u16 reg)
@@ -990,7 +992,8 @@ static void qca808x_ptp_change_notify(struct mii_timestamper *mii_ts, struct phy
 	if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], QCA8111_PHY_ID, 0x00ffffff))
 		qca81xx_link_state(phydev);
 
-	if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], QCE1204_PHY_ID, 0x00ffffff))
+	if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], QCE1204_PHY_ID, 0x00ffffff) ||
+	    phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], IPQ52XX_PHY_ID, 0x00ffffff))
 		qce1204_link_state(phydev);
 
 	switch (phydev->speed) {
@@ -1196,6 +1199,7 @@ static int qca808x_hwtstamp(struct mii_timestamper *mii_ts, struct ifreq *ifr)
 	qca808x_ptp_clock_mode_update(phydev, &ptp_info->ptp_mode);
 
 	if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], QCA8111_PHY_ID, 0x00ffffff) ||
+	    phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], IPQ52XX_PHY_ID, 0x00ffffff) ||
 	    phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], QCE1204_PHY_ID, 0x00ffffff))
 		qca81xx_ptp_clock_set(phydev, ptp_en);
 
