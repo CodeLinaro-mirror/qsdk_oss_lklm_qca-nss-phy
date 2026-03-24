@@ -5,6 +5,7 @@ ccflags-y += -Werror -Wall
 TARGET := qca-nss-phy
 obj-m += $(TARGET).o
 PTP_REQUIRE_CONFIG := CONFIG_NSSPHY_QCA808X CONFIG_NSSPHY_QCA81XX CONFIG_NSSPHY_QCE1204
+PTP_REQUIRE_CONFIG += CONFIG_NSSPHY_IPQ52XX
 
 $(TARGET)-objs +=	\
 	nss_phy_common.o	\

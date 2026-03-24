@@ -22,7 +22,7 @@
 #if defined(CONFIG_NSSPHY_QCA833X)
 #include "qca833x_phy.h"
 #endif
-#if defined(CONFIG_NSSPHY_QCE1204)
+#if defined(CONFIG_NSSPHY_QCE1204) || defined(CONFIG_NSSPHY_IPQ52XX)
 #include "qce1204_phy.h"
 #endif
 #include <linux/of_device.h>
@@ -269,6 +269,7 @@ static int nss_phy_ptp_ops_add(struct phy_device *phydev, struct nss_phy_ops *ph
 	if (!(nss_phydev_id_compare(phydev, QCA8111_PHY, GENMASK(31, 0)) ||
 	    nss_phydev_id_compare(phydev, QCA8084_PHY, GENMASK(31, 0)) ||
 	    nss_phydev_id_compare(phydev, QCE1204_PHY, QCA_PHY_EXACT_MASK) ||
+	    nss_phydev_id_compare(phydev, IPQ52XX_PHY, QCA_PHY_EXACT_MASK) ||
 	    nss_phydev_id_compare(phydev, QCA8081_PHY, GENMASK(31, 0))))
 		return 0;
 
