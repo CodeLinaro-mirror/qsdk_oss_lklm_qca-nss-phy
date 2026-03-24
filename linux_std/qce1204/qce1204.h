@@ -72,6 +72,7 @@ struct qce1204_shared_clk_data {
 struct qce1204_shared_priv {
 	struct qce1204_shared_clk_data shared_clk_data;
 	phy_interface_t package_mode;
+	atomic_t ppsin_refcount;   /* PPS_IN GPIO reference count (shared by all 4 ports of one chip) */
 #if IS_ENABLED(CONFIG_HWMON)
 	u64 tem_base_code;
 #endif

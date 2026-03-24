@@ -23,6 +23,7 @@
 #include <linux/time64.h>
 
 #include "../qca81xx/qca81xx.h"
+#include "../qce1204/qce1204.h"
 #include "qca808x_phc.h"
 
 #define QCA8081_PHY_ID				0x004dd101
@@ -187,6 +188,8 @@
 
 /* Maximum time (ms) to wait for a TX PTP timestamp before dropping the SKB */
 #define QCA808X_TX_TS_TIMEOUT_MS		200
+#define QCE1204_GPIO_P0_PPS_OUT			8
+#define QCE1204_GPIO_PPS_IN			7
 
 struct qca808x_ptp_info {
 	int hwts_tx_type;
@@ -990,6 +993,97 @@ static int qca808x_pps_configure(struct ptp_clock_info *ptp,
 	return 0;
 }
 
+static int qca81xx_ptp_ppsout_pin_config(struct phy_device *phydev, bool en)
+{
+	int pin_id;
+
+	if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD],
+			   QCE1204_PHY_ID, 0x00ffffff)) {
+		/*
+		 * QCE1204 PHY0-3: TLMM GPIO8-11 = P0-P3_PPS_OUT (primary function = BIT(2)).
+		 * PHY MDIO address low 2 bits (0-3) select GPIO8-11 respectively.
+		 */
+		pin_id = QCE1204_GPIO_P0_PPS_OUT + (phydev->mdio.addr & 0x3);
+
+		return qce1204_soc_modify(phydev, QCE1204_TO_TLMM_CFG_REG(pin_id),
+					  QCE1204_TLMM_FUNC_MASK,
+					  en ? BIT(2) : 0);
+	} else if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD],
+				  QCA8111_PHY_ID, 0x00ffffff)) {
+		/* QCA8111: TLMM GPIO10 = PPS_OUT (alt function = BIT(2)) */
+		pin_id = GPIO10_PPS_OUT;
+
+		return qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
+					  TLMM_FUNC_MASK,
+					  en ? BIT(2) : 0);
+	}
+
+	return 0;
+}
+
+static int qca81xx_ptp_ppsin_pin_config(struct phy_device *phydev, bool en)
+{
+	int pin_id;
+
+	if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD],
+			   QCE1204_PHY_ID, 0x00ffffff)) {
+		/*
+		 * QCE1204: GPIO7 (PPS_IN) is a single shared pin for all 4 ports
+		 * of one chip.  Use the per-chip ppsin_refcount in qce1204_shared_priv
+		 * so that each QCE1204 chip in the system maintains an independent
+		 * reference count.  The shared_priv is allocated once per chip package
+		 * via devm_of_phy_package_join() and zero-initialised, so the counter
+		 * starts at 0 without explicit initialisation.
+		 */
+		struct qce1204_shared_priv *shared_priv;
+
+		if (!phydev->shared || !phydev->shared->priv)
+			return -EINVAL;
+
+		shared_priv = (struct qce1204_shared_priv *)phydev->shared->priv;
+		pin_id = QCE1204_GPIO_PPS_IN;
+
+		if (en) {
+			if (atomic_inc_return(&shared_priv->ppsin_refcount) != 1)
+				return 0;  /* already configured by another port on this chip */
+		} else {
+			if (atomic_dec_return(&shared_priv->ppsin_refcount) != 0)
+				return 0;  /* still in use by another port on this chip */
+		}
+
+		return qce1204_soc_modify(phydev, QCE1204_TO_TLMM_CFG_REG(pin_id),
+					  QCE1204_TLMM_FUNC_MASK,
+					  en ? BIT(2) : 0);
+	} else if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD],
+				  QCA8111_PHY_ID, 0x00ffffff)) {
+		pin_id = GPIO5_PPS_IN;
+
+		return qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
+					  TLMM_FUNC_MASK,
+					  en ? BIT(2) : 0);
+	}
+
+	return 0;
+}
+
+static int qca808x_ptp_enable_set(struct phy_device *phydev, bool en, bool one_step)
+{
+	int data = 0, mask;
+
+	mask = QCA808X_PTP_BYPASS;
+	mask |= QCA808X_DISABLE_1588_PHY;
+	mask |= QCA808X_PTP_CLK_MODE_ONE_STEP;
+
+	if (!en)
+		data = QCA808X_PTP_BYPASS | QCA808X_DISABLE_1588_PHY;
+
+	if (one_step)
+		data |= QCA808X_PTP_CLK_MODE_ONE_STEP;
+
+	return phy_modify_mmd(phydev, MDIO_MMD_PCS, QCA808X_PTP_MAIN_CONFIG,
+			      mask, data);
+}
+
 static int qca808x_ptp_enable(struct ptp_clock_info *ptp,
 			      struct ptp_clock_request *rq, int on)
 {
@@ -1004,11 +1098,18 @@ static int qca808x_ptp_enable(struct ptp_clock_info *ptp,
 
 	switch (rq->type) {
 	case PTP_CLK_REQ_EXTTS:
-		if (clock->pin.func == PTP_PF_EXTTS)
+		if (!!on)
+			qca808x_ptp_enable_set(clock->phydev, true, false);
+
+		err = qca81xx_ptp_ppsin_pin_config(clock->phydev, !!on);
+		if (!err)
 			err = qca808x_ptp_extts_locked(clock, on);
 		break;
 	case PTP_CLK_REQ_PEROUT:
-		err = 0;
+		if (!!on)
+			qca808x_ptp_enable_set(clock->phydev, true, false);
+
+		err = qca81xx_ptp_ppsout_pin_config(clock->phydev, !!on);
 		break;
 	case PTP_CLK_REQ_PPS:
 		err = qca808x_pps_configure(ptp, rq, on);
@@ -1190,25 +1291,10 @@ static int qca81xx_ptp_clock_set(struct phy_device *phydev, bool enable)
 	if (ret)
 		return ret;
 
-	return qca81xx_ptp_synce_pin_config(phydev, enable);
-}
+	if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], QCA8111_PHY_ID, 0x00ffffff))
+		ret = qca81xx_ptp_synce_pin_config(phydev, enable);
 
-static int qca808x_ptp_enable_set(struct phy_device *phydev, bool en, bool one_step)
-{
-	int data = 0, mask;
-
-	mask = QCA808X_PTP_BYPASS;
-	mask |= QCA808X_DISABLE_1588_PHY;
-	mask |= QCA808X_PTP_CLK_MODE_ONE_STEP;
-
-	if (!en)
-		data = QCA808X_PTP_BYPASS | QCA808X_DISABLE_1588_PHY;
-
-	if (one_step)
-		data |= QCA808X_PTP_CLK_MODE_ONE_STEP;
-
-	return phy_modify_mmd(phydev, MDIO_MMD_PCS, QCA808X_PTP_MAIN_CONFIG,
-			      mask, data);
+	return ret;
 }
 
 static int qca808x_rx_timestamp_mode_set(struct phy_device *phydev, bool embeded)
