@@ -536,6 +536,12 @@ static bool tx_timestamp_work(struct qca808x_ptp_info *ptp_info)
 		if (ts_match) {
 			ts.tv_sec = hwts.sec;
 			ts.tv_nsec = hwts.nsec;
+
+			phydev_dbg(ptp_info->phydev,
+				   "[PHC] txtstamp: [seq: %u msg_type: %u ptp_class: 0x%x ts: %llu.%09u]\n",
+				   hwts.seq_id, hwts.msg_type, ptp_cb->ptp_type,
+				   (unsigned long long)ts.tv_sec, (u32)ts.tv_nsec);
+
 			shhwtstamps.hwtstamp = ns_to_ktime(timespec64_to_ns(&ts));
 			skb_complete_tx_timestamp(skb, &shhwtstamps);
 		} else {
@@ -621,9 +627,14 @@ static void rx_timestamp_work(struct qca808x_ptp_info *ptp_info)
 				break;
 		}
 
-		if (ts_match) { 
+		if (ts_match) {
 			ts.tv_sec = hwts.sec;
 			ts.tv_nsec = hwts.nsec;
+
+			phydev_dbg(ptp_info->phydev,
+				   "[PHC] rxtstamp(register): [seq: %u msg_type: %u ptp_class: 0x%x ts: %llu.%09u]\n",
+				   hwts.seq_id, hwts.msg_type, ptp_cb->ptp_type,
+				   (unsigned long long)ts.tv_sec, (u32)ts.tv_nsec);
 
 			qca808x_ingress_trigger_timestamp_config(ptp_info->phydev,
 								 msg_type, ts);
@@ -646,6 +657,9 @@ static int qca808x_ptp_settime(struct ptp_clock_info *ptp,
 						      struct qca808x_ptp_info,
 						      caps);
 	struct phy_device *phydev = clock->phydev;
+
+	phydev_dbg(phydev, "[PHC] settime: sec=%lld nsec=%ld\n",
+		   (long long)ts->tv_sec, ts->tv_nsec);
 
 	mutex_lock(&clock->tsreg_lock);
 	phy_write_mmd(phydev, MDIO_MMD_PCS, QCA808X_RTC_PRELOAD_SEC_HI, upper_32_bits(ts->tv_sec) & 0xffff);
@@ -683,6 +697,9 @@ static int qca808x_ptp_gettime(struct ptp_clock_info *ptp,
 
 	set_normalized_timespec64(ts, sec, nsec);
 
+	phydev_dbg(phydev, "[PHC] gettime: sec=%lld nsec=%ld\n",
+		   (long long)ts->tv_sec, ts->tv_nsec);
+
 	return 0;
 }
 
@@ -693,6 +710,8 @@ static int qca808x_ptp_adjtime(struct ptp_clock_info *ptp, s64 delta)
 						      caps);
 	struct phy_device *phydev = clock->phydev;
 	struct timespec64 ts;
+
+	phydev_dbg(phydev, "[PHC] adjtime: delta=%lld ns\n", (long long)delta);
 
 	ts = ns_to_timespec64(delta);
 
@@ -757,6 +776,8 @@ static int qca808x_ptp_adjfine(struct ptp_clock_info *ptp, long scaled_ppm)
 	diff = div_u64(adj * nsec, 15625);
 	adj = (nsec << 26) + (neg_adj ? -diff : diff);
 
+	phydev_dbg(phydev, "[PHC] adjfine: scaled_ppm=%ld neg=%d nsec_per_tick=%u adj=0x%llx\n",
+		   scaled_ppm, neg_adj, nsec, (unsigned long long)adj);
 
 	mutex_lock(&clock->tsreg_lock);
 	ret = phy_write_mmd(phydev, MDIO_MMD_PCS, QCA808X_RTC_INC_CONF_1, adj & 0xffff);
@@ -870,6 +891,8 @@ static int qca808x_ptp_enable(struct ptp_clock_info *ptp,
 						      caps);
 	int err = -EBUSY;
 
+	phydev_dbg(clock->phydev, "[PHC] enable: type=%d on=%d\n", rq->type, on);
+
 	mutex_lock(&clock->tsreg_lock);
 
 	switch (rq->type) {
@@ -908,8 +931,8 @@ static int qca808x_ptp_verify(struct ptp_clock_info *ptp, unsigned int pin,
 	return 0;
 }
 
-/* For a 10 M link speed, the AFE_ADC does not provide a clock output.
- * Select AFE_PLL as the clock source when operating at 10 M link speed.
+/* For a 10 M link speed, the AFE_ADC does not provide a clock output.
+ * Select AFE_PLL as the clock source when operating at 10 M link speed.
  */
 static void qce1204_link_state(struct phy_device *phydev)
 {
@@ -1014,6 +1037,9 @@ static void qca808x_ptp_change_notify(struct mii_timestamper *mii_ts, struct phy
 		ref_clk = PTP_RTC_REF_CLOCK_LOCAL;
 		break;
 	}
+
+	phydev_dbg(phydev, "[PHC] change_notify: speed=%d ref_clk=%d nsec_tick=%u\n",
+		   phydev->speed, ref_clk, nsec);
 
 	qca808x_ptp_rtc_reference_set(phydev, ref_clk);
 	qca808x_ptp_rtc_incval_set(phydev, nsec, 0);
@@ -1153,6 +1179,9 @@ static int qca808x_hwtstamp(struct mii_timestamper *mii_ts, struct ifreq *ifr)
 	if (cfg.tx_type < 0 || cfg.tx_type > HWTSTAMP_TX_ONESTEP_P2P)
 		return -ERANGE;
 
+	phydev_dbg(phydev, "[PHC] hwtstamp: tx_type=%d rx_filter=%d\n",
+		   cfg.tx_type, cfg.rx_filter);
+
 	ptp_info->hwts_tx_type = cfg.tx_type;
 	switch (cfg.rx_filter) {
 		case HWTSTAMP_FILTER_NONE:
@@ -1244,6 +1273,7 @@ static bool qca808x_rxtstamp(struct mii_timestamper *mii_ts, struct sk_buff *skb
 		return false;
 
 	header = ptp_parse_header(skb, type);
+
 	if (((header->ver) >> 4) == QCA808X_PTP_EMBEDDED_MODE) {
 		u64 ct_ns_low = FIELD_GET(GENMASK_ULL(63, 40), be64_to_cpu(header->correction));
 		u64 ct_org = FIELD_GET(GENMASK_ULL(39, 0), be64_to_cpu(header->correction));
@@ -1261,6 +1291,11 @@ static bool qca808x_rxtstamp(struct mii_timestamper *mii_ts, struct sk_buff *skb
 		 * And high 8 bits are also dropped.
 		 */
 		header->correction = cpu_to_be64(FIELD_PREP(GENMASK_ULL(55, 16), ct_org));
+
+		phydev_dbg(ptp_info->phydev,
+			   "[PHC] rxtstamp(embed): [seq: %u msg_type: %u ptp_class: 0x%x ts: %llu.%09u]\n",
+			   be16_to_cpu(header->sequence_id), ptp_get_msgtype(header, type), type,
+			   (unsigned long long)ts.tv_sec, (u32)ts.tv_nsec);
 
 		shhwtstamps = skb_hwtstamps(skb);
 		shhwtstamps->hwtstamp = ns_to_ktime(timespec64_to_ns(&ts));
@@ -1311,6 +1346,7 @@ static void qca808x_txtstamp(struct mii_timestamper *mii_ts, struct sk_buff *org
 		goto txtstamp_out;
 
 	msgtype = ptp_get_msgtype(ptp_header, type);
+
 	switch (ptp_info->hwts_tx_type) {
 		case HWTSTAMP_TX_ONESTEP_P2P:
 			if (msgtype == PTP_MSGTYPE_PDELAY_RESP)
