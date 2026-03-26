@@ -44,18 +44,9 @@ static struct nss_phy_global_manager g_nss_phy_manager = {0};
  */
 static ssize_t nss_phy_ext_state_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	struct phy_device *phydev = to_phy_device(dev);
-	struct nss_phy_device *nss_phydev = dev_get_drvdata(&phydev->mdio.dev);
 	ssize_t count = 0;
-	const char *status_str;
-
-	if (atomic_read(&nss_phydev->pcs_state))
-		status_str = "enabled";
-	else
-		status_str = "disabled";
 
 	count += scnprintf(buf + count, PAGE_SIZE - count, "NSS PHY Extended State\n");
-	count += scnprintf(buf + count, PAGE_SIZE - count, "    %-20s : %s\n", "pcs_state", status_str);
 
 	return count;
 }
@@ -395,8 +386,7 @@ static int nss_phy_probe(struct phy_device *phydev)
 	nss_phydev->phydev = phydev;
 	dev_set_drvdata(&phydev->mdio.dev, nss_phydev);
 
-	/* Initialize extended state and statistics */
-	atomic_set(&nss_phydev->pcs_state, 1);
+	/* Initialize extended statistics */
 	atomic64_set(&nss_phydev->adjust_link_post_count, 0);
 
 	nss_phy_debugfs_init(phydev);

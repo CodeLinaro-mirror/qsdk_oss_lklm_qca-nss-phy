@@ -16,7 +16,6 @@ extern "C" {
 
 struct nss_phy_device {
 	struct phy_device *phydev;
-	atomic_t pcs_state;
 	atomic64_t adjust_link_post_count;
 };
 

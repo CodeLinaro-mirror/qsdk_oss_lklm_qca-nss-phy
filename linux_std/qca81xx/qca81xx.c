@@ -968,11 +968,26 @@ static int qca81xx_phy_soft_reset(struct phy_device *phydev)
 static int qca81xx_phy_pcs_assert(struct phy_device *phydev,
 	bool assert)
 {
-	return qca81xx_pcs_modify_mmd(phydev, MDIO_MMD_PMAPMD,
+	int ret;
+	struct qca81xx_private *priv = phydev->priv;
+
+	if (!priv)
+		return -EINVAL;
+
+	/* Skip if already in the desired state */
+	if (assert == priv->pcs_assert)
+		return 0;
+
+	ret = qca81xx_pcs_modify_mmd(phydev, MDIO_MMD_PMAPMD,
 		QCA81XX_PCS_MMD1_PLL_POWER_ON_AND_RESET,
 		QCA81XX_PCS_MMD1_ANA_SOFT_RESET_MASK,
 		assert ? QCA81XX_PCS_MMD1_ANA_SOFT_RESET :
 		QCA81XX_PCS_MMD1_ANA_SOFT_RELEASE);
+	if (ret < 0)
+		return ret;
+	priv->pcs_assert = assert;
+
+	return 0;
 }
 
 static int qca81xx_pcs_usxgmii_init(struct phy_device *phydev)
@@ -1021,7 +1036,7 @@ static int qca81xx_pcs_usxgmii_init(struct phy_device *phydev)
 		1000, 100000, true, phydev, MDIO_MMD_PMAPMD,
 		QCA81XX_PCS_MMD1_CALIBRATION4);
 	if (ret < 0)
-		phydev_warn(phydev, "PCS callibration time out!\n");
+		phydev_warn(phydev, "PCS calibration time out!\n");
 	ret = qca81xx_pcs_modify_mmd(phydev,
 		MDIO_MMD_PMAPMD, QCA81XX_PCS_MMD1_CDA_CONTROL1,
 		QCA81XX_PCS_MMD1_SSCG_ENABLE,
@@ -1379,6 +1394,8 @@ static int qca81xx_phy_suspend(struct phy_device *phydev)
 		if (ret < 0)
 			return ret;
 	}
+	if (phydev->suspended)
+		return 0;
 
 	return genphy_c45_pma_suspend(phydev);
 }
@@ -1402,8 +1419,21 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 {
 	int ret = 0;
 	enum qca81xx_init_state state = QCA81XX_INIT_START;
+	struct qca81xx_private *priv = phydev->priv;
 
 	qca81xx_set_init_state(phydev, state);
+
+	/*
+	 * De-assert PCS only if pcs was asserted to make sure the SoC registers access
+	 * and usxgmii init successfully
+	 */
+	mutex_lock(&phydev->lock);
+	if (priv && priv->pcs_assert) {
+		ret = qca81xx_phy_pcs_assert(phydev, false);
+		if (ret < 0)
+			goto err_out;
+		mdelay(10);
+	}
 
 	ret = qca81xx_phy_gcc_pre_init(phydev);
 	if (ret < 0) {
@@ -1453,16 +1483,22 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 #if IS_ENABLED(CONFIG_HWMON)
 	qca81xx_hwmon_hw_init(phydev);
 #endif
+	mutex_unlock(&phydev->lock);
 	/*enable phy counter check*/
 	qca81xx_phy_stats_enable(phydev);
 
 	qca81xx_phy_ana_capacitance_update(phydev);
+	mutex_lock(&phydev->lock);
 	ret = qca81xx_phy_resume(phydev);
 	if (ret < 0)
 		goto err_out;
+	mutex_unlock(&phydev->lock);
 	state = QCA81XX_INIT_SUCCESS;
+	goto err_out_no_lock;
 
 err_out:
+	mutex_unlock(&phydev->lock);
+err_out_no_lock:
 	qca81xx_set_init_state(phydev, state);
 	return ret;
 }
@@ -1899,10 +1935,16 @@ static DEVICE_ATTR(snr, 0444, qca81xx_phy_show_snr, NULL);
 
 static int qca81xx_phy_probe(struct phy_device *phydev)
 {
+	struct qca81xx_private *priv;
+
 	phydev->priv = devm_kzalloc(&phydev->mdio.dev,
 			sizeof(struct qca81xx_private), GFP_KERNEL);
 	if (!phydev->priv)
 		return -ENOMEM;
+
+	priv = phydev->priv;
+	priv->pcs_assert = false;
+
 	qca81xx_phy_sku_probe(phydev);
 #if IS_ENABLED(CONFIG_HWMON)
 	qca81xx_hwmon_probe(phydev);
@@ -2880,6 +2922,8 @@ static ssize_t qca81xx_phy_show_debug_module_state(struct device *dev,
 		"    %-20s : %s\n", "is_c45", phydev->is_c45 ? "true" : "false");
 	size += snprintf(buf + size, PAGE_SIZE - size,
 		"    %-20s : %s\n", "suspended", phydev->suspended ? "true" : "false");
+	size += snprintf(buf + size, PAGE_SIZE - size,
+		"    %-20s : %s\n", "pcs_assert", priv->pcs_assert ? "asserted" : "de-asserted");
 	size += snprintf(buf + size, PAGE_SIZE - size,
 		"    %-20s : %s\n", "loopback_enabled", phydev->loopback_enabled ? "true" : "false");
 	size += snprintf(buf + size, PAGE_SIZE - size,

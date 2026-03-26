@@ -450,7 +450,7 @@ static int qce1204_pcs_calibration(struct phy_device *phydev)
 	while (calibration_done != QCE1204_PCS_MMD1_CALIBRATION_DONE) {
 		mdelay(1);
 		if (retries-- == 0) {
-			phydev_err(phydev, "pcs callibration time out!\n");
+			phydev_err(phydev, "pcs calibration time out!\n");
 			return -ETIMEDOUT;
 		}
 		pcs_data = qce1204_pcs_read_mmd(phydev,

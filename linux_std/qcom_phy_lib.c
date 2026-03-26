@@ -239,7 +239,7 @@ static int qcom_phy_pcs_calibration(struct phy_device *phydev,
 	while (calibration_done != QCOM_PHY_PCS_MMD1_CALIBRATION_DONE) {
 		mdelay(1);
 		if (retries-- == 0) {
-			phydev_err(phydev, "pcs %d callibration time out!\n", addr_offset);
+			phydev_err(phydev, "pcs %d calibration time out!\n", addr_offset);
 			return -ETIMEDOUT;
 		}
 		pcs_data = qcom_phy_pcs_read_mmd(phydev, addr_offset,

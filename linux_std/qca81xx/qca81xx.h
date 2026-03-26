@@ -105,6 +105,7 @@ struct qca81xx_private {
 	u16 afe_dac9;
 	struct qca81xx_debug_stats debug_stats;
 	enum qca81xx_init_state init_state;
+	bool pcs_assert;
 };
 
 #endif /* _QCA81XX_H_ */

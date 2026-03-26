@@ -97,6 +97,9 @@ int nss_phy_write_soc(struct nss_phy_device *nss_phydev, u32 reg, u32 val);
 int nss_phy_modify_soc(struct nss_phy_device *nss_phydev, u32 reg,
 	u32 mask, u32 set);
 bool nss_phy_is_suspended(struct nss_phy_device *nss_phydev);
+int nss_phy_do_suspend(struct nss_phy_device *nss_phydev);
+void nss_phydev_lock(struct nss_phy_device *nss_phydev);
+void nss_phydev_unlock(struct nss_phy_device *nss_phydev);
 int nss_phydev_loopback_update(struct nss_phy_device *nss_phydev,
 	u32 enable);
 bool nss_phydev_eee_support(struct nss_phy_device *nss_phydev);
