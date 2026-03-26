@@ -52,5 +52,7 @@ endif
 
 ifneq (, $(filter CONFIG_NSSPHY_IPQ52XX, $(supported_phys)))
     ccflags-y += -DCONFIG_NSSPHY_IPQ52XX
-    $(TARGET)-objs += qce1204_phy.o
+    ifeq (, $(filter CONFIG_NSSPHY_QCE1204, $(supported_phys)))
+        $(TARGET)-objs += qce1204_phy.o
+    endif
 endif
