@@ -472,7 +472,40 @@ int nss_phy_modify_soc(struct nss_phy_device *nss_phydev, u32 reg,
 
 bool nss_phy_is_suspended(struct nss_phy_device *nss_phydev)
 {
+	if (!nss_phydev || !nss_phydev->phydev)
+		return false;
+
 	return (nss_phydev->phydev->suspended);
+}
+
+/*
+ * NOTE: This function calls drv->suspend() directly, bypassing phy_suspend().
+ * It must only be called when phydev->suspended is already true (i.e., the
+ * PHY framework has already suspended the device).
+ */
+int nss_phy_do_suspend(struct nss_phy_device *nss_phydev)
+{
+	if (!nss_phydev || !nss_phydev->phydev || !nss_phydev->phydev->drv ||
+		!nss_phydev->phydev->drv->suspend)
+		return 0;
+
+	return nss_phydev->phydev->drv->suspend(nss_phydev->phydev);
+}
+
+void nss_phydev_lock(struct nss_phy_device *nss_phydev)
+{
+	if (!nss_phydev || !nss_phydev->phydev)
+		return;
+
+	mutex_lock(&nss_phydev->phydev->lock);
+}
+
+void nss_phydev_unlock(struct nss_phy_device *nss_phydev)
+{
+	if (!nss_phydev || !nss_phydev->phydev)
+		return;
+
+	mutex_unlock(&nss_phydev->phydev->lock);
 }
 
 int nss_phydev_loopback_update(struct nss_phy_device *nss_phydev,

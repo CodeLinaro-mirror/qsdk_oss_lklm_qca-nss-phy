@@ -95,6 +95,7 @@ struct qca81xx_private {
 #endif
 	u16 afe_dac8;
 	u16 afe_dac9;
+	bool pcs_assert;
 };
 
 #endif /* _QCA81XX_H_ */

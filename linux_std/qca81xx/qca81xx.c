@@ -956,11 +956,26 @@ static int qca81xx_phy_soft_reset(struct phy_device *phydev)
 static int qca81xx_phy_pcs_assert(struct phy_device *phydev,
 	bool assert)
 {
-	return qca81xx_pcs_modify_mmd(phydev, MDIO_MMD_PMAPMD,
+	int ret;
+	struct qca81xx_private *priv = phydev->priv;
+
+	if (!priv)
+		return -EINVAL;
+
+	/* Skip if already in the desired state */
+	if (assert == priv->pcs_assert)
+		return 0;
+
+	ret = qca81xx_pcs_modify_mmd(phydev, MDIO_MMD_PMAPMD,
 		QCA81XX_PCS_MMD1_PLL_POWER_ON_AND_RESET,
 		QCA81XX_PCS_MMD1_ANA_SOFT_RESET_MASK,
 		assert ? QCA81XX_PCS_MMD1_ANA_SOFT_RESET :
 		QCA81XX_PCS_MMD1_ANA_SOFT_RELEASE);
+	if (ret < 0)
+		return ret;
+	priv->pcs_assert = assert;
+
+	return 0;
 }
 
 static int qca81xx_pcs_usxgmii_init(struct phy_device *phydev)
@@ -1009,7 +1024,7 @@ static int qca81xx_pcs_usxgmii_init(struct phy_device *phydev)
 		1000, 100000, true, phydev, MDIO_MMD_PMAPMD,
 		QCA81XX_PCS_MMD1_CALIBRATION4);
 	if (ret < 0)
-		phydev_warn(phydev, "PCS callibration time out!\n");
+		phydev_warn(phydev, "PCS calibration time out!\n");
 	ret = qca81xx_pcs_modify_mmd(phydev,
 		MDIO_MMD_PMAPMD, QCA81XX_PCS_MMD1_CDA_CONTROL1,
 		QCA81XX_PCS_MMD1_SSCG_ENABLE,
@@ -1364,6 +1379,8 @@ static int qca81xx_phy_suspend(struct phy_device *phydev)
 		if (ret < 0)
 			return ret;
 	}
+	if (phydev->suspended)
+		return 0;
 
 	return genphy_c45_pma_suspend(phydev);
 }
@@ -1387,23 +1404,35 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 
 	priv = phydev->priv;
 
+	/*
+	 * De-assert PCS only if pcs was asserted to make sure the SoC registers access
+	 * and usxgmii init successfully
+	 */
+	mutex_lock(&phydev->lock);
+	if (priv && priv->pcs_assert) {
+		ret = qca81xx_phy_pcs_assert(phydev, false);
+		if (ret < 0)
+			goto err_out;
+		mdelay(10);
+	}
+
 	ret = qca81xx_phy_gcc_pre_init(phydev);
 	if (ret < 0)
-		return ret;
+		goto err_out;
 	ret = qca81xx_phy_ana_config_init(phydev);
 	if (ret < 0)
-		return ret;
+		goto err_out;
 	ret = qca81xx_pcs_usxgmii_init(phydev);
 	if (ret < 0)
-		return ret;
+		goto err_out;
 	phydev->interface = PHY_INTERFACE_MODE_USXGMII;
 
 	ret = qca81xx_phy_gcc_post_init(phydev);
 	if (ret < 0)
-		return ret;
+		goto err_out;
 	ret = qca81xx_phy_eee_config_init(phydev);
 	if (ret < 0)
-		return ret;
+		goto err_out;
 	/* update 2.5G VGA(Variable-Gain Amplifier)bandwidth */
 	/* to improve channel anti-interference ability */
 	phy_write_mmd(phydev, MDIO_MMD_PMAPMD,
@@ -1411,25 +1440,25 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 		QCA81XX_MMD1_2P5G_VGA_BW_VAL);
 	ret = qca81xx_sec_ctrl_init(phydev);
 	if (ret < 0)
-		return ret;
+		goto err_out;
 	ret = qca81xx_tlmm_init(phydev);
 	if (ret < 0)
-		return ret;
+		goto err_out;
 
 	ret = qca81xx_phy_cdt_thresh_init(phydev);
 	if (ret < 0)
-		return ret;
+		goto err_out;
 #if IS_ENABLED(CONFIG_MACSEC)
 	if(priv->sku.macsec) {
 		ret = qca81xx_macsec_init(phydev);
 		if (ret)
-			return ret;
+			goto err_out;
 	}
 #endif
 #if IS_ENABLED(CONFIG_HWMON)
 	qca81xx_hwmon_hw_init(phydev);
 #endif
-
+	mutex_unlock(&phydev->lock);
 	/*enable phy counter check*/
 	ret = phy_modify_mmd(phydev, MDIO_MMD_PCS,
 		QCA81XX_MMD3_10G_FRAME_CHECK_CTRL,
@@ -1446,11 +1475,16 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 	ret = qca81xx_phy_ana_capacitance_update(phydev);
 	if (ret < 0)
 		return ret;
+	mutex_lock(&phydev->lock);
 	ret = qca81xx_phy_resume(phydev);
 	if (ret < 0)
-		return ret;
-
+		goto err_out;
+	mutex_unlock(&phydev->lock);
 	return 0;
+
+err_out:
+	mutex_unlock(&phydev->lock);
+	return ret;
 }
 
 static int qca81xx_phy_get_features(struct phy_device *phydev)
@@ -1875,10 +1909,16 @@ static DEVICE_ATTR(snr, 0444, qca81xx_phy_show_snr, NULL);
 
 static int qca81xx_phy_probe(struct phy_device *phydev)
 {
+	struct qca81xx_private *priv;
+
 	phydev->priv = devm_kzalloc(&phydev->mdio.dev,
 			sizeof(struct qca81xx_private), GFP_KERNEL);
 	if (!phydev->priv)
 		return -ENOMEM;
+
+	priv = phydev->priv;
+	priv->pcs_assert = false;
+
 	qca81xx_phy_sku_probe(phydev);
 #if IS_ENABLED(CONFIG_HWMON)
 	qca81xx_hwmon_probe(phydev);
