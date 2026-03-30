@@ -293,6 +293,7 @@ int qce1204_soc_modify(struct phy_device *phydev, u32 reg,
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(qce1204_soc_modify);
 
 static int qce1204_pcs_addr_get(struct phy_device *phydev, int offset)
 {
