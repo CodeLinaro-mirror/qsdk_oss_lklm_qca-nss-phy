@@ -1047,8 +1047,16 @@ static int qca81xx_ptp_ppsin_pin_config(struct phy_device *phydev, bool en)
 			if (atomic_inc_return(&shared_priv->ppsin_refcount) != 1)
 				return 0;  /* already configured by another port on this chip */
 		} else {
-			if (atomic_dec_return(&shared_priv->ppsin_refcount) != 0)
-				return 0;  /* still in use by another port on this chip */
+			/* Use atomic_dec_if_positive() to prevent the refcount from going
+			 * negative.  Tools like ts2phc issue a disable ioctl before enable
+			 * as a cleanup step; with a plain atomic_dec_return() that would
+			 * drive the counter to -1 so the subsequent enable increments it
+			 * back to 0 (not 1) and the GPIO configuration is never applied.
+			 * atomic_dec_if_positive() only decrements when the value is > 0,
+			 * returning the new value on success or -1 if already 0.
+			 */
+			if (atomic_dec_if_positive(&shared_priv->ppsin_refcount) != 0)
+				return 0;  /* was 0 (nothing to disable) or still > 0 (in use) */
 		}
 
 		return qce1204_soc_modify(phydev, QCE1204_TO_TLMM_CFG_REG(pin_id),
