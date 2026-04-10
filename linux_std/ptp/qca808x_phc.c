@@ -15,6 +15,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <linux/delay.h>
 #include <linux/if_vlan.h>
 #include <linux/net_tstamp.h>
 #include <linux/phy.h>
@@ -623,12 +624,19 @@ static bool tx_timestamp_work(struct qca808x_ptp_info *ptp_info)
 	 * At 6.25 MHz MDIO, 100 reads ≈ 1 ms enough for the PHY to capture
 	 * the timestamp.  Break as soon as the bit is set; do NOT re-read the
 	 * register after it has been cleared.
+	 *
+	 * For AHB-based PHYs (IPQ52XX_PHY), Insert a 10 µs delay per iteration
+	 * to restore the ~1 ms polling window the algorithm was designed for.
 	 */
 	for (times = 0; times < 100; times++) {
 		if (qca808x_ptp_tx_ts_ready(ptp_info->phydev)) {
 			ts_ready = true;
 			break;
 		}
+
+		if (phy_id_compare(ptp_info->phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD],
+				   IPQ52XX_PHY_ID, 0x00ffffff))
+			udelay(10);
 	}
 
 	if (!ts_ready)
