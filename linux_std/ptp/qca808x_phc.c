@@ -1628,7 +1628,6 @@ static int qca808x_ptp_register(struct qca808x_ptp_info *ptp_info)
 
 	ptp_info->caps = (struct ptp_clock_info) {
 		.owner		= THIS_MODULE,
-		.name		= "QCA8XXX PHC",
 		.max_adj	= S32_MAX,
 		.n_pins		= 1,
 		.n_ext_ts	= 1,
@@ -1642,6 +1641,11 @@ static int qca808x_ptp_register(struct qca808x_ptp_info *ptp_info)
 		.enable		= qca808x_ptp_enable,
 		.do_aux_work	= qca808x_ptp_do_aux_work,
 	};
+
+	if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], IPQ52XX_PHY_ID, 0x00ffffff))
+		strscpy(ptp_info->caps.name, "internal_phc", sizeof(ptp_info->caps.name));
+	else
+		strscpy(ptp_info->caps.name, "qca8xxx_phc", sizeof(ptp_info->caps.name));
 
 	snprintf(ptp_info->pin.name, sizeof(ptp_info->pin.name), "RTC_SYNC");
 	ptp_info->caps.pin_config = &ptp_info->pin;
@@ -1708,7 +1712,7 @@ int qca808x_ptp_probe(struct phy_device *phydev)
 	mutex_init(&ptp_info->tsreg_lock);
 
 	mutex_lock(&qca8xxx_phcs_lock);
-	list_add_tail(&qca8xxx_phcs, &ptp_info->list);
+	list_add_tail(&ptp_info->list, &qca8xxx_phcs);
 	mutex_unlock(&qca8xxx_phcs_lock);
 
 	ret = qca808x_ptp_register(ptp_info);
