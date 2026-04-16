@@ -1559,6 +1559,17 @@ static int qca_mdo_add_secy(struct macsec_context *ctx)
 	if (txsc_idx >= QCA_SECY_SC_MAX_NUM)
 		return -ENOSPC;
 
+	/* MACsec clock enabled only once */
+	if (pcfg->txsc_idx_bits == 0) {
+		ret = qca_macsec_sw_set(ctx->phydev, true);
+		if (ret)
+			return ret;
+		/* Ensure secy is in the default state */
+		ret = qca_macsec_secy_ctrl_set(ctx->phydev, false);
+		if (ret)
+			return ret;
+	}
+
 	ret = qca_macsec_secy_cipher_suite_set(ctx->phydev, ctx->secy);
 	if (ret) {
 		phydev_warn(ctx->phydev,
@@ -1603,12 +1614,26 @@ static int qca_mdo_del_secy(struct macsec_context *ctx)
 
 	memset(&entry, 0, sizeof(entry));
 	ret = qca_macsec_secy_tx_sc_policy_set(ctx->phydev, channel, &entry);
+	if (ret) {
+		phydev_warn(ctx->phydev, "%s: fail to del secy!\n", __func__);
+		return ret;
+	}
 
 	clear_bit(channel, &pcfg->txsc_idx_bits);
 	pcfg->secy_txsc[channel].sw_secy = NULL;
 	pcfg->secy_txsc[channel].hw_sc_idx = 0;
+	/* last TXSC removed -> disable MACsec clock */
+	if (pcfg->txsc_idx_bits == 0) {
+		/* Ensure secy returns to the default state */
+		ret = qca_macsec_secy_ctrl_set(ctx->phydev, false);
+		if (ret)
+			return ret;
+		ret = qca_macsec_sw_set(ctx->phydev, false);
+		if (ret)
+			return ret;
+	}
 
-	return ret;
+	return 0;
 }
 
 /* SC lifecycle */
@@ -2137,7 +2162,11 @@ int qca808x_macsec_config_init(struct phy_device *phydev)
 	if (ret)
 		return ret;
 
-	return qca_macsec_init_all_pn(phydev, 1);
+	ret = qca_macsec_init_all_pn(phydev, 1);
+	if (ret)
+		return ret;
+
+	return qca_macsec_sw_set(phydev, false);
 }
 
 /* 81xx hardware configuration (context already allocated in attach) */
@@ -2169,7 +2198,11 @@ int qca81xx_macsec_config_init(struct phy_device *phydev)
 		return ret;
 
 	/* Initialize all PN to 1 */
-	return qca_macsec_init_all_pn(phydev, 1);
+	ret = qca_macsec_init_all_pn(phydev, 1);
+	if (ret)
+		return ret;
+
+	return qca_macsec_sw_set(phydev, false);
 }
 
 /* 1204 hardware configuration (context already allocated in attach) */
@@ -2197,7 +2230,11 @@ int qce1204_macsec_config_init(struct phy_device *phydev)
 		return ret;
 
 	/* Initialize all PN to 1 */
-	return qca_macsec_init_all_pn(phydev, 1);
+	ret = qca_macsec_init_all_pn(phydev, 1);
+	if (ret)
+		return ret;
+
+	return qca_macsec_sw_set(phydev, false);
 }
 
 static int qca_macsec_device_attach(struct net_device *dev,
