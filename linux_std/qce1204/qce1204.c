@@ -48,12 +48,12 @@ struct reset_init_entry {
 #define QCE1204_PHY_FIFO_RESET						0x3
 #define QCE1204_PHY_MMD7_IPG_OP						0x901d
 #define QCE1204_PHY_IPG_10_TO_11_EN					BIT(0)
-#define QCE1024_PHY_2P5G_EEE_TX_LPI_QUIET_CTRL0				0xa02c
-#define QCE1024_PHY_2P5G_EEE_TX_QUIET_TIME0				0x3db
-#define QCE1024_PHY_2P5G_EEE_TX_LPI_QUIET_CTRL1				0xa031
-#define QCE1024_PHY_2P5G_EEE_TX_QUIET_TIME1				0x14
-#define QCE1024_PHY_2P5G_EEE_TX_LPI_WAKE_CTRL				0xa10c
-#define QCE1024_PHY_2P5G_EEE_TX_WAKE_TIME				0x2fc
+#define QCE1204_PHY_2P5G_EEE_TX_LPI_QUIET_CTRL0				0xa02c
+#define QCE1204_PHY_2P5G_EEE_TX_QUIET_TIME0				0x3db
+#define QCE1204_PHY_2P5G_EEE_TX_LPI_QUIET_CTRL1				0xa031
+#define QCE1204_PHY_2P5G_EEE_TX_QUIET_TIME1				0x14
+#define QCE1204_PHY_2P5G_EEE_TX_LPI_WAKE_CTRL				0xa10c
+#define QCE1204_PHY_2P5G_EEE_TX_WAKE_TIME				0x2fc
 
 #define QCE1204_MMD3_CDT_THRESH_CTRL14					0x807f
 #define QCE1204_MMD3_CDT_THRESH_CTRL14_VAL				0x9ab0
@@ -94,6 +94,36 @@ struct reset_init_entry {
 #define QCE1204_DEBUG_PLL_EN						BIT(2)
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL3					0xc980
 #define QCE1204_DEBUG_ANA_10M_DAC_CTRL3_VAL				0xc0
+
+/* 1G EEE configuration registers */
+#define QCE1204_PHY_EEE_1G_TX_CTRL					0x8008
+#define QCE1204_PHY_EEE_1G_TX_CTRL_VAL					0xe050
+#define QCE1204_PHY_EEE_1G_RX_CTRL					0xa192
+#define QCE1204_PHY_EEE_1G_RX_CTRL_VAL					0x2dec
+/*
+ * 1G EEE analog debug registers (CTRL0~CTRL2): Reset to zero to clear any
+ * non-default state before applying tuned values in CTRL3~CTRL4.
+ */
+#define QCE1204_DEBUG_ANA_EEE_1G_CTRL0					0x4f80
+#define QCE1204_DEBUG_ANA_EEE_1G_CTRL0_VAL				0x0000
+#define QCE1204_DEBUG_ANA_EEE_1G_CTRL1					0x5080
+#define QCE1204_DEBUG_ANA_EEE_1G_CTRL1_VAL				0x0000
+#define QCE1204_DEBUG_ANA_EEE_1G_CTRL2					0x5180
+#define QCE1204_DEBUG_ANA_EEE_1G_CTRL2_VAL				0x0000
+/* 1G EEE analog tuning: CTRL3 and CTRL4 configure analog circuit parameters */
+#define QCE1204_DEBUG_ANA_EEE_1G_CTRL3					0x5280
+#define QCE1204_DEBUG_ANA_EEE_1G_CTRL3_VAL				0x1111
+#define QCE1204_DEBUG_ANA_EEE_1G_CTRL4					0x5380
+#define QCE1204_DEBUG_ANA_EEE_1G_CTRL4_VAL				0x7777
+#define QCE1204_DEBUG_ANA_EEE_1G_CTRL5					0x5480
+#define QCE1204_DEBUG_ANA_EEE_1G_CTRL5_EN				BIT(15)
+
+/* 100M EEE configuration registers */
+/* 100M EEE analog tuning: Configure analog circuit parameters for 100M EEE */
+#define QCE1204_DEBUG_ANA_EEE_100M_CTRL0				0x2980
+#define QCE1204_DEBUG_ANA_EEE_100M_CTRL0_VAL				0x6666
+#define QCE1204_DEBUG_ANA_EEE_100M_CTRL1				0x2a80
+#define QCE1204_DEBUG_ANA_EEE_100M_CTRL1_VAL				0x0000
 
 #define QCE1204_PCS_MMD1_CDA_CONTROL1					0x20
 #define QCE1204_PCS_MMD1_CALIBRATION4					0x78
@@ -2217,27 +2247,104 @@ static int qce1204_phy_cdt_thresh_init(struct phy_device *phydev)
 	return 0;
 }
 
+/**
+ * qce1204_phy_eee_common_init - Configure EEE timing registers shared by all PHY variants
+ * @phydev: PHY device
+ *
+ * Configures the 2.5G EEE quiet/wake timing and 1G EEE PCS TX/RX timer
+ * registers that are common to both QCE1204 and IPQ52xx integrated EPHY.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+static int qce1204_phy_eee_common_init(struct phy_device *phydev)
+{
+	int ret;
+
+	/* Reduce the delay to respond to the quiet signal for 2.5G EEE */
+	ret = phy_write_mmd(phydev, MDIO_MMD_PCS,
+		QCE1204_PHY_2P5G_EEE_TX_LPI_QUIET_CTRL0,
+		QCE1204_PHY_2P5G_EEE_TX_QUIET_TIME0);
+	if (ret < 0)
+		return ret;
+	ret = phy_write_mmd(phydev, MDIO_MMD_PCS,
+		QCE1204_PHY_2P5G_EEE_TX_LPI_QUIET_CTRL1,
+		QCE1204_PHY_2P5G_EEE_TX_QUIET_TIME1);
+	if (ret < 0)
+		return ret;
+	/* Reduce the delay to respond to the wake up signal for 2.5G EEE */
+	ret = phy_write_mmd(phydev, MDIO_MMD_PCS,
+		QCE1204_PHY_2P5G_EEE_TX_LPI_WAKE_CTRL,
+		QCE1204_PHY_2P5G_EEE_TX_WAKE_TIME);
+	if (ret < 0)
+		return ret;
+
+	/* 1G EEE PCS TX/RX timer configuration */
+	ret = phy_write_mmd(phydev, MDIO_MMD_PCS, QCE1204_PHY_EEE_1G_TX_CTRL,
+		QCE1204_PHY_EEE_1G_TX_CTRL_VAL);
+	if (ret < 0)
+		return ret;
+	ret = phy_write_mmd(phydev, MDIO_MMD_PCS, QCE1204_PHY_EEE_1G_RX_CTRL,
+		QCE1204_PHY_EEE_1G_RX_CTRL_VAL);
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
+/**
+ * qce1204_phy_eee_init - Initialize EEE configuration for QCE1204 PHY
+ * @phydev: PHY device
+ *
+ * Configures EEE timing registers and QCE1204-specific analog tuning
+ * registers for 1G and 100M EEE operation.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
 static int qce1204_phy_eee_init(struct phy_device *phydev)
 {
-	int ret = 0;
+	int ret;
 
-	/* reduce the delay to response the quiet signal for 2.5G EEE */
-	ret = phy_write_mmd(phydev, MDIO_MMD_PCS,
-		QCE1024_PHY_2P5G_EEE_TX_LPI_QUIET_CTRL0,
-		QCE1024_PHY_2P5G_EEE_TX_QUIET_TIME0);
+	ret = qce1204_phy_eee_common_init(phydev);
 	if (ret < 0)
 		return ret;
-	ret = phy_write_mmd(phydev, MDIO_MMD_PCS,
-		QCE1024_PHY_2P5G_EEE_TX_LPI_QUIET_CTRL1,
-		QCE1024_PHY_2P5G_EEE_TX_QUIET_TIME1);
+
+	/* 1G EEE analog debug register tuning (QCE1204-specific) */
+	ret = qca81xx_phy_debug_write(phydev, QCE1204_DEBUG_ANA_EEE_1G_CTRL0,
+		QCE1204_DEBUG_ANA_EEE_1G_CTRL0_VAL);
 	if (ret < 0)
 		return ret;
-	/* reduce the delay to response the wake up signal for 2.5G EEE */
-	ret = phy_write_mmd(phydev, MDIO_MMD_PCS,
-		QCE1024_PHY_2P5G_EEE_TX_LPI_WAKE_CTRL,
-		QCE1024_PHY_2P5G_EEE_TX_WAKE_TIME);
+	ret = qca81xx_phy_debug_write(phydev, QCE1204_DEBUG_ANA_EEE_1G_CTRL1,
+		QCE1204_DEBUG_ANA_EEE_1G_CTRL1_VAL);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_debug_write(phydev, QCE1204_DEBUG_ANA_EEE_1G_CTRL2,
+		QCE1204_DEBUG_ANA_EEE_1G_CTRL2_VAL);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_debug_write(phydev, QCE1204_DEBUG_ANA_EEE_1G_CTRL3,
+		QCE1204_DEBUG_ANA_EEE_1G_CTRL3_VAL);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_debug_write(phydev, QCE1204_DEBUG_ANA_EEE_1G_CTRL4,
+		QCE1204_DEBUG_ANA_EEE_1G_CTRL4_VAL);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_debug_modify(phydev, QCE1204_DEBUG_ANA_EEE_1G_CTRL5,
+		QCE1204_DEBUG_ANA_EEE_1G_CTRL5_EN, QCE1204_DEBUG_ANA_EEE_1G_CTRL5_EN);
+	if (ret < 0)
+		return ret;
 
-	return ret;
+	/* 100M EEE analog debug register tuning (QCE1204-specific) */
+	ret = qca81xx_phy_debug_write(phydev, QCE1204_DEBUG_ANA_EEE_100M_CTRL0,
+		QCE1204_DEBUG_ANA_EEE_100M_CTRL0_VAL);
+	if (ret < 0)
+		return ret;
+	ret = qca81xx_phy_debug_write(phydev, QCE1204_DEBUG_ANA_EEE_100M_CTRL1,
+		QCE1204_DEBUG_ANA_EEE_100M_CTRL1_VAL);
+	if (ret < 0)
+		return ret;
+
+	return 0;
 }
 
 static int qce1204_phy_10m_dac_init(struct phy_device *phydev)
@@ -3025,6 +3132,31 @@ int ipq52xx_phy_probe(struct phy_device *phydev)
 	return 0;
 }
 
+/**
+ * ipq52xx_phy_eee_init - Initialize EEE configuration for IPQ52xx integrated PHY
+ * @phydev: PHY device
+ *
+ * Configures only the common PCS timer registers (2.5G EEE quiet/wake timing
+ * and 1G EEE TX/RX timers) for the IPQ52xx integrated EPHY. The analog debug
+ * registers used in qce1204_phy_eee_init are QCE1204-specific and do not exist
+ * on the IPQ52xx built-in PHY.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+static int ipq52xx_phy_eee_init(struct phy_device *phydev)
+{
+	/*
+	 * Only the common PCS timer registers (2.5G EEE quiet/wake timing and
+	 * 1G EEE TX/RX timers) are needed for the IPQ52xx integrated EPHY.
+	 * The six analog debug registers (QCE1204_DEBUG_ANA_EEE_1G_CTRL0~CTRL5)
+	 * used in qce1204_phy_eee_init are QCE1204-specific analog tuning
+	 * registers that do not exist on the IPQ52xx built-in PHY and must not
+	 * be written here. 100M EEE analog tuning is likewise QCE1204-specific
+	 * and is omitted.
+	 */
+	return qce1204_phy_eee_common_init(phydev);
+}
+
 int ipq52xx_phy_config_init(struct phy_device *phydev)
 {
 	int ret = 0;
@@ -3037,7 +3169,7 @@ int ipq52xx_phy_config_init(struct phy_device *phydev)
 	ret = ipq52xx_phy_sys_clk_reset(phydev);
 	if (ret < 0)
 		return ret;
-	ret = qce1204_phy_eee_init(phydev);
+	ret = ipq52xx_phy_eee_init(phydev);
 	if (ret < 0)
 		return ret;
 	ret = qce1204_phy_10m_dac_init(phydev);
