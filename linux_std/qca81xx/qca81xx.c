@@ -1048,7 +1048,7 @@ static int qca81xx_pcs_usxgmii_init(struct phy_device *phydev)
 		10000, 500000, true, phydev, MDIO_MMD_PCS,
 		QCA81XX_PCS_MMD3_10GBASE_R_PCS_STATUS1);
 	if (ret < 0)
-		return ret;
+		phydev_err(phydev, "PCS 10GBASE-R poll failed\n");
 	ret = qca81xx_pcs_modify_mmd(phydev, MDIO_MMD_PCS,
 		QCA81XX_PCS_MMD3_DIG_CTRL1,
 		QCA81XX_PCS_MMD3_USXGMII_EN,
