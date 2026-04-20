@@ -163,6 +163,9 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_MMD3_DELAY_DATA_MODE		0xa028
 #define QCA81XX_MMD3_DELAY_DATA_MODE_MASK	GENMASK(14, 8)
 #define QCA81XX_MMD3_DELAY_DATA_MODE_VAL	0x5a00
+/* improve master control performance for 10G interoperability */
+#define QCA81XX_MMD3_MST_CTRL			0xa04c
+#define QCA81XX_MMD3_MST_VAL			BIT(14)
 
 /*PHY MMD7 registers*/
 #define QCA81XX_MMD7_COUNTER_CTRL		0x8029
@@ -1229,7 +1232,7 @@ static int qca81xx_phy_ana_config_init(struct phy_device *phydev)
 {
 	/* smooth the noise */
 	phy_modify_mmd_changed(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_NOISE_SMOOTH_CTRL_H,
-		QCA81XX_MMD3_NOISE_AVERAGE_CNT_SEL0, 0);
+		QCA81XX_MMD3_NOISE_AVERAGE_CNT_SEL0, QCA81XX_MMD3_NOISE_AVERAGE_CNT_SEL0);
 	phy_modify_mmd_changed(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_NOISE_SMOOTH_CTRL_L,
 		QCA81XX_MMD3_NOISE_AVERAGE_CNT_SEL1, QCA81XX_MMD3_NOISE_AVERAGE_CNT_SEL1);
 	/* reduce noise */
@@ -1237,7 +1240,7 @@ static int qca81xx_phy_ana_config_init(struct phy_device *phydev)
 		QCA81XX_MMD3_REDUCE_NOISE_EN, QCA81XX_MMD3_REDUCE_NOISE_EN);
 	/* reduce rotate clock */
 	phy_modify_mmd_changed(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_ROTCLK_CTRL,
-		QCA81XX_MMD3_ROTCLK_SEL, 0);
+		QCA81XX_MMD3_ROTCLK_SEL, QCA81XX_MMD3_ROTCLK_SEL);
 	/* enable acceleration tracing */
 	phy_modify_mmd_changed(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_CDR_TRACING_CTRL,
 		QCA81XX_MMD3_CDR_TRACING_ACCEL, 0);
@@ -1246,7 +1249,7 @@ static int qca81xx_phy_ana_config_init(struct phy_device *phydev)
 		QCA81XX_MMD3_FFE_COEF0_VAL, QCA81XX_MMD3_FFE_COEF0_VAL);
 	phy_modify_mmd_changed(phydev, MDIO_MMD_PMAPMD, QCA81XX_MMD1_FFE_COEF1_CTRL,
 		QCA81XX_MMD1_FFE_COEF1_VAL, QCA81XX_MMD1_FFE_COEF1_VAL);
-	phy_modify_mmd_changed(phydev, MDIO_MMD_PCS,QCA81XX_MMD3_FFE_COEF2_CTRL,
+	phy_modify_mmd_changed(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_FFE_COEF2_CTRL,
 		QCA81XX_MMD3_FFE_COEF2_VAL | QCA81XX_MMD3_FFE_A2D_FIFO_DELAY_MASK,
 		QCA81XX_MMD3_FFE_COEF2_VAL | QCA81XX_MMD3_FFE_A2D_FIFO_DELAY_SEL);
 	/* optimize analog PLL jitter */
@@ -1261,6 +1264,9 @@ static int qca81xx_phy_ana_config_init(struct phy_device *phydev)
 		QCA81XX_DEBUG_ANA_RESISTOR0_VAL);
 	qca81xx_phy_debug_write(phydev, QCA81XX_DEBUG_ANA_RESISTOR1_CTRL,
 		QCA81XX_DEBUG_ANA_RESISTOR1_VAL);
+	/* improve mst performance */
+	phy_modify_mmd_changed(phydev, MDIO_MMD_PCS, QCA81XX_MMD3_MST_CTRL,
+		QCA81XX_MMD3_MST_VAL, QCA81XX_MMD3_MST_VAL);
 
 	return 0;
 }
