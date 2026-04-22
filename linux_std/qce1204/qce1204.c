@@ -2767,6 +2767,9 @@ int qce1204_phy_read_status(struct phy_device *phydev)
 #define TCSR_GPHY_LDO_BIAS_EN					0x1961000
 #define GPHY_LDO_BIAS_EN					BIT(0)
 
+/* Hermosa built-in PHY requires an adjusted CDT threshold on CTRL14 */
+#define IPQ52XX_MMD3_CDT_THRESH_CTRL14_VAL			0x9bb0
+
 /**
  * ipq52xx_phy_clk_probe - Get clocks and resets for IPQ52xx built-in PHY
  * @phydev: PHY device
@@ -3157,6 +3160,18 @@ static int ipq52xx_phy_eee_init(struct phy_device *phydev)
 	return qce1204_phy_eee_common_init(phydev);
 }
 
+static int ipq52xx_phy_cdt_thresh_init(struct phy_device *phydev)
+{
+	int ret = qce1204_phy_cdt_thresh_init(phydev);
+
+	if (ret < 0)
+		return ret;
+	ret = phy_write_mmd(phydev, MDIO_MMD_PCS,
+		QCE1204_MMD3_CDT_THRESH_CTRL14, IPQ52XX_MMD3_CDT_THRESH_CTRL14_VAL);
+
+	return ret;
+}
+
 int ipq52xx_phy_config_init(struct phy_device *phydev)
 {
 	int ret = 0;
@@ -3191,6 +3206,9 @@ int ipq52xx_phy_config_init(struct phy_device *phydev)
 	/* config the led as active high in default */
 	ret = phy_modify_mmd(phydev, MDIO_MMD_AN, QCE1204_MMD7_LED_POLARITY_CTRL,
 		QCE1204_LED_ACTIVE_HIGH, QCE1204_LED_ACTIVE_HIGH);
+	if (ret < 0)
+		return ret;
+	ret = ipq52xx_phy_cdt_thresh_init(phydev);
 	if (ret < 0)
 		return ret;
 	ret = qce1204_phy_soft_reset(phydev);
