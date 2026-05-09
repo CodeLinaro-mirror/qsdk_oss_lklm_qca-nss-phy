@@ -1546,6 +1546,7 @@ static int qca_mdo_dev_stop(struct macsec_context *ctx)
 static int qca_mdo_add_secy(struct macsec_context *ctx)
 {
 	struct qca_macsec_cfg_t *pcfg = qca_macsec_get_cfg(ctx->phydev);
+	struct qca_macsec_chip_info chip_info;
 	u32 txsc_idx = 0;
 	int ret = 0;
 
@@ -1561,9 +1562,19 @@ static int qca_mdo_add_secy(struct macsec_context *ctx)
 
 	/* MACsec clock enabled only once */
 	if (pcfg->txsc_idx_bits == 0) {
+		if (!qca_macsec_get_chip_info(qca_macsec_get_phy_id(ctx->phydev),
+				      &chip_info))
+			return -EOPNOTSUPP;
 		ret = qca_macsec_sw_set(ctx->phydev, true);
 		if (ret)
 			return ret;
+		/* Call chip-specific MACsec hardware init function */
+		ret = chip_info.init(ctx->phydev);
+		if (ret) {
+			phydev_err(ctx->phydev, "%s: chip init failed for %s\n",
+				   __func__, chip_info.name);
+			return ret;
+		}
 		/* Ensure secy is in the default state */
 		ret = qca_macsec_secy_ctrl_set(ctx->phydev, false);
 		if (ret)
@@ -2121,7 +2132,7 @@ static int qca808x_mdo_get_rx_sc_stats(struct macsec_context *ctx)
 	return 0;
 }
 
-/* 808x/8084 hardware configuration (context already allocated in attach) */
+/* 808x/8084 hardware configuration. */
 int qca808x_macsec_config_init(struct phy_device *phydev)
 {
 	struct secy_rx_mib_t rxmib = {0};
@@ -2133,11 +2144,7 @@ int qca808x_macsec_config_init(struct phy_device *phydev)
 	u32 sc, sa;
 	int ret;
 
-	/* Software enable and AZ forward */
-	ret = qca_macsec_sw_set(phydev, true);
-	if (ret)
-		return ret;
-
+	/* Set AZ forward */
 	ret = qca_macsec_forward_az_en_set(phydev, true);
 	if (ret)
 		return ret;
@@ -2162,24 +2169,13 @@ int qca808x_macsec_config_init(struct phy_device *phydev)
 	if (ret)
 		return ret;
 
-	ret = qca_macsec_init_all_pn(phydev, 1);
-	if (ret)
-		return ret;
-
-	return qca_macsec_sw_set(phydev, false);
+	return qca_macsec_init_all_pn(phydev, 1);
 }
 
-/* 81xx hardware configuration (context already allocated in attach) */
+/* 81xx hardware configuration. */
 int qca81xx_macsec_config_init(struct phy_device *phydev)
 {
 	int ret = 0;
-
-	/* Software enable */
-	ret = qca_macsec_sw_set(phydev, true);
-	if (ret) {
-		phydev_err(phydev, "%s: fail to enable macsec!\n", __func__);
-		return ret;
-	}
 
 	/* Recommended configuration for IPG extension (81xx-specific) */
 	phy_write_mmd(phydev, MDIO_MMD_PCS, 0xE003, 0xb);
@@ -2198,23 +2194,15 @@ int qca81xx_macsec_config_init(struct phy_device *phydev)
 		return ret;
 
 	/* Initialize all PN to 1 */
-	ret = qca_macsec_init_all_pn(phydev, 1);
-	if (ret)
-		return ret;
-
-	return qca_macsec_sw_set(phydev, false);
+	return qca_macsec_init_all_pn(phydev, 1);
 }
 
-/* 1204 hardware configuration (context already allocated in attach) */
+/* 1204 hardware configuration. */
 int qce1204_macsec_config_init(struct phy_device *phydev)
 {
 	int ret = 0;
 
-	/* Software enable and AZ forward */
-	ret = qca_macsec_sw_set(phydev, true);
-	if (ret)
-		return ret;
-
+	/* Set AZ forward */
 	ret = qca_macsec_forward_az_en_set(phydev, true);
 	if (ret)
 		return ret;
@@ -2230,11 +2218,7 @@ int qce1204_macsec_config_init(struct phy_device *phydev)
 		return ret;
 
 	/* Initialize all PN to 1 */
-	ret = qca_macsec_init_all_pn(phydev, 1);
-	if (ret)
-		return ret;
-
-	return qca_macsec_sw_set(phydev, false);
+	return qca_macsec_init_all_pn(phydev, 1);
 }
 
 static int qca_macsec_device_attach(struct net_device *dev,
@@ -2242,7 +2226,6 @@ static int qca_macsec_device_attach(struct net_device *dev,
 {
 	struct phy_device *phydev = dev->phydev;
 	struct qca_macsec_ctx *ctx = NULL;
-	int ret = 0;
 
 	/* phydev is null or already initialized */
 	if (!phydev || phydev->macsec_ops)
@@ -2290,16 +2273,7 @@ static int qca_macsec_device_attach(struct net_device *dev,
 		ctx->mdo_ops.mdo_get_rx_sc_stats = qca_mdo_get_rx_sc_stats;
 	}
 
-	/* Call chip-specific init function */
-	ret = chip_info->init(phydev);
-	if (ret) {
-		phydev_err(phydev, "%s: chip init failed for %s\n",
-			   __func__, chip_info->name);
-		kfree(ctx);
-		return ret;
-	}
-
-	/* Bind operations to phydev only after successful init */
+	/* Bind operations to phydev. HW init is deferred to first add_secy. */
 	phydev->macsec_ops = &ctx->mdo_ops;
 	ctx->phydev = phydev;
 
