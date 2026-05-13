@@ -57,8 +57,10 @@ static long qce1204_hwmon_temp_read(struct phy_device *phydev, int sensor_id)
 	__qce1204_soc_modify(phydev, QCE1204_TSENS_CTRL,
 		QCE1204_TSENS_GLOBAL_EN | QCE1204_TSENSORS_EN,
 		QCE1204_TSENS_GLOBAL_EN | QCE1204_TSENSORS_EN);
+	/* Allow all sensors (SOC and PHY) to stabilize after TSENS_CTRL enable */
+	mdelay(1);
 	if (sensor_id == 0) {
-		phy_data0 = __qce1204_soc_read(phydev, QCE1204_TSENS_0_STATUS + 4);
+		phy_data0 = __qce1204_soc_read(phydev, QCE1204_TSENS_0_STATUS);
 		phy_data1 = __qce1204_soc_read(phydev, QCE1204_TSENS_0_CONVERSION);
 	} else {
 		phy_data0 = __qce1204_soc_read(phydev, QCE1204_TSENS_0_STATUS + 4 * index);
@@ -187,23 +189,48 @@ static u32 qce1204_hwmon_get_tsensor_offset(u64 tem_base_code, u32 sensor_index)
 
 /**
  * qce1204_hwmon_calculate_czero - Calculate czero value
+ * @phydev: PHY device
  * @tem_base_code: Temperature base code from QFPROM
  * @sensor_index: Sensor index (0 for SOC, 1-4 for PHY)
+ * @czero_out: Output parameter for calculated czero value
  *
- * Returns: Calculated czero value
+ * Returns: always 0; falls back to QCE1204_CZERO_DEFAULT on invalid data
  */
-static u32 qce1204_hwmon_calculate_czero(u64 tem_base_code, u32 sensor_index)
+static int qce1204_hwmon_calculate_czero(struct phy_device *phydev,
+					 u64 tem_base_code, u32 sensor_index,
+					 u32 *czero_out)
 {
-	u32 base_code_30c, tsens_offset, cal_result;
+	u32 base_code_30c, base_code_120c, base_code_diff_90c;
+	u32 tsens_offset, cal_result, base_sum, adjustment;
+
+	*czero_out = QCE1204_CZERO_DEFAULT;
 
 	cal_result = ((u32)tem_base_code & QCE1204_TSENSOR_CAL_RESULT_MASK) >> 20;
 	if (cal_result != QCE1204_TSENSOR_CAL_RESULT_DONE)
-		return QCE1204_CZERO_DEFAULT;
+		return 0;
 
 	base_code_30c = (u32)(tem_base_code >> 32) & QCE1204_TSENSOR_BASE_CODE_30C;
+	base_code_120c = ((u32)(tem_base_code >> 32) & QCE1204_TSENSOR_BASE_CODE_120C) >> 10;
+	if (base_code_30c > base_code_120c) {
+		phydev_warn(phydev, "base_code_120c (%u) should be more than base_code_30c (%u)\n",
+			    base_code_120c, base_code_30c);
+		return 0;
+	}
+	base_code_diff_90c = base_code_120c - base_code_30c;
+
 	tsens_offset = qce1204_hwmon_get_tsensor_offset(tem_base_code, sensor_index);
 
-	return base_code_30c + tsens_offset;
+	base_sum = base_code_30c + tsens_offset;
+	/* Extrapolate 30 degrees back from base_code_30c to reach 0°C: diff_90c/3 == diff_30c */
+	adjustment = base_code_diff_90c / 3;
+	if (adjustment > base_sum) {
+		phydev_warn(phydev, "czero underflow: base_sum=%u adjustment=%u\n",
+			    base_sum, adjustment);
+		return 0;
+	}
+
+	*czero_out = base_sum - adjustment;
+	return 0;
 }
 
 int qce1204_hwmon_hw_init_once(struct phy_device *phydev)
@@ -246,7 +273,7 @@ int qce1204_hwmon_hw_init_once(struct phy_device *phydev)
 		return ret;
 
 	/* Calculate czero for SOC sensor (index 0) */
-	czero = qce1204_hwmon_calculate_czero(priv->tem_base_code, 0);
+	qce1204_hwmon_calculate_czero(phydev, priv->tem_base_code, 0, &czero);
 
 	/* Configure SOC temperature sensor */
 	qce1204_soc_modify(phydev, QCE1204_TSENS_0_CONVERSION,
@@ -283,7 +310,7 @@ int qce1204_hwmon_hw_init(struct phy_device *phydev)
 		return ret;
 
 	/* Calculate czero for PHY sensor */
-	czero = qce1204_hwmon_calculate_czero(priv->tem_base_code, index);
+	qce1204_hwmon_calculate_czero(phydev, priv->tem_base_code, index, &czero);
 
 	/* Configure PHY temperature sensor */
 	qce1204_soc_modify(phydev, QCE1204_TSENS_0_CONVERSION + index * 4,
