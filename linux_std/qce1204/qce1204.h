@@ -102,6 +102,7 @@ int qce1204_phy_channel_get(struct phy_device *phydev);
 int qce1204_phy_soft_reset(struct phy_device *phydev);
 int qce1204_phy_config_aneg(struct phy_device *phydev);
 int qce1204_phy_probe(struct phy_device *phydev);
+void qce1204_phy_remove(struct phy_device *phydev);
 int qce1204_phy_config_init(struct phy_device *phydev);
 int qce1204_phy_read_status(struct phy_device *phydev);
 #if IS_ENABLED(CONFIG_HWMON)

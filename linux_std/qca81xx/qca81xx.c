@@ -1897,7 +1897,7 @@ static void qca81xx_phy_shutdown (struct device *dev)
 	}
 }
 
-static ssize_t qca81xx_phy_show_snr(struct device *dev,
+ssize_t qca81xx_phy_show_snr(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	int pair_id = 0;
@@ -3067,6 +3067,12 @@ void qca81xx_debugfs_exit(struct phy_device *phydev)
 int qce1204_phy_probe(struct phy_device *phydev);
 
 /**
+ * qce1204_phy_remove - Remove QCE1204 PHY device
+ * @phydev: PHY device structure
+ */
+void qce1204_phy_remove(struct phy_device *phydev);
+
+/**
  * qce1204_phy_config_init - Configure initial settings for QCE1204 PHY
  * @phydev: PHY device structure
  *
@@ -3143,6 +3149,7 @@ static struct phy_driver qcom_phy_driver[] = {
 	.name = "Qualcomm QCE1204",
 	.flags = PHY_POLL_CABLE_TEST,
 	.probe = qce1204_phy_probe,
+	.remove = qce1204_phy_remove,
 	.config_init = qce1204_phy_config_init,
 	.config_aneg = qce1204_phy_config_aneg,
 	.read_status = qce1204_phy_read_status,
@@ -3191,6 +3198,7 @@ static struct phy_driver qcom_phy_driver[] = {
 	.led_polarity_set = qca81xx_led_polarity_set,
 	.config_init = ipq52xx_phy_config_init,
 	.probe = ipq52xx_phy_probe,
+	.remove = qce1204_phy_remove,
 },
 };
 module_phy_driver(qcom_phy_driver);

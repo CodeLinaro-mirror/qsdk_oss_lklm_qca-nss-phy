@@ -108,4 +108,6 @@ struct qca81xx_private {
 	bool pcs_assert;
 };
 
+ssize_t qca81xx_phy_show_snr(struct device *dev, struct device_attribute *attr, char *buf);
+
 #endif /* _QCA81XX_H_ */

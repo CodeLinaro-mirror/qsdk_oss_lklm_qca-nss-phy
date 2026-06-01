@@ -2151,6 +2151,8 @@ static int qce1204_clk_probe(struct phy_device *phydev)
 	return 0;
 }
 
+static DEVICE_ATTR(snr, 0444, qca81xx_phy_show_snr, NULL);
+
 int qce1204_phy_probe(struct phy_device *phydev)
 {
 	struct device *dev = &phydev->mdio.dev;
@@ -2195,8 +2197,14 @@ int qce1204_phy_probe(struct phy_device *phydev)
 #if IS_ENABLED(CONFIG_HWMON)
 	qce1204_hwmon_probe(phydev);
 #endif
+	device_create_file(&phydev->mdio.dev, &dev_attr_snr);
 
 	return 0;
+}
+
+void qce1204_phy_remove(struct phy_device *phydev)
+{
+	device_remove_file(&phydev->mdio.dev, &dev_attr_snr);
 }
 
 static int qce1204_phy_ability_fix_up(struct phy_device *phydev)
@@ -3131,6 +3139,8 @@ int ipq52xx_phy_probe(struct phy_device *phydev)
 		phydev_err(phydev, "Failed to initialize clocks: %d\n", ret);
 		return ret;
 	}
+
+	device_create_file(&phydev->mdio.dev, &dev_attr_snr);
 
 	return 0;
 }
