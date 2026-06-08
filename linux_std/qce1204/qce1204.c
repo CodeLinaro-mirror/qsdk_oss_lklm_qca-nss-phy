@@ -2152,6 +2152,61 @@ static int qce1204_clk_probe(struct phy_device *phydev)
 }
 
 static DEVICE_ATTR(snr, 0444, qca81xx_phy_show_snr, NULL);
+/*
+|   sku   | ptp | macsec | P3/P4 2.5g |
+|---------|-----|--------|------------|
+| QCE1204 | yes |   yes  |     yes    |
+| QCE2204 | yes |   yes  |     yes    |
+| QCE2224 | yes |   yes  |     no     |
+| QCE1224 | yes |   no   |     no     |
+| NO-SKU  | yes |   yes  |     yes    |
+*/
+static int qce1204_phy_sku_probe(struct phy_device *phydev)
+{
+	struct phy_package_shared *shared = phydev->shared;
+	struct qce1204_shared_priv *priv;
+	u32 val;
+
+	if (!shared)
+		return -EINVAL;
+
+	priv = (struct qce1204_shared_priv *)shared->priv;
+	if (!priv)
+		return -EINVAL;
+
+	priv->sku.ptp = true;
+	priv->sku.macsec = true;
+	priv->sku.p3p4_2p5g = true;
+	val = qce1204_soc_read(phydev, QCE1204_SKU_REG) & QCE1204_SKU_ID_MASK;
+	switch (val) {
+	case QCE1204_SKU_QCE1204:
+		priv->sku.name = "QCE1204";
+		break;
+	case QCE1204_SKU_QCE2204:
+		priv->sku.name = "QCE2204";
+		break;
+	case QCE1204_SKU_QCE2224:
+		priv->sku.name = "QCE2224";
+		priv->sku.p3p4_2p5g = false;
+		break;
+	case QCE1204_SKU_QCE1224:
+		priv->sku.name = "QCE1224";
+		priv->sku.macsec = false;
+		priv->sku.p3p4_2p5g = false;
+		break;
+	default:
+		priv->sku.name = "NO-SKU";
+		break;
+	}
+	phydev_info(phydev, "sku:%s, ptp:%s, macsec:%s, p3p4_2p5g:%s\n",
+		priv->sku.name,
+		priv->sku.ptp ? "enabled" : "disabled",
+		priv->sku.macsec ? "enabled" : "disabled",
+		priv->sku.p3p4_2p5g ? "enabled" : "disabled"
+	);
+
+	return 0;
+}
 
 int qce1204_phy_probe(struct phy_device *phydev)
 {
@@ -2178,8 +2233,8 @@ int qce1204_phy_probe(struct phy_device *phydev)
 		return ret;
 	}
 
-	/* Initialize shared clocks only once for the package */
 	if (phy_package_probe_once(phydev)) {
+		/* Initialize shared clocks only once for the package */
 		ret = qce1204_shared_clk_probe(phydev);
 		if (ret < 0) {
 			phydev_err(phydev, "Failed to initialize XPCS clocks: %d\n", ret);
@@ -2190,6 +2245,13 @@ int qce1204_phy_probe(struct phy_device *phydev)
 		ret = qce1204_phy_package_mode_probe(phydev);
 		if (ret < 0) {
 			phydev_err(phydev, "Failed to parse package mode: %d\n", ret);
+			return ret;
+		}
+
+		/* parse SKU information from security control register */
+		ret = qce1204_phy_sku_probe(phydev);
+		if (ret < 0) {
+			phydev_err(phydev, "Failed to parse SKU information: %d\n", ret);
 			return ret;
 		}
 	}
