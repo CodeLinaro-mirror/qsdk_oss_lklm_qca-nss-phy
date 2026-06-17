@@ -7,6 +7,7 @@
 #define _QCA81XX_H_
 
 #include <linux/phy.h>
+#include <linux/build_bug.h>
 
 #define QCA8111_PHY		0x004dd1c0
 /* in QCOM MDIO bus driver, bit29~31 is for soc type, 2 is for laguna */
@@ -107,6 +108,13 @@ struct qca81xx_private {
 	enum qca81xx_init_state init_state;
 	bool pcs_assert;
 };
+
+/*
+ * The MACsec module reads the SKU via a read-only shadow struct cast from
+ * phydev->priv, which requires sku to be the first member. Enforce it.
+ */
+static_assert(offsetof(struct qca81xx_private, sku) == 0,
+	      "qca81xx_private.sku must stay the first member (MACsec shadow struct)");
 
 ssize_t qca81xx_phy_show_snr(struct device *dev, struct device_attribute *attr, char *buf);
 

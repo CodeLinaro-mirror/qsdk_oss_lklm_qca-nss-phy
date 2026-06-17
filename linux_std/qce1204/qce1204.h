@@ -9,6 +9,7 @@
 #include <linux/phy.h>
 #include <linux/clk.h>
 #include <linux/reset.h>
+#include <linux/build_bug.h>
 
 #define QCE1204_PHY				0x004dd190
 #define QCE1204_TLMM_BASE			0x400000
@@ -88,14 +89,21 @@ struct qce1204_sku_info {
 };
 
 struct qce1204_shared_priv {
+	struct qce1204_sku_info sku;
 	struct qce1204_shared_clk_data shared_clk_data;
 	phy_interface_t package_mode;
 	atomic_t ppsin_refcount;   /* PPS_IN GPIO reference count (shared by all 4 ports of one chip) */
 #if IS_ENABLED(CONFIG_HWMON)
 	u64 tem_base_code;
 #endif
-	struct qce1204_sku_info sku;
 };
+
+/*
+ * The MACsec module reads the SKU via a read-only shadow struct cast from
+ * phydev->shared->priv, which requires sku to be the first member. Enforce it.
+ */
+static_assert(offsetof(struct qce1204_shared_priv, sku) == 0,
+	      "qce1204_shared_priv.sku must stay the first member (MACsec shadow struct)");
 
 enum {
 	QCE1204_GPIO0_PHY_INT = 0,

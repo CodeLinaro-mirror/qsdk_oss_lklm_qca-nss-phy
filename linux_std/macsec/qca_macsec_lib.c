@@ -15,9 +15,10 @@
 /* ===== Shadow SKU structures (read-only, local to this file) ===== */
 /*
  * These structures are used to read SKU info from chip private data
- * without depending on chip-specific headers. They assume that for
- * QCA81xx family the first member of the private structure is a
- * compatible SKU info structure. Read-only access is performed.
+ * without depending on chip-specific headers. They assume the SKU info
+ * is the first member of the chip private structure: for the QCA81xx
+ * family that is phydev->priv, for QCE1204 it is the package-shared
+ * priv (phydev->shared->priv). Read-only access is performed.
  */
 struct qca_sku_info {
 	const char *name;
@@ -2224,10 +2225,13 @@ int qce1204_macsec_config_init(struct phy_device *phydev)
 static int qca_macsec_device_attach(struct net_device *dev,
 				    const struct qca_macsec_chip_info *chip_info)
 {
-	struct phy_device *phydev = dev->phydev;
+	struct phy_device *phydev = NULL;
 	struct qca_macsec_ctx *ctx = NULL;
 
 	/* phydev is null or already initialized */
+	if (!dev)
+		return 0;
+	phydev = dev->phydev;
 	if (!phydev || phydev->macsec_ops)
 		return 0;
 
@@ -2278,8 +2282,7 @@ static int qca_macsec_device_attach(struct net_device *dev,
 	ctx->phydev = phydev;
 
 	/* Enable HW MACsec feature on netdev */
-	if (dev)
-		dev->features |= NETIF_F_HW_MACSEC;
+	dev->features |= NETIF_F_HW_MACSEC;
 
 	return 0;
 }
@@ -2322,6 +2325,7 @@ static inline int qca_macsec_dev_event(struct notifier_block *nb,
 	const char *sku_name;
 	int ret = 0;
 	u32 phyid = 0;
+	u32 chip = 0;
 
 	if (!event_dev->phydev)
 		return NOTIFY_DONE;
@@ -2330,23 +2334,33 @@ static inline int qca_macsec_dev_event(struct notifier_block *nb,
 
 	/* Get PHY ID */
 	phyid = qca_macsec_get_phy_id(phydev);
+	chip = phyid & phydev->drv->phy_id_mask;
 
 	/* Look up chip info - early return if not supported */
-	if (!qca_macsec_get_chip_info(phyid & phydev->drv->phy_id_mask,
-				      &chip_info))
+	if (!qca_macsec_get_chip_info(chip, &chip_info))
 		return NOTIFY_DONE;
 
 	/* Filter DSA devices for QCA8084 in MHT Switch mode */
-	if ((phyid & phydev->drv->phy_id_mask) == QCA8084_PHY) {
+	if (chip == QCA8084_PHY) {
 	#if IS_ENABLED(CONFIG_NET_DSA)
 		if (dsa_slave_dev_check(event_dev))
 			return NOTIFY_DONE;
 	#endif
 	}
 
-	/* Gate MACsec attach by SKU for QCA81x2 family (QCA81xx) */
-	if ((phyid & phydev->drv->phy_id_mask) == QCA81xx_PHY) {
+	/*
+	 * Gate MACsec attach by SKU. QCA81xx keeps SKU info in phydev->priv;
+	 * QCE1204 keeps it in the package-shared priv (shared->priv). In both
+	 * cases the SKU info is the first member, so the read-only shadow
+	 * struct (struct qca_common_private) applies.
+	 */
+	if (chip == QCA81xx_PHY)
 		cpriv = (struct qca_common_private *)phydev->priv;
+	else if (chip == QCE1204_PHY)
+		cpriv = phydev->shared ?
+			(struct qca_common_private *)phydev->shared->priv : NULL;
+
+	if (chip == QCA81xx_PHY || chip == QCE1204_PHY) {
 		sku_name = (cpriv && cpriv->sku.name) ? cpriv->sku.name : NULL;
 
 		/* Read-only access to SKU; skip attach if MACsec not supported */
