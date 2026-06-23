@@ -19,6 +19,10 @@
 #define QCE1204_TLMM_DRV			GENMASK(8, 6)
 #define QCE1204_TLMM_DRV_16_MA			0x1c0
 #define QCE1204_TLMM_LED_MODE			BIT(11)
+
+#define QCE1204_SKU_REG				0x90607C
+#define QCE1204_SKU_ID_MASK			GENMASK(23, 0)
+
 enum qce1204_addr_offset {
 	PCS0_ADDR_OFFSET = 4,
 	PCS1_ADDR_OFFSET = 5,
@@ -69,6 +73,20 @@ struct qce1204_shared_clk_data {
 	struct reset_control *xpcs_reset;
 };
 
+enum qce1204_sku_id {
+	QCE1204_SKU_QCE1204 = 0x3450e1,
+	QCE1204_SKU_QCE2204 = 0x3460e1,
+	QCE1204_SKU_QCE2224 = 0x3470e1,
+	QCE1204_SKU_QCE1224 = 0x3750e1,
+};
+
+struct qce1204_sku_info {
+	const char *name;
+	bool ptp;
+	bool macsec;
+	bool p3p4_2p5g;
+};
+
 struct qce1204_shared_priv {
 	struct qce1204_shared_clk_data shared_clk_data;
 	phy_interface_t package_mode;
@@ -76,6 +94,7 @@ struct qce1204_shared_priv {
 #if IS_ENABLED(CONFIG_HWMON)
 	u64 tem_base_code;
 #endif
+	struct qce1204_sku_info sku;
 };
 
 enum {
