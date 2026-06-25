@@ -110,4 +110,13 @@ struct qca81xx_private {
 
 ssize_t qca81xx_phy_show_snr(struct device *dev, struct device_attribute *attr, char *buf);
 
+/* Master/slave control bits in MDIO_AN_10GBT_CTRL (MMD7, reg 0x20) */
+#define QCA81XX_MS_FORCE_EN		BIT(15)
+#define QCA81XX_MS_MASTER		BIT(14)
+#define QCA81XX_MS_PREFER_MASTER	BIT(13)
+#define QCA81XX_MS_CTRL_MASK		(BIT(15) | BIT(14) | BIT(13))
+
+int qca81xx_phy_master_slave_set(struct phy_device *phydev);
+int qca81xx_phy_master_slave_get(struct phy_device *phydev);
+
 #endif /* _QCA81XX_H_ */

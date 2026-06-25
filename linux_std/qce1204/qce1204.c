@@ -1901,6 +1901,13 @@ int qce1204_phy_config_aneg(struct phy_device *phydev)
 	if (ret < 0)
 		return ret;
 
+	/* configure master/slave mode */
+	ret = qca81xx_phy_master_slave_set(phydev);
+	if (ret < 0)
+		return ret;
+	if (ret > 0)
+		changed = true;
+
 	return genphy_c45_check_and_restart_aneg(phydev, changed);
 }
 
@@ -2803,6 +2810,10 @@ static int qce_phy_read_status(struct phy_device *phydev)
 	phydev->mdix = (ret & QCE1204_PHY_SS_MDIX) ? ETH_TP_MDI_X : ETH_TP_MDI;
 	ret = qce1204_phy_mdix_ctrl_get(phydev);
 	if (ret < 0)
+		return ret;
+
+	ret = qca81xx_phy_master_slave_get(phydev);
+	if (ret)
 		return ret;
 
 	return 0;

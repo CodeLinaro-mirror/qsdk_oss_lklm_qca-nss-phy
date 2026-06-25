@@ -1525,6 +1525,72 @@ static int qca81xx_phy_get_features(struct phy_device *phydev)
 	return 0;
 }
 
+int qca81xx_phy_master_slave_set(struct phy_device *phydev)
+{
+	u16 ctrl_val;
+
+	if (phydev->autoneg == AUTONEG_DISABLE)
+		return 0;
+
+	switch (phydev->master_slave_set) {
+	case MASTER_SLAVE_CFG_MASTER_FORCE:
+		ctrl_val = QCA81XX_MS_FORCE_EN | QCA81XX_MS_MASTER;
+		break;
+	case MASTER_SLAVE_CFG_SLAVE_FORCE:
+		ctrl_val = QCA81XX_MS_FORCE_EN;
+		break;
+	case MASTER_SLAVE_CFG_MASTER_PREFERRED:
+		ctrl_val = QCA81XX_MS_PREFER_MASTER;
+		break;
+	case MASTER_SLAVE_CFG_SLAVE_PREFERRED:
+		ctrl_val = 0;
+		break;
+	case MASTER_SLAVE_CFG_UNKNOWN:
+	case MASTER_SLAVE_CFG_UNSUPPORTED:
+	default:
+		return 0;
+	}
+
+	return phy_modify_mmd_changed(phydev, MDIO_MMD_AN, MDIO_AN_10GBT_CTRL,
+				      QCA81XX_MS_CTRL_MASK, ctrl_val);
+}
+
+int qca81xx_phy_master_slave_get(struct phy_device *phydev)
+{
+	int ctrl, stat;
+
+	ctrl = phy_read_mmd(phydev, MDIO_MMD_AN, MDIO_AN_10GBT_CTRL);
+	if (ctrl < 0)
+		return ctrl;
+
+	if (ctrl & QCA81XX_MS_FORCE_EN) {
+		if (ctrl & QCA81XX_MS_MASTER)
+			phydev->master_slave_get = MASTER_SLAVE_CFG_MASTER_FORCE;
+		else
+			phydev->master_slave_get = MASTER_SLAVE_CFG_SLAVE_FORCE;
+	} else {
+		if (ctrl & QCA81XX_MS_PREFER_MASTER)
+			phydev->master_slave_get = MASTER_SLAVE_CFG_MASTER_PREFERRED;
+		else
+			phydev->master_slave_get = MASTER_SLAVE_CFG_SLAVE_PREFERRED;
+	}
+
+	stat = phy_read_mmd(phydev, MDIO_MMD_AN, MDIO_AN_10GBT_STAT);
+	if (stat < 0)
+		return stat;
+
+	if (stat & MDIO_AN_10GBT_STAT_MSFLT)
+		phydev->master_slave_state = MASTER_SLAVE_STATE_ERR;
+	else if (phydev->link && (stat & MDIO_AN_10GBT_STAT_MS))
+		phydev->master_slave_state = MASTER_SLAVE_STATE_MASTER;
+	else if (phydev->link)
+		phydev->master_slave_state = MASTER_SLAVE_STATE_SLAVE;
+	else
+		phydev->master_slave_state = MASTER_SLAVE_STATE_UNKNOWN;
+
+	return 0;
+}
+
 static int qca81xx_phy_mdix_ctrl_set(struct phy_device *phydev)
 {
 	int ret;
@@ -1620,6 +1686,13 @@ static int qca81xx_phy_config_aneg(struct phy_device *phydev)
 	ret = qca81xx_phy_mdix_ctrl_set(phydev);
 	if (ret < 0)
 		return ret;
+
+	/* configure master/slave mode */
+	ret = qca81xx_phy_master_slave_set(phydev);
+	if (ret < 0)
+		return ret;
+	if (ret > 0)
+		changed = true;
 
 	return genphy_c45_check_and_restart_aneg(phydev, changed);
 }
@@ -1769,6 +1842,10 @@ static int qca81xx_phy_read_status(struct phy_device *phydev)
 	/* get the mdix ctrl and status */
 	phydev->mdix = (ret & QCA81XX_SS_MDIX) ? ETH_TP_MDI_X : ETH_TP_MDI;
 	ret = qca81xx_phy_mdix_ctrl_get(phydev);
+	if (ret < 0)
+		return ret;
+
+	ret = qca81xx_phy_master_slave_get(phydev);
 	if (ret < 0)
 		return ret;
 
