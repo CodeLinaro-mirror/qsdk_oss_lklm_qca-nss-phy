@@ -141,6 +141,10 @@ int qce1204_phy_ops_init(struct nss_phy_ops *ops)
 	ops->intr_status_get = nss_phy_c45_common_intr_status_get;
 	ops->led_ctrl_source_set = nss_phy_2500m_led_ctrl_source_set;
 	ops->led_ctrl_source_get = nss_phy_2500m_led_ctrl_source_get;
+	ops->fr_cfg_set = nss_phy_c45_common_fr_cfg_set;
+	ops->fr_cfg_get = nss_phy_c45_common_fr_cfg_get;
+	ops->fr_status_get = nss_phy_c45_common_fr_status_get;
+	ops->fr_trigger = nss_phy_c45_common_fr_trigger;
 
 	return 0;
 }

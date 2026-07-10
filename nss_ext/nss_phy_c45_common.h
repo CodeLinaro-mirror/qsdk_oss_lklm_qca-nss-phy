@@ -93,6 +93,60 @@ extern "C" {
 #define NSS_PHY_MMD31_INTR_RX_PTP		0x0008
 #define NSS_PHY_MMD31_INTR_TX_PTP		0x0004
 
+/* Fast Retrain (IEEE + Cisco proprietary) MMD registers.
+ * "_REG" is only appended when the address macro would otherwise
+ * collide with a same-named bit-field macro below (FR_TRIGGER,
+ * FR_ENABLE_BYPASS).
+ */
+#define NSS_PHY_MMD7_FR_ADV		0x20
+#define NSS_PHY_MMD7_LP_FR_ABILITY		0x21
+#define NSS_PHY_MMD7_FR_THP_BYPASS_ADV		0x40
+#define NSS_PHY_MMD7_LP_FR_THP_BYPASS_ABILITY_41		0x41
+#define NSS_PHY_MMD7_LP_FR_THP_BYPASS_ABILITY_42		0x42
+#define NSS_PHY_MMD3_CFR_CTRL		0xa038
+#define NSS_PHY_MMD1_FR_CONTROL		0x93
+#define NSS_PHY_MMD1_8201_FR_STATUS		0x8201
+#define NSS_PHY_MMD3_FR_TRIGGER_REG		0xa012
+#define NSS_PHY_MMD7_FR_BYPASS_25		0x9011
+#define NSS_PHY_MMD7_FR_BYPASS_10_5		0x9013
+#define NSS_PHY_MMD3_FR_ENABLE_BYPASS_REG		0xa03b
+
+/* Fast Retrain MMD registers field */
+#define NSS_PHY_MMD7_FR_ADV_10G		0x0002
+#define NSS_PHY_MMD7_FR_ADV_2500M		0x0020
+#define NSS_PHY_MMD7_FR_ADV_5000M		0x0040
+#define NSS_PHY_MMD7_LP_FR_ABILITY_10G		0x0002
+#define NSS_PHY_MMD7_LP_FR_ABILITY_2500M		0x0008
+#define NSS_PHY_MMD7_LP_FR_ABILITY_5000M		0x0010
+#define NSS_PHY_MMD7_FR_BYPASS_2500M		0x0100
+#define NSS_PHY_MMD7_FR_BYPASS_10G		0x0002
+#define NSS_PHY_MMD7_FR_BYPASS_5000M		0x0001
+#define NSS_PHY_MMD7_FR_THP_BYPASS_ADV_2500M		0x0008
+#define NSS_PHY_MMD7_FR_THP_BYPASS_ADV_5000M		0x0004
+#define NSS_PHY_MMD7_LP_FR_THP_BYPASS_ABILITY_2500M		0x0008
+#define NSS_PHY_MMD7_LP_FR_THP_BYPASS_ABILITY_5000M		0x0004
+#define NSS_PHY_MMD7_LP_FR_THP_BYPASS_ABILITY_10G		0x0001
+#define NSS_PHY_MMD3_CFR_ADV		0x0008
+#define NSS_PHY_MMD3_CFR_THP_BYPASS_ADV		0x0004
+#define NSS_PHY_MMD3_CFR_EXTEND_WAIT_ADV		0x0002
+#define NSS_PHY_MMD3_CFR_DISABLE_TIMER_ADV		0x0001
+#define NSS_PHY_MMD3_LP_CFR_ABILITY		0x0080
+#define NSS_PHY_MMD3_LP_CFR_THP_BYPASS_ABILITY		0x0040
+#define NSS_PHY_MMD3_LP_CFR_EXTEND_WAIT_ABILITY		0x0020
+#define NSS_PHY_MMD3_LP_CFR_DISABLE_TIMER_ABILITY		0x0010
+#define NSS_PHY_MMD3_FR_ENABLE_BYPASS		0x0040
+#define NSS_PHY_MMD1_FR_ENABLE		0x0001
+#define NSS_PHY_MMD1_FR_TX_CNT_MASK		0x07c0
+#define NSS_PHY_MMD1_FR_TX_CNT_SHIFT		6
+#define NSS_PHY_MMD1_FR_RX_CNT_MASK		0xf800
+#define NSS_PHY_MMD1_FR_RX_CNT_SHIFT		11
+/* 5-bit counters saturate at 31; reading 31 indicates possible overflow */
+#define NSS_PHY_MMD1_FR_CNT_MAX		0x1f
+#define NSS_PHY_MMD1_8201_FR_FAIL		0x0001
+#define NSS_PHY_MMD1_8201_FR_SUCCESS		0x0002
+#define NSS_PHY_MMD1_8201_FR_START		0x0008
+#define NSS_PHY_MMD3_FR_TRIGGER		0x0002
+
 int nss_phy_c45_common_eee_adv_set(struct nss_phy_device *nss_phydev,
 	u32 adv);
 int nss_phy_c45_common_eee_adv_get(struct nss_phy_device *nss_phydev,
@@ -170,6 +224,16 @@ int nss_phy_c45_common_led_ctrl_source_get
 	struct nss_phy_led_pattern_ctrl *pattern);
 int nss_phy_c45_function_reset(struct nss_phy_device *nss_phydev,
 	enum nss_phy_reset reset_type);
+void nss_phy_c45_common_fr_state_init(struct nss_phy_device *nss_phydev);
+int nss_phy_c45_common_fr_cfg_set(struct nss_phy_device *nss_phydev,
+	struct nss_phy_fr_cfg *cfg);
+int nss_phy_c45_common_fr_cfg_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_fr_cfg *cfg);
+int nss_phy_c45_common_fr_status_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_fr_status *status);
+int nss_phy_c45_common_fr_cnt_poll(struct nss_phy_device *nss_phydev,
+	bool link_up_transition);
+int nss_phy_c45_common_fr_trigger(struct nss_phy_device *nss_phydev);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

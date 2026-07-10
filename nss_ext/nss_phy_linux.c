@@ -25,6 +25,7 @@
 #if defined(CONFIG_NSSPHY_QCE1204) || defined(CONFIG_NSSPHY_IPQ52XX)
 #include "qce1204_phy.h"
 #endif
+#include "nss_phy_c45_common.h"
 #include <linux/of_device.h>
 #include <linux/of_mdio.h>
 #if IS_ENABLED(CONFIG_MDIO_I2C)
@@ -35,6 +36,35 @@
 #include <linux/seq_file.h>
 #include <linux/uaccess.h>
 #include "nss_phy_linux_wrapper.h"
+
+#define NSS_PHY_STATUS_POLL_INTERVAL_MS	1000
+
+static void nss_phy_status_poll_cancel(void *data)
+{
+	struct nss_phy_device *nss_phydev = data;
+
+	cancel_delayed_work_sync(&nss_phydev->status_poll_work);
+}
+
+static void nss_phy_status_poll_work_fn(struct work_struct *work)
+{
+	struct nss_phy_device *nss_phydev =
+		container_of(work, struct nss_phy_device, status_poll_work.work);
+	struct nss_phy_ops *ops =
+		(struct nss_phy_ops *)nss_phydev->phydev->drv->driver_data;
+	bool link_up = !!nss_phydev->phydev->link;
+	bool link_up_transition = link_up && !nss_phydev->status_poll_prev_link;
+
+	nss_phydev->status_poll_prev_link = link_up;
+
+	/* Periodic poll tasks — add new per-feature helpers here as needed. */
+	if (ops && ops->fr_cfg_set &&
+	    (nss_phydev->fr_ieee_enabled || nss_phydev->fr_cisco_enabled))
+		nss_phy_c45_common_fr_cnt_poll(nss_phydev, link_up_transition);
+
+	schedule_delayed_work(&nss_phydev->status_poll_work,
+		msecs_to_jiffies(NSS_PHY_STATUS_POLL_INTERVAL_MS));
+}
 
 static struct nss_phy_global_manager g_nss_phy_manager = {0};
 
@@ -335,14 +365,25 @@ static int nss_phy_eee_status_init(struct phy_device *phydev)
 static int nss_phy_probe(struct phy_device *phydev)
 {
 	struct nss_phy_device *nss_phydev;
+	struct nss_phy_ops *ops;
 	int (*ops_init)(struct nss_phy_ops *ops) = NULL;
 
 	if (!phydev)
 		return -ENODEV;
 
+	/* match_phy_device() calls probe() on every invocation and returns
+	 * false, so phylib may call us multiple times for the same phydev.
+	 * Guard against repeated init just as nss_phy_ops_init() does.
+	 */
+	if (dev_get_drvdata(&phydev->mdio.dev))
+		return 0;
+
 	nss_phydev = devm_kzalloc(&phydev->mdio.dev, sizeof(*nss_phydev), GFP_KERNEL);
 	if (!nss_phydev)
 		return -ENOMEM;
+
+	spin_lock_init(&nss_phydev->fr_sw_cnt_lock);
+	INIT_DELAYED_WORK(&nss_phydev->status_poll_work, nss_phy_status_poll_work_fn);
 
 	if (nss_phydev_id_compare(phydev, QCA8075_PHY, QCA807X_MASK)) {
 		atomic_inc(&g_nss_phy_manager.debug_stats.qca807x_num);
@@ -393,7 +434,25 @@ static int nss_phy_probe(struct phy_device *phydev)
 	/* init eee status */
 	nss_phy_eee_status_init(phydev);
 
-	return 0;
+	/*
+	 * Seed the Fast Retrain enable-state cache with the current hardware
+	 * state - see nss_phy_c45_common_fr_state_init().
+	 */
+	ops = (struct nss_phy_ops *)phydev->drv->driver_data;
+	if (ops && ops->fr_cfg_set)
+		nss_phy_c45_common_fr_state_init(nss_phydev);
+
+	schedule_delayed_work(&nss_phydev->status_poll_work,
+		msecs_to_jiffies(NSS_PHY_STATUS_POLL_INTERVAL_MS));
+
+	/*
+	 * nss_phy_driver never truly binds (match_phy_device returns false
+	 * after calling probe), so phylib will never call .remove.  Register
+	 * a devres action so the work is cancelled when the mdio device is
+	 * torn down (e.g. on rmmod).
+	 */
+	return devm_add_action_or_reset(&phydev->mdio.dev,
+		nss_phy_status_poll_cancel, nss_phydev);
 }
 
 static int nss_phy_match_phy_device(struct phy_device *phydev)
@@ -411,6 +470,16 @@ static int nss_phy_match_phy_device(struct phy_device *phydev)
 
 static void nss_phy_remove(struct phy_device *phydev)
 {
+	struct nss_phy_device *nss_phydev = dev_get_drvdata(&phydev->mdio.dev);
+
+	/* This driver uses the parasitic probe pattern: match_phy_device()
+	 * calls nss_phy_probe() and returns false, so phylib never truly
+	 * binds and will not call .remove in normal operation.  The real
+	 * cleanup path is the devm action registered in nss_phy_probe().
+	 * Keep a cancel here as a defensive fallback.
+	 */
+	if (nss_phydev)
+		cancel_delayed_work_sync(&nss_phydev->status_poll_work);
 	nss_phy_debugfs_exit(phydev);
 }
 

@@ -910,3 +910,565 @@ int nss_phy_c45_function_reset(struct nss_phy_device *nss_phydev,
 
 	return 0;
 }
+
+static int nss_phy_c45_common_fr_bypass_set(struct nss_phy_device *nss_phydev,
+	u32 bypass_enable)
+{
+	int ret = 0;
+
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_FR_BYPASS_25, NSS_PHY_MMD7_FR_BYPASS_2500M,
+		bypass_enable ? NSS_PHY_MMD7_FR_BYPASS_2500M : 0);
+	if (ret < 0)
+		return ret;
+
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_FR_BYPASS_10_5,
+		NSS_PHY_MMD7_FR_BYPASS_10G | NSS_PHY_MMD7_FR_BYPASS_5000M,
+		bypass_enable ? (NSS_PHY_MMD7_FR_BYPASS_10G |
+		NSS_PHY_MMD7_FR_BYPASS_5000M) : 0);
+	if (ret < 0)
+		return ret;
+
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_FR_ENABLE_BYPASS_REG,
+		NSS_PHY_MMD3_FR_ENABLE_BYPASS,
+		bypass_enable ? NSS_PHY_MMD3_FR_ENABLE_BYPASS : 0);
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
+static int nss_phy_c45_common_fr_ieee_adv_get(struct nss_phy_device *nss_phydev,
+	u32 *adv_bitmap)
+{
+	int phy_data = 0;
+
+	*adv_bitmap = 0;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_FR_ADV);
+	if (phy_data < 0)
+		return phy_data;
+	if (phy_data & NSS_PHY_MMD7_FR_ADV_2500M)
+		*adv_bitmap |= NSS_PHY_FR_2500BASE_T;
+	if (phy_data & NSS_PHY_MMD7_FR_ADV_5000M)
+		*adv_bitmap |= NSS_PHY_FR_5000BASE_T;
+	if (phy_data & NSS_PHY_MMD7_FR_ADV_10G)
+		*adv_bitmap |= NSS_PHY_FR_10000BASE_T;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_FR_THP_BYPASS_ADV);
+	if (phy_data < 0)
+		return phy_data;
+	if (phy_data & NSS_PHY_MMD7_FR_THP_BYPASS_ADV_2500M)
+		*adv_bitmap |= NSS_PHY_FR_THP_BYPASS_2500BASE_T;
+	if (phy_data & NSS_PHY_MMD7_FR_THP_BYPASS_ADV_5000M)
+		*adv_bitmap |= NSS_PHY_FR_THP_BYPASS_5000BASE_T;
+
+	return 0;
+}
+
+static int nss_phy_c45_common_fr_ieee_adv_set(struct nss_phy_device *nss_phydev,
+	u32 mask, u32 bitmap)
+{
+	u16 reg_mask = 0, reg_value = 0;
+	int ret = 0;
+
+	if (mask & (NSS_PHY_FR_2500BASE_T | NSS_PHY_FR_5000BASE_T |
+			NSS_PHY_FR_10000BASE_T)) {
+		reg_mask = 0;
+		reg_value = 0;
+		if (mask & NSS_PHY_FR_2500BASE_T) {
+			reg_mask |= NSS_PHY_MMD7_FR_ADV_2500M;
+			if (bitmap & NSS_PHY_FR_2500BASE_T)
+				reg_value |= NSS_PHY_MMD7_FR_ADV_2500M;
+		}
+		if (mask & NSS_PHY_FR_5000BASE_T) {
+			reg_mask |= NSS_PHY_MMD7_FR_ADV_5000M;
+			if (bitmap & NSS_PHY_FR_5000BASE_T)
+				reg_value |= NSS_PHY_MMD7_FR_ADV_5000M;
+		}
+		if (mask & NSS_PHY_FR_10000BASE_T) {
+			reg_mask |= NSS_PHY_MMD7_FR_ADV_10G;
+			if (bitmap & NSS_PHY_FR_10000BASE_T)
+				reg_value |= NSS_PHY_MMD7_FR_ADV_10G;
+		}
+		ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+			NSS_PHY_MMD7_FR_ADV, reg_mask, reg_value);
+		if (ret < 0)
+			return ret;
+	}
+
+	if (mask & (NSS_PHY_FR_THP_BYPASS_2500BASE_T |
+			NSS_PHY_FR_THP_BYPASS_5000BASE_T)) {
+		reg_mask = 0;
+		reg_value = 0;
+		if (mask & NSS_PHY_FR_THP_BYPASS_2500BASE_T) {
+			reg_mask |= NSS_PHY_MMD7_FR_THP_BYPASS_ADV_2500M;
+			if (bitmap & NSS_PHY_FR_THP_BYPASS_2500BASE_T)
+				reg_value |= NSS_PHY_MMD7_FR_THP_BYPASS_ADV_2500M;
+		}
+		if (mask & NSS_PHY_FR_THP_BYPASS_5000BASE_T) {
+			reg_mask |= NSS_PHY_MMD7_FR_THP_BYPASS_ADV_5000M;
+			if (bitmap & NSS_PHY_FR_THP_BYPASS_5000BASE_T)
+				reg_value |= NSS_PHY_MMD7_FR_THP_BYPASS_ADV_5000M;
+		}
+		ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+			NSS_PHY_MMD7_FR_THP_BYPASS_ADV, reg_mask, reg_value);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
+static int nss_phy_c45_common_fr_ieee_lp_ability_get(struct nss_phy_device *nss_phydev,
+	u32 *ability_bitmap)
+{
+	int phy_data = 0;
+
+	*ability_bitmap = 0;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_LP_FR_ABILITY);
+	if (phy_data < 0)
+		return phy_data;
+	if (phy_data & NSS_PHY_MMD7_LP_FR_ABILITY_2500M)
+		*ability_bitmap |= NSS_PHY_FR_2500BASE_T;
+	if (phy_data & NSS_PHY_MMD7_LP_FR_ABILITY_5000M)
+		*ability_bitmap |= NSS_PHY_FR_5000BASE_T;
+	if (phy_data & NSS_PHY_MMD7_LP_FR_ABILITY_10G)
+		*ability_bitmap |= NSS_PHY_FR_10000BASE_T;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_LP_FR_THP_BYPASS_ABILITY_41);
+	if (phy_data < 0)
+		return phy_data;
+	if (phy_data & NSS_PHY_MMD7_LP_FR_THP_BYPASS_ABILITY_2500M)
+		*ability_bitmap |= NSS_PHY_FR_THP_BYPASS_2500BASE_T;
+	if (phy_data & NSS_PHY_MMD7_LP_FR_THP_BYPASS_ABILITY_5000M)
+		*ability_bitmap |= NSS_PHY_FR_THP_BYPASS_5000BASE_T;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_LP_FR_THP_BYPASS_ABILITY_42);
+	if (phy_data < 0)
+		return phy_data;
+	if (phy_data & NSS_PHY_MMD7_LP_FR_THP_BYPASS_ABILITY_10G)
+		*ability_bitmap |= NSS_PHY_FR_THP_BYPASS_10000BASE_T;
+
+	return 0;
+}
+
+/* Reads MMD3.0xa038 once and derives both the local advertisement and the
+ * link-partner ability bitmaps from that single snapshot, so the two
+ * bitmaps are guaranteed consistent with each other.
+ */
+static int nss_phy_c45_common_fr_cisco_adv_and_lp_ability_get(
+	struct nss_phy_device *nss_phydev, u32 *adv_bitmap, u32 *ability_bitmap)
+{
+	int phy_data = 0;
+
+	*adv_bitmap = 0;
+	*ability_bitmap = 0;
+
+	phy_data = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_CFR_CTRL);
+	if (phy_data < 0)
+		return phy_data;
+
+	if (phy_data & NSS_PHY_MMD3_CFR_ADV)
+		*adv_bitmap |= NSS_PHY_FR_CISCO_ABILITY;
+	if (phy_data & NSS_PHY_MMD3_CFR_THP_BYPASS_ADV)
+		*adv_bitmap |= NSS_PHY_FR_CISCO_THP_BYPASS_ABILITY;
+	if (phy_data & NSS_PHY_MMD3_CFR_EXTEND_WAIT_ADV)
+		*adv_bitmap |= NSS_PHY_FR_CISCO_EXTEND_WAIT_ABILITY;
+	if (phy_data & NSS_PHY_MMD3_CFR_DISABLE_TIMER_ADV)
+		*adv_bitmap |= NSS_PHY_FR_CISCO_DISABLE_TIMER_ABILITY;
+
+	if (phy_data & NSS_PHY_MMD3_LP_CFR_ABILITY)
+		*ability_bitmap |= NSS_PHY_FR_CISCO_ABILITY;
+	if (phy_data & NSS_PHY_MMD3_LP_CFR_THP_BYPASS_ABILITY)
+		*ability_bitmap |= NSS_PHY_FR_CISCO_THP_BYPASS_ABILITY;
+	if (phy_data & NSS_PHY_MMD3_LP_CFR_EXTEND_WAIT_ABILITY)
+		*ability_bitmap |= NSS_PHY_FR_CISCO_EXTEND_WAIT_ABILITY;
+	if (phy_data & NSS_PHY_MMD3_LP_CFR_DISABLE_TIMER_ABILITY)
+		*ability_bitmap |= NSS_PHY_FR_CISCO_DISABLE_TIMER_ABILITY;
+
+	return 0;
+}
+
+static int nss_phy_c45_common_fr_cisco_adv_set(struct nss_phy_device *nss_phydev,
+	u32 mask, u32 bitmap)
+{
+	u16 reg_mask = 0, reg_value = 0;
+
+	if (mask & NSS_PHY_FR_CISCO_ABILITY) {
+		reg_mask |= NSS_PHY_MMD3_CFR_ADV;
+		if (bitmap & NSS_PHY_FR_CISCO_ABILITY)
+			reg_value |= NSS_PHY_MMD3_CFR_ADV;
+	}
+	if (mask & NSS_PHY_FR_CISCO_THP_BYPASS_ABILITY) {
+		reg_mask |= NSS_PHY_MMD3_CFR_THP_BYPASS_ADV;
+		if (bitmap & NSS_PHY_FR_CISCO_THP_BYPASS_ABILITY)
+			reg_value |= NSS_PHY_MMD3_CFR_THP_BYPASS_ADV;
+	}
+	if (mask & NSS_PHY_FR_CISCO_EXTEND_WAIT_ABILITY) {
+		reg_mask |= NSS_PHY_MMD3_CFR_EXTEND_WAIT_ADV;
+		if (bitmap & NSS_PHY_FR_CISCO_EXTEND_WAIT_ABILITY)
+			reg_value |= NSS_PHY_MMD3_CFR_EXTEND_WAIT_ADV;
+	}
+	if (mask & NSS_PHY_FR_CISCO_DISABLE_TIMER_ABILITY) {
+		reg_mask |= NSS_PHY_MMD3_CFR_DISABLE_TIMER_ADV;
+		if (bitmap & NSS_PHY_FR_CISCO_DISABLE_TIMER_ABILITY)
+			reg_value |= NSS_PHY_MMD3_CFR_DISABLE_TIMER_ADV;
+	}
+
+	return nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_CFR_CTRL, reg_mask, reg_value);
+}
+
+/* Cisco FR is enabled iff both its local advertisement bit
+ * (MMD3.0xa038[3]) and the global FR enable bit (MMD1.93) are set. Reads
+ * the cache instead of MMD1.93 directly since that register is
+ * read-clear (see nss_phy_c45_common_fr_cnt_get()).
+ */
+static bool nss_phy_c45_common_fr_cisco_mode_get(struct nss_phy_device *nss_phydev)
+{
+	return nss_phydev->fr_cisco_enabled;
+}
+
+/* IEEE FR is enabled iff the global FR enable bit is set and the
+ * IEEE FR bypass bit is clear (the bypass bit is set only when Cisco FR
+ * is active without IEEE FR). Reads the cache for the same reason as
+ * nss_phy_c45_common_fr_cisco_mode_get() above.
+ */
+static bool nss_phy_c45_common_fr_ieee_mode_get(struct nss_phy_device *nss_phydev)
+{
+	return nss_phydev->fr_ieee_enabled;
+}
+
+/* Derives nss_phydev->fr_ieee_enabled/fr_cisco_enabled from the current
+ * hardware advertisement state instead of assuming the power-on default,
+ * so a bootloader that rewrote these (non read-clear) registers before
+ * the driver probed, or a prior fr_cfg_apply() that failed partway
+ * through, doesn't leave the cache out of sync with the hardware.
+ */
+void nss_phy_c45_common_fr_state_init(struct nss_phy_device *nss_phydev)
+{
+	int ieee_adv, cisco_adv, bypass;
+
+	ieee_adv = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_FR_ADV);
+	if (ieee_adv < 0)
+		nss_phy_warn(nss_phydev,
+			"fr_state_init: MMD7 FR_ADV read failed (%d), cache defaults to disabled\n",
+			ieee_adv);
+
+	cisco_adv = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_CFR_CTRL);
+	if (cisco_adv < 0)
+		nss_phy_warn(nss_phydev,
+			"fr_state_init: MMD3 CFR_CTRL read failed (%d), cache defaults to disabled\n",
+			cisco_adv);
+
+	bypass = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_FR_BYPASS_25);
+
+	nss_phydev->fr_cisco_enabled = cisco_adv >= 0 &&
+		!!(cisco_adv & NSS_PHY_MMD3_CFR_ADV);
+
+	/* When Cisco-only FR is active, fr_cfg_apply() writes IEEE ADV bits
+	 * (2.5G/5G) as the Cisco bring-up channel and sets the bypass bit.
+	 * Reading those IEEE ADV bits alone would falsely infer fr_ieee_enabled.
+	 * Disambiguate: IEEE FR is truly enabled only when the IEEE ADV bits
+	 * are set AND the bypass bit is NOT set (bypass is always clear for
+	 * pure IEEE FR, always set for Cisco-only).
+	 */
+	nss_phydev->fr_ieee_enabled = ieee_adv >= 0 &&
+		!!(ieee_adv & (NSS_PHY_MMD7_FR_ADV_2500M |
+		NSS_PHY_MMD7_FR_ADV_5000M | NSS_PHY_MMD7_FR_ADV_10G)) &&
+		!(bypass >= 0 && (bypass & NSS_PHY_MMD7_FR_BYPASS_2500M));
+}
+
+/* MMD1.93 (NSS_PHY_MMD1_FR_CONTROL) is read-clear (see
+ * nss_phy_c45_common_fr_cnt_get()) - the only bit this function writes
+ * is NSS_PHY_MMD1_FR_ENABLE.  No additional lock is needed for the
+ * concurrent polling worker: write operations do not affect read-clear
+ * bits, so writing EN does not discard any accumulated count delta.
+ */
+static int nss_phy_c45_common_fr_cfg_apply(struct nss_phy_device *nss_phydev,
+	u32 ieee_enable, u32 cisco_enable)
+{
+	u32 ieee_bitmap = 0;
+	u32 ieee_mask = NSS_PHY_FR_2500BASE_T | NSS_PHY_FR_5000BASE_T |
+		NSS_PHY_FR_10000BASE_T;
+	int ret = 0;
+
+	/* FR has no defined behavior below 2.5G. */
+	if (!nss_phy_support_2500(nss_phydev))
+		return -NSS_PHY_EOPNOTSUPP;
+
+	/* Avoid an unnecessary autoneg restart (and the resulting link
+	 * flap) when the requested config already matches the cache.
+	 */
+	if (!!ieee_enable == nss_phydev->fr_ieee_enabled &&
+		!!cisco_enable == nss_phydev->fr_cisco_enabled)
+		return 0;
+
+	if (ieee_enable) {
+		ieee_bitmap = NSS_PHY_FR_2500BASE_T;
+		if (nss_phy_support_5g(nss_phydev))
+			ieee_bitmap |= NSS_PHY_FR_5000BASE_T;
+		if (nss_phy_support_10g(nss_phydev))
+			ieee_bitmap |= NSS_PHY_FR_10000BASE_T;
+	} else if (cisco_enable) {
+		/* IEEE FR's advertisement register also serves as Cisco
+		 * FR's bring-up channel when Cisco FR is active without
+		 * IEEE FR.
+		 */
+		ieee_bitmap = NSS_PHY_FR_2500BASE_T;
+		if (nss_phy_support_5g(nss_phydev))
+			ieee_bitmap |= NSS_PHY_FR_5000BASE_T;
+	}
+
+	ret = nss_phy_c45_common_fr_ieee_adv_set(nss_phydev, ieee_mask,
+		ieee_bitmap);
+	if (ret < 0)
+		goto resync;
+
+	ret = nss_phy_c45_common_fr_cisco_adv_set(nss_phydev,
+		NSS_PHY_FR_CISCO_ABILITY,
+		cisco_enable ? NSS_PHY_FR_CISCO_ABILITY : 0);
+	if (ret < 0)
+		goto resync;
+
+	ret = nss_phy_c45_common_fr_bypass_set(nss_phydev,
+		(cisco_enable && !ieee_enable) ? 1 : 0);
+	if (ret < 0)
+		goto resync;
+
+	ret = nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD1_NUM,
+		NSS_PHY_MMD1_FR_CONTROL,
+		(ieee_enable || cisco_enable) ? NSS_PHY_MMD1_FR_ENABLE : 0);
+	if (ret < 0)
+		goto resync;
+
+	nss_phydev->fr_ieee_enabled = !!ieee_enable;
+	nss_phydev->fr_cisco_enabled = !!cisco_enable;
+
+	return nss_phy_c45_common_autoneg_restart(nss_phydev);
+
+resync:
+	/* Partial write: re-read hardware to keep cache consistent. */
+	nss_phy_c45_common_fr_state_init(nss_phydev);
+	return ret;
+}
+
+int nss_phy_c45_common_fr_cfg_set(struct nss_phy_device *nss_phydev,
+	struct nss_phy_fr_cfg *cfg)
+{
+	if (!cfg)
+		return -NSS_PHY_EINVAL;
+
+	if (nss_phydev_link_get(nss_phydev) != NSS_PHY_FALSE &&
+		nss_phydev_speed_get(nss_phydev) < NSS_PHY_SPEED_2500)
+		return -NSS_PHY_EOPNOTSUPP;
+
+	return nss_phy_c45_common_fr_cfg_apply(nss_phydev, cfg->ieee_fr_en,
+		cfg->cisco_fr_en);
+}
+
+int nss_phy_c45_common_fr_cfg_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_fr_cfg *cfg)
+{
+	if (!cfg)
+		return -NSS_PHY_EINVAL;
+
+	memset(cfg, 0, sizeof(*cfg));
+
+	if (nss_phydev_link_get(nss_phydev) != NSS_PHY_FALSE &&
+		nss_phydev_speed_get(nss_phydev) < NSS_PHY_SPEED_2500)
+		return -NSS_PHY_EOPNOTSUPP;
+
+	cfg->ieee_fr_en = nss_phy_c45_common_fr_ieee_mode_get(nss_phydev);
+	cfg->cisco_fr_en = nss_phy_c45_common_fr_cisco_mode_get(nss_phydev);
+
+	return 0;
+}
+
+int nss_phy_c45_common_fr_status_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_fr_status *status)
+{
+	u32 ieee_adv_bitmap = 0, ieee_lp_bitmap = 0;
+	u32 cisco_adv_bitmap = 0, cisco_lp_bitmap = 0;
+	int raw_8201 = 0;
+	bool fail = false, success = false, start = false;
+	int ret = 0;
+
+	/* fal_port_ctrl.c passes this struct as (void*) cast to
+	 * fal_port_fr_status_t whose bool-ish fields are enum a_bool_t.
+	 * Assert field widths, offsets, and total size so layout mismatches
+	 * between this struct and ssdk's fal_port_fr_status_t are caught at
+	 * compile time.
+	 */
+	BUILD_BUG_ON(sizeof(((struct nss_phy_fr_status *)0)->ieee_enabled) !=
+		sizeof(u32));
+	BUILD_BUG_ON(offsetof(struct nss_phy_fr_status, fail) !=
+		5 * sizeof(u32));
+	BUILD_BUG_ON(offsetof(struct nss_phy_fr_status, rx_count) !=
+		6 * sizeof(u32));
+	BUILD_BUG_ON(sizeof(struct nss_phy_fr_status) !=
+		6 * sizeof(u32) + 4 * sizeof(u64));
+
+	if (!status)
+		return -NSS_PHY_EINVAL;
+
+	memset(status, 0, sizeof(*status));
+
+	if (nss_phydev_link_get(nss_phydev) != NSS_PHY_FALSE &&
+		nss_phydev_speed_get(nss_phydev) < NSS_PHY_SPEED_2500)
+		return -NSS_PHY_EOPNOTSUPP;
+
+	status->ieee_enabled = nss_phy_c45_common_fr_ieee_mode_get(nss_phydev);
+	status->cisco_enabled = nss_phy_c45_common_fr_cisco_mode_get(nss_phydev);
+
+	ret = nss_phy_c45_common_fr_ieee_adv_get(nss_phydev, &ieee_adv_bitmap);
+	if (ret < 0)
+		return ret;
+
+	ret = nss_phy_c45_common_fr_ieee_lp_ability_get(nss_phydev,
+		&ieee_lp_bitmap);
+	if (ret < 0)
+		return ret;
+
+	ret = nss_phy_c45_common_fr_cisco_adv_and_lp_ability_get(nss_phydev,
+		&cisco_adv_bitmap, &cisco_lp_bitmap);
+	if (ret < 0)
+		return ret;
+
+	raw_8201 = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD1_NUM,
+		NSS_PHY_MMD1_8201_FR_STATUS);
+	if (raw_8201 < 0)
+		return raw_8201;
+
+	fail = !!(raw_8201 & NSS_PHY_MMD1_8201_FR_FAIL);
+	success = !!(raw_8201 & NSS_PHY_MMD1_8201_FR_SUCCESS);
+	start = !!(raw_8201 & NSS_PHY_MMD1_8201_FR_START);
+
+	status->negotiated = (ieee_adv_bitmap & ieee_lp_bitmap) |
+		(cisco_adv_bitmap & cisco_lp_bitmap);
+
+	status->active = (status->ieee_enabled || status->cisco_enabled) &&
+		start;
+	status->success = success;
+	status->fail = fail;
+
+	spin_lock_bh(&nss_phydev->fr_sw_cnt_lock);
+	status->rx_count = nss_phydev->fr_sw_cnt.rx_count;
+	status->tx_count = nss_phydev->fr_sw_cnt.tx_count;
+	status->rx_total = nss_phydev->fr_sw_cnt.rx_total;
+	status->tx_total = nss_phydev->fr_sw_cnt.tx_total;
+	spin_unlock_bh(&nss_phydev->fr_sw_cnt_lock);
+
+	return 0;
+}
+
+/* MMD1.93 is read-clear: each read returns the rx/tx retrain count
+ * accumulated since the previous read, then resets to 0 in hardware.
+ */
+static int nss_phy_c45_common_fr_cnt_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_fr_cnt *cnt)
+{
+	int raw_93 = 0;
+
+	if (!cnt)
+		return -NSS_PHY_EINVAL;
+
+	memset(cnt, 0, sizeof(*cnt));
+
+	if (nss_phydev_link_get(nss_phydev) != NSS_PHY_FALSE &&
+		nss_phydev_speed_get(nss_phydev) < NSS_PHY_SPEED_2500)
+		return -NSS_PHY_EOPNOTSUPP;
+
+	raw_93 = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD1_NUM,
+		NSS_PHY_MMD1_FR_CONTROL);
+	if (raw_93 < 0)
+		return raw_93;
+
+	cnt->rx_count = (raw_93 & NSS_PHY_MMD1_FR_RX_CNT_MASK) >>
+		NSS_PHY_MMD1_FR_RX_CNT_SHIFT;
+	cnt->tx_count = (raw_93 & NSS_PHY_MMD1_FR_TX_CNT_MASK) >>
+		NSS_PHY_MMD1_FR_TX_CNT_SHIFT;
+
+	if (cnt->rx_count == NSS_PHY_MMD1_FR_CNT_MAX ||
+	    cnt->tx_count == NSS_PHY_MMD1_FR_CNT_MAX)
+		nss_phy_warn(nss_phydev,
+			"FR counter saturated (rx=%u tx=%u): retrain rate >31/s, counts may be lost\n",
+			cnt->rx_count, cnt->tx_count);
+
+	return 0;
+}
+
+/* Accumulates the read-clear rx/tx retrain delta into nss_phydev->fr_sw_cnt:
+ * rx/tx_total are cumulative across all link sessions.
+ * rx/tx_count count events since the most recent link-up; on a link-up
+ * transition the pre-link-down residual delta is added to _total only.
+ *
+ * Hardware counter is 5 bits (max 31 per read); with a 1-second poll period
+ * up to 31 retrains/s can be captured without loss.
+ */
+int nss_phy_c45_common_fr_cnt_poll(struct nss_phy_device *nss_phydev,
+	bool link_up_transition)
+{
+	struct nss_phy_fr_cnt cnt = {0};
+	int ret;
+
+	ret = nss_phy_c45_common_fr_cnt_get(nss_phydev, &cnt);
+
+	spin_lock_bh(&nss_phydev->fr_sw_cnt_lock);
+	if (!ret) {
+		nss_phydev->fr_sw_cnt.rx_total += cnt.rx_count;
+		nss_phydev->fr_sw_cnt.tx_total += cnt.tx_count;
+		if (link_up_transition) {
+			/* Discard the pre-link-down residual from the
+			 * since-link-up counters; _total already got it above.
+			 */
+			nss_phydev->fr_sw_cnt.rx_count = 0;
+			nss_phydev->fr_sw_cnt.tx_count = 0;
+		} else {
+			nss_phydev->fr_sw_cnt.rx_count += cnt.rx_count;
+			nss_phydev->fr_sw_cnt.tx_count += cnt.tx_count;
+		}
+	}
+	spin_unlock_bh(&nss_phydev->fr_sw_cnt_lock);
+
+	return ret;
+}
+
+int nss_phy_c45_common_fr_trigger(struct nss_phy_device *nss_phydev)
+{
+	bool ieee_enabled, cisco_enabled;
+	int ret = 0;
+
+	if (nss_phydev_link_get(nss_phydev) == NSS_PHY_FALSE ||
+		nss_phydev_speed_get(nss_phydev) < NSS_PHY_SPEED_2500)
+		return -NSS_PHY_EOPNOTSUPP;
+
+	ieee_enabled = nss_phy_c45_common_fr_ieee_mode_get(nss_phydev);
+	cisco_enabled = nss_phy_c45_common_fr_cisco_mode_get(nss_phydev);
+
+	/* Both IEEE and Cisco FR disabled; nothing to trigger. */
+	if (!(ieee_enabled || cisco_enabled))
+		return 0;
+
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_FR_TRIGGER_REG, NSS_PHY_MMD3_FR_TRIGGER, 0);
+	if (ret < 0)
+		return ret;
+
+	return nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_FR_TRIGGER_REG, NSS_PHY_MMD3_FR_TRIGGER,
+		NSS_PHY_MMD3_FR_TRIGGER);
+}

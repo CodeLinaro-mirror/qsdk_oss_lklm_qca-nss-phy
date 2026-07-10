@@ -386,6 +386,12 @@ bool nss_phy_support_2500(struct nss_phy_device *nss_phydev)
 		nss_phydev->phydev->supported));
 }
 
+bool nss_phy_support_5g(struct nss_phy_device *nss_phydev)
+{
+	return (linkmode_test_bit(ETHTOOL_LINK_MODE_5000baseT_Full_BIT,
+		nss_phydev->phydev->supported));
+}
+
 bool nss_phy_support_10g(struct nss_phy_device *nss_phydev)
 {
 	return (linkmode_test_bit(ETHTOOL_LINK_MODE_10000baseT_Full_BIT,

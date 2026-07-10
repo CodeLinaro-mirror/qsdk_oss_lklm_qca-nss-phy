@@ -13,10 +13,46 @@ extern "C" {
 #include <linux/phy.h>
 #include <linux/pinctrl/pinconf-generic.h>
 #include <linux/sysfs.h>
+#include <linux/spinlock.h>
+
+/* rx_count/tx_count are the since-last-link-up software-accumulated FR
+ * counters (reset to 0 on a link-up transition); rx_total/tx_total are
+ * never reset. Both are maintained by nss_phy_c45_common_fr_cnt_poll()
+ * from the read-clear hardware delta (see struct nss_phy_fr_cnt).
+ */
+struct nss_phy_fr_sw_cnt {
+	u64 rx_count;
+	u64 tx_count;
+	u64 rx_total;
+	u64 tx_total;
+};
 
 struct nss_phy_device {
 	struct phy_device *phydev;
 	atomic64_t adjust_link_post_count;
+	/*
+	 * Software cache of the Fast Retrain enable state set by the most
+	 * recent nss_phy_c45_common_fr_cfg_set() call. MMD1.93 is a
+	 * read-clear register (see nss_phy_c45_common_fr_cnt_get()), so
+	 * fr_cfg_get()/fr_status_get()/fr_trigger() must derive "is FR
+	 * enabled" from this cache instead of reading MMD1.93 again.
+	 */
+	bool fr_ieee_enabled;
+	bool fr_cisco_enabled;
+	/*
+	 * Software-accumulated FR rx/tx counters, updated once per second by
+	 * status_poll_work and read by nss_phy_c45_common_fr_status_get().
+	 * fr_sw_cnt_lock protects fr_sw_cnt against that writer/reader race.
+	 */
+	struct nss_phy_fr_sw_cnt fr_sw_cnt;
+	spinlock_t fr_sw_cnt_lock;
+	/*
+	 * Periodic status poll work — always running while the PHY is bound.
+	 * Tracks the previous link state to detect transitions; currently
+	 * handles FR counter accumulation only.
+	 */
+	struct delayed_work status_poll_work;
+	bool status_poll_prev_link;
 };
 
 #define nss_phy_err(nss_phydev, format, args...)	\

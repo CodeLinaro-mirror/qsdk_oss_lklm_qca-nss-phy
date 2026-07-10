@@ -47,6 +47,21 @@ extern "C" {
 #define XGE_EEE		(EEE_2500BASE_T | EEE_5000BASE_T | EEE_10000BASE_T)
 #define ALL_SPEED_EEE		(GE_EEE | XGE_EEE)
 
+/* IEEE FR speed/bypass bits (0x40-0x800) and Cisco FR ability bits
+ * (0x1000-0x8000) are disjoint, so nss_phy_fr_status::negotiated can OR
+ * them together into a single bitmap without collision.
+ */
+#define NSS_PHY_FR_2500BASE_T			0x40
+#define NSS_PHY_FR_5000BASE_T			0x80
+#define NSS_PHY_FR_10000BASE_T			0x100
+#define NSS_PHY_FR_THP_BYPASS_2500BASE_T	0x200
+#define NSS_PHY_FR_THP_BYPASS_5000BASE_T	0x400
+#define NSS_PHY_FR_THP_BYPASS_10000BASE_T	0x800
+#define NSS_PHY_FR_CISCO_ABILITY		0x1000
+#define NSS_PHY_FR_CISCO_THP_BYPASS_ABILITY	0x2000
+#define NSS_PHY_FR_CISCO_EXTEND_WAIT_ABILITY	0x4000
+#define NSS_PHY_FR_CISCO_DISABLE_TIMER_ABILITY	0x8000
+
 #define LED_SOURCE_MAX		0x3
 #define LED_FULL_DUPLEX_LIGHT_EN		0
 #define LED_HALF_DUPLEX_LIGHT_EN		1
@@ -255,6 +270,45 @@ struct nss_phy_global_manager {
 	struct dentry *debugfs_root;
 };
 
+struct nss_phy_fr_cfg {
+	u32 ieee_fr_en;
+	u32 cisco_fr_en;
+};
+
+/* Field layout mirrors fal_port_fr_status_t (enum a_bool_t for every
+ * bool-ish field, same field order) so ssdk can pass this struct straight
+ * through with a (void*) cast instead of copying field-by-field.
+ * enum a_bool_t is typedef'd as a plain enum in aos_types.h, which GCC
+ * sizes as int (4 bytes) — same width as u32.  A BUILD_BUG_ON in
+ * nss_phy_c45_common.c guards this assumption.
+ */
+struct nss_phy_fr_status {
+	u32 ieee_enabled;
+	u32 cisco_enabled;
+	u32 negotiated;
+	u32 active;
+	u32 success;
+	u32 fail;
+	/* Software-accumulated rx/tx retrain counters; see struct
+	 * nss_phy_fr_sw_cnt.
+	 */
+	u64 rx_count;
+	u64 tx_count;
+	u64 rx_total;
+	u64 tx_total;
+};
+
+/* rx_count/tx_count are read from a read-clear hardware register: each
+ * read returns the count accumulated since the previous read, then the
+ * PHY resets it to 0. Kept separate from nss_phy_fr_status so that
+ * status-only queries never touch this register and steal the delta
+ * the per-second polling op relies on.
+ */
+struct nss_phy_fr_cnt {
+	u32 rx_count;
+	u32 tx_count;
+};
+
 struct nss_phy_ops {
 	int (*hibernation_set)(struct nss_phy_device *nss_phydev, u32 enable);
 	int (*hibernation_get)(struct nss_phy_device *nss_phydev, u32 *enable);
@@ -338,6 +392,13 @@ struct nss_phy_ops {
 	int (*link_status_get)(struct nss_phy_device *nss_phydev, u32 *status);
 	int (*adjust_link_post)(struct nss_phy_device *nss_phydev);
 	struct nss_phy_ptp_ops *ptp_ops;
+	int (*fr_cfg_set)(struct nss_phy_device *nss_phydev,
+		struct nss_phy_fr_cfg *cfg);
+	int (*fr_cfg_get)(struct nss_phy_device *nss_phydev,
+		struct nss_phy_fr_cfg *cfg);
+	int (*fr_status_get)(struct nss_phy_device *nss_phydev,
+		struct nss_phy_fr_status *status);
+	int (*fr_trigger)(struct nss_phy_device *nss_phydev);
 };
 #ifdef __cplusplus
 }

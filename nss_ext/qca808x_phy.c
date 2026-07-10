@@ -1,17 +1,6 @@
 /*
- * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
  */
 
 #include "nss_phy.h"
@@ -548,6 +537,10 @@ int qca808x_phy_ops_init(struct nss_phy_ops *ops)
 	ops->intr_mask_set = qca808x_phy_intr_mask_set;
 	ops->intr_mask_get = qca808x_phy_intr_mask_get;
 	ops->intr_status_get = qca808x_phy_intr_status_get;
+	ops->fr_cfg_set = nss_phy_c45_common_fr_cfg_set;
+	ops->fr_cfg_get = nss_phy_c45_common_fr_cfg_get;
+	ops->fr_status_get = nss_phy_c45_common_fr_status_get;
+	ops->fr_trigger = nss_phy_c45_common_fr_trigger;
 
 	return 0;
 }
