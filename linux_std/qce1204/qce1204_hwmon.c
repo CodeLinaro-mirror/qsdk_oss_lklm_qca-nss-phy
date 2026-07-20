@@ -8,6 +8,10 @@
 #include <linux/ctype.h>
 #include "qce1204.h"
 
+#define QCE1204_TEMP_WARN_DEFAULT_MDEG	100000	/* 100C */
+#define QCE1204_TEMP_CRIT_DEFAULT_MDEG	120000	/* 120C */
+#define QCE1204_TEMP_MIN_MDEG		40000	/* 40C: reject implausibly low thresholds */
+
 #define QCE1204_VDD4BLOW_EN					0x902038
 #define QCE1204_POWER_DOWN					BIT(2)
 #define QCE1204_POWER_EN					BIT(3)
@@ -42,6 +46,9 @@ static umode_t qce1204_hwmon_is_visible(const void *data,
 	if (attr == hwmon_temp_input)
 		return 0444;
 
+	if (attr == hwmon_temp_max || attr == hwmon_temp_crit)
+		return 0644;
+
 	return 0;
 }
 
@@ -50,7 +57,7 @@ static long qce1204_hwmon_temp_read(struct phy_device *phydev, int sensor_id)
 	u32 phy_data0 = 0, phy_data1 = 0, slope = 0, index = 0;
 	long code = 0, czero = 0, temp = 0;
 
-	if (sensor_id >= 2)
+	if (sensor_id >= QCE1204_SENSORS_NUM)
 		return -EOPNOTSUPP;
 	index = qce1204_phy_channel_get(phydev);
 	phy_lock_mdio_bus(phydev);
@@ -58,7 +65,7 @@ static long qce1204_hwmon_temp_read(struct phy_device *phydev, int sensor_id)
 		QCE1204_TSENS_GLOBAL_EN | QCE1204_TSENSORS_EN,
 		QCE1204_TSENS_GLOBAL_EN | QCE1204_TSENSORS_EN);
 	/* Allow all sensors (SOC and PHY) to stabilize after TSENS_CTRL enable */
-	mdelay(1);
+	usleep_range(1000, 2000);
 	if (sensor_id == 0) {
 		phy_data0 = __qce1204_soc_read(phydev, QCE1204_TSENS_0_STATUS);
 		phy_data1 = __qce1204_soc_read(phydev, QCE1204_TSENS_0_CONVERSION);
@@ -69,26 +76,83 @@ static long qce1204_hwmon_temp_read(struct phy_device *phydev, int sensor_id)
 	code = phy_data0 & QCE1204_LAST_TEMP_MASK;
 	czero = phy_data1 & QCE1204_CZERO_MASK;
 	slope = (phy_data1 & QCE1204_SLOPE_MASK) >> 10;
+	/* slope = 921600/diff_90c encodes 0.1°C per ADC code × 1024;
+	 * multiply by 100 to convert to milli-Celsius as hwmon requires. */
 	temp = (code - czero) * slope >> 10;
 	__qce1204_soc_modify(phydev, QCE1204_TSENS_CTRL, QCE1204_TSENS_GLOBAL_EN | QCE1204_TSENSORS_EN, 0);
 	phy_unlock_mdio_bus(phydev);
 
-	return temp;
+	return temp * 100;
 }
 
 static int qce1204_hwmon_read(struct device *dev, enum hwmon_sensor_types type,
 	u32 attr, int sensor_id, long *value)
 {
 	struct phy_device *phydev = dev_get_drvdata(dev);
+	struct qce1204_priv *priv;
 
 	if (!phydev)
 		return -EINVAL;
+	priv = phydev->priv;
+	if (!priv)
+		return -EINVAL;
 	if (type != hwmon_temp)
 		return -EOPNOTSUPP;
-	if (attr == hwmon_temp_input)
-		*value = qce1204_hwmon_temp_read(phydev, sensor_id);
-	else
+	if (sensor_id >= QCE1204_SENSORS_NUM)
 		return -EOPNOTSUPP;
+
+	switch (attr) {
+	case hwmon_temp_input:
+		*value = qce1204_hwmon_temp_read(phydev, sensor_id);
+		break;
+	case hwmon_temp_max:
+		*value = priv->temp_warn_mdeg[sensor_id];
+		break;
+	case hwmon_temp_crit:
+		*value = priv->temp_crit_mdeg[sensor_id];
+		break;
+	default:
+		return -EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
+static int qce1204_hwmon_write(struct device *dev, enum hwmon_sensor_types type,
+	u32 attr, int sensor_id, long value)
+{
+	struct phy_device *phydev = dev_get_drvdata(dev);
+	struct qce1204_priv *priv;
+
+	if (!phydev)
+		return -EINVAL;
+	priv = phydev->priv;
+	if (!priv)
+		return -EINVAL;
+	if (type != hwmon_temp)
+		return -EOPNOTSUPP;
+	if (sensor_id >= QCE1204_SENSORS_NUM)
+		return -EOPNOTSUPP;
+
+	switch (attr) {
+	case hwmon_temp_max:
+		/* Enforce crit - warn >= HYSTERESIS so the recovery band always
+		 * clears the warn threshold, preventing oscillation near warn.
+		 */
+		if (value < QCE1204_TEMP_MIN_MDEG ||
+		    value > priv->temp_crit_mdeg[sensor_id] - QCE1204_THERMAL_HYSTERESIS_MDEG)
+			return -EINVAL;
+		priv->temp_warn_mdeg[sensor_id] = value;
+		break;
+	case hwmon_temp_crit:
+		if (value < QCE1204_TEMP_MIN_MDEG ||
+		    value < priv->temp_warn_mdeg[sensor_id] + QCE1204_THERMAL_HYSTERESIS_MDEG)
+			return -EINVAL;
+		priv->temp_crit_mdeg[sensor_id] = value;
+		break;
+	default:
+		return -EOPNOTSUPP;
+	}
 
 	return 0;
 }
@@ -96,6 +160,7 @@ static int qce1204_hwmon_read(struct device *dev, enum hwmon_sensor_types type,
 static const struct hwmon_ops qce1204_hwmon_ops = {
 	.is_visible = qce1204_hwmon_is_visible,
 	.read = qce1204_hwmon_read,
+	.write = qce1204_hwmon_write,
 };
 
 static u32 qce1204_hwmon_chip_config[] = {
@@ -109,8 +174,8 @@ static const struct hwmon_channel_info qce1204_hwmon_chip = {
 };
 
 static u32 qce1204_hwmon_temp_config[] = {
-	HWMON_T_INPUT,
-	HWMON_T_INPUT,
+	HWMON_T_INPUT | HWMON_T_MAX | HWMON_T_CRIT,
+	HWMON_T_INPUT | HWMON_T_MAX | HWMON_T_CRIT,
 	0,
 };
 
@@ -345,6 +410,7 @@ int qce1204_hwmon_probe(struct phy_device *phydev)
 	struct qce1204_priv *priv = phydev->priv;
 	struct device *dev = &phydev->mdio.dev;
 	char *hwmon_name;
+	int i;
 
 	hwmon_name = devm_kstrdup(dev, dev_name(dev), GFP_KERNEL);
 	if (!hwmon_name)
@@ -352,8 +418,106 @@ int qce1204_hwmon_probe(struct phy_device *phydev)
 
 	qce1204_sanitize_hwmon_name(hwmon_name);
 
+	/* Initialize thresholds before hwmon registration so thermal_check()
+	 * never sees zero-valued thresholds even if registration fails.
+	 */
+	for (i = 0; i < QCE1204_SENSORS_NUM; i++) {
+		priv->temp_warn_mdeg[i] = QCE1204_TEMP_WARN_DEFAULT_MDEG;
+		priv->temp_crit_mdeg[i] = QCE1204_TEMP_CRIT_DEFAULT_MDEG;
+	}
+	priv->temp_shutdown_latched = false;
+
 	priv->hwmon_dev = devm_hwmon_device_register_with_info(dev, hwmon_name,
 							       phydev, &qce1204_hwmon_chip_info, NULL);
+	if (IS_ERR(priv->hwmon_dev))
+		return PTR_ERR(priv->hwmon_dev);
 
-	return PTR_ERR_OR_ZERO(priv->hwmon_dev);
+	return 0;
+}
+
+/*
+ * qce1204_thermal_power_down_locked() - lock-free thermal-shutdown core.
+ *
+ * genphy_c45_pma_suspend()/_resume() only take the MDIO bus lock
+ * (phy_lock_mdio_bus()), not phydev->lock, so it is safe to call them here
+ * from qce1204_thermal_check(), which itself runs from read_status() with
+ * phydev->lock already held.
+ *
+ * Limitation: temp_shutdown_latched is a software-only flag and is NOT
+ * synchronized with the standard phylib suspend/resume state
+ * (phydev->state == PHY_HALTED).  If the system calls phy_suspend() or
+ * phy_resume() independently (e.g. via ethtool, system sleep), the latch
+ * state may become inconsistent.  This is a known limitation of the
+ * best-effort software thermal path.
+ */
+static void qce1204_thermal_power_down_locked(struct phy_device *phydev)
+{
+	struct qce1204_priv *priv = phydev->priv;
+
+	if (priv->temp_shutdown_latched)
+		return;
+	priv->temp_shutdown_latched = true;
+	if (genphy_c45_pma_suspend(phydev)) {
+		phydev_err(phydev, "thermal: suspend failed, shutdown not latched\n");
+		priv->temp_shutdown_latched = false;
+	}
+}
+
+static void qce1204_thermal_power_up_locked(struct phy_device *phydev)
+{
+	struct qce1204_priv *priv = phydev->priv;
+
+	if (!priv->temp_shutdown_latched)
+		return;
+	priv->temp_shutdown_latched = false;
+	if (genphy_c45_pma_resume(phydev)) {
+		phydev_err(phydev, "thermal: resume failed, shutdown remains latched\n");
+		priv->temp_shutdown_latched = true;
+	}
+}
+
+/*
+ * qce1204_thermal_check() - best-effort SW over-temperature poll, called
+ * from the tail of qce1204_phy_read_status(). Never fails/propagates an
+ * error to its caller.
+ */
+void qce1204_thermal_check(struct phy_device *phydev)
+{
+	struct qce1204_priv *priv = phydev->priv;
+	bool any_crit = false, all_recovered = true;
+	int i;
+
+	if (!priv)
+		return;
+
+	for (i = 0; i < QCE1204_SENSORS_NUM; i++) {
+		long temp = qce1204_hwmon_temp_read(phydev, i);
+
+		if (temp >= priv->temp_crit_mdeg[i]) {
+			dev_err_ratelimited(&phydev->mdio.dev,
+				"thermal: sensor %d critical temp %ld mC >= %ld mC, shutting down\n",
+				i, temp, priv->temp_crit_mdeg[i]);
+			any_crit = true;
+		} else if (temp >= priv->temp_warn_mdeg[i]) {
+			dev_warn_ratelimited(&phydev->mdio.dev,
+				"thermal: sensor %d warning temp %ld mC >= %ld mC\n",
+				i, temp, priv->temp_warn_mdeg[i]);
+		}
+
+		/* Recovery is measured from crit, not warn, to avoid hysteresis
+		 * asymmetry when warn and crit are far apart.  Strict `>` (not `>=`)
+		 * is intentional: a temperature exactly at crit - HYSTERESIS is not
+		 * yet considered recovered, matching the inclusive `>=` used for
+		 * shutdown and providing a small additional margin against noise.
+		 */
+		if (temp > (priv->temp_crit_mdeg[i] - QCE1204_THERMAL_HYSTERESIS_MDEG))
+			all_recovered = false;
+	}
+
+	if (!priv->temp_shutdown_latched && any_crit) {
+		qce1204_thermal_power_down_locked(phydev);
+	} else if (priv->temp_shutdown_latched && all_recovered) {
+		phydev_warn(phydev, "thermal: all sensors recovered, powering up\n");
+		qce1204_thermal_power_up_locked(phydev);
+	}
 }

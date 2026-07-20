@@ -1387,7 +1387,7 @@ static int qca81xx_phy_ana_capacitance_update(struct phy_device *phydev)
 	return ret;
 }
 
-static int qca81xx_phy_suspend(struct phy_device *phydev)
+int qca81xx_phy_suspend(struct phy_device *phydev)
 {
 	int ret;
 
@@ -1407,7 +1407,7 @@ static int qca81xx_phy_suspend(struct phy_device *phydev)
 	return genphy_c45_pma_suspend(phydev);
 }
 
-static int qca81xx_phy_resume(struct phy_device *phydev)
+int qca81xx_phy_resume(struct phy_device *phydev)
 {
 	int ret;
 
@@ -1856,6 +1856,10 @@ static int qca81xx_phy_read_status(struct phy_device *phydev)
 			&((struct qca81xx_private *)phydev->priv)->flap_stats,
 			old_link, phydev->link);
 	}
+
+#if IS_ENABLED(CONFIG_HWMON)
+	qca81xx_thermal_check(phydev);
+#endif
 
 	return 0;
 }

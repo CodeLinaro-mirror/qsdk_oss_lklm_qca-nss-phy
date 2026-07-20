@@ -10,6 +10,10 @@
 #include <linux/build_bug.h>
 
 #define QCA8111_PHY		0x004dd1c0
+#if IS_ENABLED(CONFIG_HWMON)
+#define QCA81XX_SENSORS_NUM		3
+#define QCA81XX_THERMAL_HYSTERESIS_MDEG	5000	/* 5C */
+#endif
 /* in QCOM MDIO bus driver, bit29~31 is for soc type, 2 is for laguna */
 /* and bit24~28 is for phy address, 0~23 is for soc address */
 #define TO_QCA81XX_PHY_SOC_ADDR(addr, reg)		\
@@ -117,6 +121,11 @@ struct qca81xx_private {
 	struct qca81xx_link_flap_stats flap_stats;
 	enum qca81xx_init_state init_state;
 	bool pcs_assert;
+#if IS_ENABLED(CONFIG_HWMON)
+	long temp_warn_mdeg[QCA81XX_SENSORS_NUM];	/* milli-C, default 100000 */
+	long temp_crit_mdeg[QCA81XX_SENSORS_NUM];	/* milli-C, default 120000 */
+	bool temp_shutdown_latched;			/* set on shutdown, cleared on auto-recover */
+#endif
 };
 
 /*
@@ -127,6 +136,11 @@ static_assert(offsetof(struct qca81xx_private, sku) == 0,
 	      "qca81xx_private.sku must stay the first member (MACsec shadow struct)");
 
 ssize_t qca81xx_phy_show_snr(struct device *dev, struct device_attribute *attr, char *buf);
+int qca81xx_phy_suspend(struct phy_device *phydev);
+int qca81xx_phy_resume(struct phy_device *phydev);
+#if IS_ENABLED(CONFIG_HWMON)
+void qca81xx_thermal_check(struct phy_device *phydev);
+#endif
 
 /*
  * Shared link-flap statistics helpers used by qce1204/ipq52xx.

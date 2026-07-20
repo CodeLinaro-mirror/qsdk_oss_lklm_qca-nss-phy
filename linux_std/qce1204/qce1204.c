@@ -2912,6 +2912,10 @@ int qce1204_phy_read_status(struct phy_device *phydev)
 		}
 	}
 
+#if IS_ENABLED(CONFIG_HWMON)
+	qce1204_thermal_check(phydev);
+#endif
+
 	return 0;
 }
 

@@ -12,6 +12,10 @@
 #include <linux/build_bug.h>
 #include "../qca81xx/qca81xx.h"
 
+#if IS_ENABLED(CONFIG_HWMON)
+#define QCE1204_SENSORS_NUM			2
+#endif
+
 #define QCE1204_PHY				0x004dd190
 #define QCE1204_TLMM_BASE			0x400000
 #define QCE1204_TLMM_GPIO_OFFSET		0x1000
@@ -47,6 +51,9 @@ struct qce1204_priv {
 	struct qce1204_clk_data clk_data;
 #if IS_ENABLED(CONFIG_HWMON)
 	struct device *hwmon_dev;
+	long temp_warn_mdeg[QCE1204_SENSORS_NUM];
+	long temp_crit_mdeg[QCE1204_SENSORS_NUM];
+	bool temp_shutdown_latched;
 #endif
 	struct qca81xx_link_flap_stats flap_stats;
 };
@@ -135,9 +142,11 @@ void qce1204_phy_remove(struct phy_device *phydev);
 int qce1204_phy_config_init(struct phy_device *phydev);
 int qce1204_phy_read_status(struct phy_device *phydev);
 #if IS_ENABLED(CONFIG_HWMON)
+#define QCE1204_THERMAL_HYSTERESIS_MDEG		5000	/* 5C, mirrors QCA81XX_THERMAL_HYSTERESIS_MDEG */
 int qce1204_hwmon_hw_init_once(struct phy_device *phydev);
 int qce1204_hwmon_hw_init(struct phy_device *phydev);
 int qce1204_hwmon_probe(struct phy_device *phydev);
+void qce1204_thermal_check(struct phy_device *phydev);
 #endif
 
 struct ipq52xx_phy_priv {
