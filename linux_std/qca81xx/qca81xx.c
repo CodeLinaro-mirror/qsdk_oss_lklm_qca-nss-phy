@@ -14,6 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <linux/version.h>
 #include <linux/ethtool_netlink.h>
 #include "qca81xx.h"
 #include <linux/etherdevice.h>
@@ -1048,7 +1049,7 @@ static int qca81xx_pcs_usxgmii_init(struct phy_device *phydev)
 		10000, 500000, true, phydev, MDIO_MMD_PCS,
 		QCA81XX_PCS_MMD3_10GBASE_R_PCS_STATUS1);
 	if (ret < 0)
-		return ret;
+		phydev_err(phydev, "PCS 10GBASE-R poll failed\n");
 	ret = qca81xx_pcs_modify_mmd(phydev, MDIO_MMD_PCS,
 		QCA81XX_PCS_MMD3_DIG_CTRL1,
 		QCA81XX_PCS_MMD3_USXGMII_EN,
@@ -2468,8 +2469,10 @@ static int qca81xx_led_parse_netdev(struct phy_device *phydev,
 		*offload_trigger |= QCA81XX_LED_SPEED100_ON;
 	if (test_bit(TRIGGER_NETDEV_LINK_1000, &rules))
 		*offload_trigger |= QCA81XX_LED_SPEED1000_ON;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
 	if (test_bit(TRIGGER_NETDEV_LINK_2500, &rules))
 		*offload_trigger |= QCA81XX_LED_SPEED2500_ON;
+#endif
 	if (test_bit(TRIGGER_NETDEV_FULL_DUPLEX, &rules))
 		*offload_trigger |= QCA81XX_LED_FULL_DUPLEX_ON;
 
@@ -2549,8 +2552,10 @@ static int qca81xx_led_hw_control_get(struct phy_device *phydev, u8 index,
 		set_bit(TRIGGER_NETDEV_LINK_100, rules);
 	if (val & QCA81XX_LED_SPEED1000_ON)
 		set_bit(TRIGGER_NETDEV_LINK_1000, rules);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
 	if (val & QCA81XX_LED_SPEED2500_ON)
 		set_bit(TRIGGER_NETDEV_LINK_2500, rules);
+#endif
 	if (val & QCA81XX_LED_FULL_DUPLEX_ON)
 		set_bit(TRIGGER_NETDEV_FULL_DUPLEX, rules);
 
@@ -2661,6 +2666,7 @@ static int qca81xx_led_blink_set(struct phy_device *phydev, u8 index,
 		QCA81XX_LED_FORCE_EN | QCA81XX_LED_FORCE_BLINK);
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
 static int qca81xx_led_polarity_set(struct phy_device *phydev, int index,
 	unsigned long modes)
 {
@@ -2682,6 +2688,7 @@ static int qca81xx_led_polarity_set(struct phy_device *phydev, int index,
 		QCA81XX_LED_ACTIVE_HIGH,
 		active_low ? 0 : QCA81XX_LED_ACTIVE_HIGH);
 }
+#endif
 
 static struct phy_driver qca81xx_phy_driver[] = {
 {
@@ -2712,7 +2719,9 @@ static struct phy_driver qca81xx_phy_driver[] = {
 	.led_hw_is_supported = qca81xx_led_hw_is_supported,
 	.led_hw_control_set = qca81xx_led_hw_control_set,
 	.led_hw_control_get = qca81xx_led_hw_control_get,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
 	.led_polarity_set = qca81xx_led_polarity_set,
+#endif
 	/* to fix the reboot issue of laguna SFP */
 	.mdiodrv.driver.shutdown = qca81xx_phy_shutdown,
 },
