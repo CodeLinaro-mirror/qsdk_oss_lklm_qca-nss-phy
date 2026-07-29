@@ -1447,7 +1447,7 @@ static int qca_macsec_update_rxsc(struct phy_device *phydev,
 	if (ret)
 		return ret;
 
-	val = secy->replay_protect ? SYS_FRAME_PROTECT_EN : 0;
+	val = secy->replay_protect ? SYS_REPLAY_PROTECT_EN : 0;
 	ret = phy_modify_mmd(phydev, MDIO_MMD_PCS,
 			     MACSEC_SYS_CONFIG, SYS_REPLAY_PROTECT_EN, val);
 	if (ret)
