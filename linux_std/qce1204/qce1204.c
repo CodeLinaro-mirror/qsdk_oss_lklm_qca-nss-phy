@@ -176,12 +176,13 @@ struct reset_init_entry {
 #define QCE1204_PCS_MMD_MII_AN_INT_MSK					0x8001
 #define QCE1204_PCS_MMD_MII_ERR_SEL					0x8002
 #define QCE1204_PCS_MMD_MII_XAUI_MODE_CTRL				0x8004
+/* bit 0 in MII_AN_INT_MSK (enable) and MII_ERR_SEL (status);
+ * qce1204 neither enables the interrupt nor polls/clears the status */
 #define QCE1204_PCS_MMD_AN_COMPLETE_INT					0x1
 #define QCE1204_PCS_MMD_MII_4BITS_CTRL					0x0
 #define QCE1204_PCS_MMD_TX_CONFIG_CTRL					0x8
 #define QCE1204_PCS_MMD_MII_AN_ENABLE					0x1000
 #define QCE1204_PCS_MMD_MII_AN_RESTART					0x200
-#define QCE1204_PCS_MMD_MII_AN_COMPLETE_INT				0x1
 #define QCE1204_PCS_MMD_QUSGMII_FIFO_RESET				0x20
 #define QCE1204_PCS_MMD_TX_IPG_CHECK_DISABLE				0x1
 #define QCE1204_PCS_MMD_PHY_MODE_CTRL_EN				0x1
@@ -1674,18 +1675,17 @@ static int qce1204_pcs_qusgmii_mode_set(struct phy_device *phydev)
 	if (ret < 0)
 		return ret;
 	/*
-	* enable auto-neg complete interrupt,Mii using mii-4bits,
+	* disable auto-neg complete interrupt, enable Mii using mii-4bits,
 	* configure as PHY mode, enable autoneg ability
 	*/
 	for (channel = 1; channel <= 4; channel++)
 	{
 		/*
-		* enable auto-neg complete interrupt,Mii using mii-4bits,
+		* disable auto-neg complete interrupt, enable Mii using mii-4bits,
 		* configure as PHY mode
 		*/
 		ret = qce1204_pcs_modify_channel_mmd(phydev, channel,
 			QCE1204_PCS_MMD_MII_AN_INT_MSK, 0x109,
-			QCE1204_PCS_MMD_AN_COMPLETE_INT |
 			QCE1204_PCS_MMD_MII_4BITS_CTRL |
 			QCE1204_PCS_MMD_TX_CONFIG_CTRL);
 		if (ret < 0)
