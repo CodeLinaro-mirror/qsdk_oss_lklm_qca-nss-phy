@@ -47,6 +47,14 @@ struct nss_phy_device {
 	struct nss_phy_fr_sw_cnt fr_sw_cnt;
 	spinlock_t fr_sw_cnt_lock;
 	/*
+	 * Software-cached autonegotiation failure counter, updated by
+	 * status_poll_work on each link state transition by reading the
+	 * hardware AN failure count register. Read by
+	 * nss_phy_common_an_fail_counter_get(). atomic64_t avoids a
+	 * separate lock for this single-writer/many-reader counter.
+	 */
+	atomic64_t an_fail_count;
+	/*
 	 * Periodic status poll work — always running while the PHY is bound.
 	 * Tracks the previous link state to detect transitions; currently
 	 * handles FR counter accumulation only.

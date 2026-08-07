@@ -958,3 +958,38 @@ int nss_phy_common_hibernation_status_get(struct nss_phy_device *nss_phydev,
 
 	return 0;
 }
+
+/* Reads AN failure count from NSS_PHY_DEBUG_CONTROL_REGISTER0 bits[7:4] on
+ * each link state transition. The hardware resets this field to zero after
+ * a successful link-up, so the latest snapshot overwrites the previous value.
+ */
+void nss_phy_common_an_fail_cnt_poll(struct nss_phy_device *nss_phydev,
+	bool link_transition)
+{
+	int hw_cnt;
+
+	if (!link_transition)
+		return;
+
+	hw_cnt = nss_phy_read_debug(nss_phydev, NSS_PHY_DEBUG_CONTROL_REGISTER0);
+	if (hw_cnt < 0)
+		return;
+
+	atomic64_set(&nss_phydev->an_fail_count, (hw_cnt & NSS_PHY_DEBUG_AN_FAIL_CNT_MASK) >> 4);
+}
+
+int nss_phy_common_an_fail_counter_get(struct nss_phy_device *nss_phydev,
+	u64 *count)
+{
+	if (!count)
+		return -NSS_PHY_EINVAL;
+
+	*count = atomic64_read(&nss_phydev->an_fail_count);
+
+	return 0;
+}
+
+void nss_phy_common_an_fail_counter_reset(struct nss_phy_device *nss_phydev)
+{
+	atomic64_set(&nss_phydev->an_fail_count, 0);
+}

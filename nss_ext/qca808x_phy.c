@@ -289,7 +289,7 @@ static int qca808x_phy_pll_on(struct nss_phy_device *nss_phydev)
 		return -NSS_PHY_EOPNOTSUPP;
 
 	ret = nss_phy_modify_debug(nss_phydev,
-		QCA8084_PHY_DEBUG_CONTROL_REGISTER0,
+		NSS_PHY_DEBUG_CONTROL_REGISTER0,
 		QCA8084_PHY_DEBUG_1588_P2_EN,
 		QCA8084_PHY_DEBUG_1588_P2_EN);
 	if (ret < 0)
@@ -313,7 +313,7 @@ static int qca808x_phy_pll_off(struct nss_phy_device *nss_phydev)
 		return -NSS_PHY_EOPNOTSUPP;
 
 	ret = nss_phy_modify_debug(nss_phydev,
-		QCA8084_PHY_DEBUG_CONTROL_REGISTER0,
+		NSS_PHY_DEBUG_CONTROL_REGISTER0,
 		QCA8084_PHY_DEBUG_1588_P2_EN, 0);
 	if (ret < 0)
 		return ret;
@@ -541,6 +541,10 @@ int qca808x_phy_ops_init(struct nss_phy_ops *ops)
 	ops->fr_cfg_get = nss_phy_c45_common_fr_cfg_get;
 	ops->fr_status_get = nss_phy_c45_common_fr_status_get;
 	ops->fr_trigger = nss_phy_c45_common_fr_trigger;
+	ops->pcs_status_get = nss_phy_c45_common_pcs_status_get;
+	ops->link_training_completion_get = nss_phy_c45_common_link_training_completion_get;
+	ops->an_fail_counter_get = nss_phy_common_an_fail_counter_get;
+	ops->an_fail_counter_reset = nss_phy_common_an_fail_counter_reset;
 
 	return 0;
 }

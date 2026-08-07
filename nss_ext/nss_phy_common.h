@@ -13,11 +13,14 @@ extern "C" {
 #define NSS_PHY_DEBUG_PHY_HIBERNATION_CTRL		0xb
 #define NSS_PHY_DEBUG_PHY_HIBERNATION_STAT		0xc
 #define NSS_PHY_DEBUG_POWER_SAVE		0x29
+#define NSS_PHY_DEBUG_CONTROL_REGISTER0		0x1f
 
 /*PHY debug registers field*/
 #define NSS_PHY_DEBUG_HIBERNATION_EN		0x8000
 #define NSS_PHY_DEBUG_HIBERNATION_STAT_EN	0x0800
 #define NSS_PHY_DEBUG_POWER_SAVE_EN		0x8000
+/* bits[7:4] of NSS_PHY_DEBUG_CONTROL_REGISTER0; same across all PHYs */
+#define NSS_PHY_DEBUG_AN_FAIL_CNT_MASK		0xf0
 
 /*mii register*/
 #define NSS_PHY_CONTROL		0
@@ -250,6 +253,11 @@ int nss_phy_common_intr_status_get(struct nss_phy_device *nss_phydev,
 	u32 *intr_status);
 int nss_phy_common_hibernation_status_get(struct nss_phy_device *nss_phydev,
 	u32 *status);
+void nss_phy_common_an_fail_cnt_poll(struct nss_phy_device *nss_phydev,
+	bool link_transition);
+int nss_phy_common_an_fail_counter_get(struct nss_phy_device *nss_phydev,
+	u64 *count);
+void nss_phy_common_an_fail_counter_reset(struct nss_phy_device *nss_phydev);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

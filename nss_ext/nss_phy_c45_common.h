@@ -147,6 +147,29 @@ extern "C" {
 #define NSS_PHY_MMD1_8201_FR_START		0x0008
 #define NSS_PHY_MMD3_FR_TRIGGER		0x0002
 
+/* PCS Status register (MMD3.0x20).
+ * The bits below are only valid at NBase-T speeds (2.5G and above).
+ */
+#define NSS_PHY_MMD3_PCS_STATUS			0x20
+#define NSS_PHY_MMD3_PCS_STATUS_LOCKED		0x1000	/* bit 12: PCS locked */
+#define NSS_PHY_MMD3_PCS_STATUS_BLK_LOCK	0x0001	/* bit 0: block lock */
+
+/* Link training completion bits in MMD7.0x8001 (vendor autoneg status register,
+ * NSS_PHY_MMD7_AUTONEG_STATUS).  Only valid at 2.5G and above.
+ * These bits are returned as the training_complete u32 by link_training_completion_get().
+ */
+#define NSS_PHY_MMD7_LINK_OK_10G		0x0400	/* bit 10: 10G training done */
+#define NSS_PHY_MMD7_LINK_OK_5G			0x0200	/* bit 9:  5G training done */
+#define NSS_PHY_MMD7_LINK_OK_2P5G		0x0100	/* bit 8:  2.5G training done */
+#define NSS_PHY_MMD7_LINK_OK_MASK		0x0700	/* bits[10:8]: all training bits */
+
+/* Bitmap values for training_complete (returned by link_training_completion_get(), mapped from
+ * MMD7_reg_8001 bits[10:8] to a compact 3-bit field).
+ */
+#define NSS_PHY_TRAINING_COMPLETE_10G		BIT(2)
+#define NSS_PHY_TRAINING_COMPLETE_5G		BIT(1)
+#define NSS_PHY_TRAINING_COMPLETE_2P5G		BIT(0)
+
 int nss_phy_c45_common_eee_adv_set(struct nss_phy_device *nss_phydev,
 	u32 adv);
 int nss_phy_c45_common_eee_adv_get(struct nss_phy_device *nss_phydev,
@@ -234,6 +257,10 @@ int nss_phy_c45_common_fr_status_get(struct nss_phy_device *nss_phydev,
 int nss_phy_c45_common_fr_cnt_poll(struct nss_phy_device *nss_phydev,
 	bool link_up_transition);
 int nss_phy_c45_common_fr_trigger(struct nss_phy_device *nss_phydev);
+int nss_phy_c45_common_pcs_status_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_pcs_status *status);
+int nss_phy_c45_common_link_training_completion_get(struct nss_phy_device *nss_phydev,
+	u32 *training_complete);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

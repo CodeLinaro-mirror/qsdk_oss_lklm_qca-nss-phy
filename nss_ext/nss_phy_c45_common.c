@@ -1472,3 +1472,70 @@ int nss_phy_c45_common_fr_trigger(struct nss_phy_device *nss_phydev)
 		NSS_PHY_MMD3_FR_TRIGGER_REG, NSS_PHY_MMD3_FR_TRIGGER,
 		NSS_PHY_MMD3_FR_TRIGGER);
 }
+
+/*
+ * nss_phy_c45_common_pcs_status_get()
+ *
+ * Reads PCS Status (MMD3.0x20) for pcs_locked and block_lock.
+ * Valid only at 2.5G and above; returns 0 at lower speeds.
+ */
+int nss_phy_c45_common_pcs_status_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_pcs_status *status)
+{
+	int pcs_status;
+
+	if (!status)
+		return -NSS_PHY_EINVAL;
+
+	if (!nss_phydev_link_get(nss_phydev) ||
+		nss_phydev_speed_get(nss_phydev) < NSS_PHY_SPEED_2500)
+		return -NSS_PHY_EOPNOTSUPP;
+
+	memset(status, 0, sizeof(*status));
+
+	/* PCS Status (MMD3.0x20): pcs_locked (bit 12) and block_lock (bit 0) */
+	pcs_status = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_PCS_STATUS);
+	if (pcs_status < 0)
+		return pcs_status;
+
+	status->pcs_locked = !!(pcs_status & NSS_PHY_MMD3_PCS_STATUS_LOCKED);
+	status->block_lock = !!(pcs_status & NSS_PHY_MMD3_PCS_STATUS_BLK_LOCK);
+
+	return 0;
+}
+
+/*
+ * nss_phy_c45_common_link_training_completion_get()
+ *
+ * Reads link training completion bitmap from MMD7.0x8001 bits[10:8].
+ * Valid only at 2.5G and above; returns 0 at lower speeds.
+ */
+int nss_phy_c45_common_link_training_completion_get(struct nss_phy_device *nss_phydev,
+	u32 *training_complete)
+{
+	int autoneg_status;
+
+	if (!training_complete)
+		return -NSS_PHY_EINVAL;
+
+	if (!nss_phydev_link_get(nss_phydev) ||
+		nss_phydev_speed_get(nss_phydev) < NSS_PHY_SPEED_2500)
+		return -NSS_PHY_EOPNOTSUPP;
+
+	*training_complete = 0;
+
+	autoneg_status = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_AUTONEG_STATUS);
+	if (autoneg_status < 0)
+		return autoneg_status;
+
+	if (autoneg_status & NSS_PHY_MMD7_LINK_OK_10G)
+		*training_complete |= NSS_PHY_TRAINING_COMPLETE_10G;
+	if (autoneg_status & NSS_PHY_MMD7_LINK_OK_5G)
+		*training_complete |= NSS_PHY_TRAINING_COMPLETE_5G;
+	if (autoneg_status & NSS_PHY_MMD7_LINK_OK_2P5G)
+		*training_complete |= NSS_PHY_TRAINING_COMPLETE_2P5G;
+
+	return 0;
+}

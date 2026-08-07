@@ -54,6 +54,7 @@ static void nss_phy_status_poll_work_fn(struct work_struct *work)
 		(struct nss_phy_ops *)nss_phydev->phydev->drv->driver_data;
 	bool link_up = !!nss_phydev->phydev->link;
 	bool link_up_transition = link_up && !nss_phydev->status_poll_prev_link;
+	bool link_down_transition = !link_up && nss_phydev->status_poll_prev_link;
 
 	nss_phydev->status_poll_prev_link = link_up;
 
@@ -61,6 +62,10 @@ static void nss_phy_status_poll_work_fn(struct work_struct *work)
 	if (ops && ops->fr_cfg_set &&
 	    (nss_phydev->fr_ieee_enabled || nss_phydev->fr_cisco_enabled))
 		nss_phy_c45_common_fr_cnt_poll(nss_phydev, link_up_transition);
+
+	if (ops && ops->an_fail_counter_get)
+		nss_phy_common_an_fail_cnt_poll(nss_phydev,
+			link_up_transition || link_down_transition);
 
 	schedule_delayed_work(&nss_phydev->status_poll_work,
 		msecs_to_jiffies(NSS_PHY_STATUS_POLL_INTERVAL_MS));
@@ -74,9 +79,28 @@ static struct nss_phy_global_manager g_nss_phy_manager = {0};
  */
 static ssize_t nss_phy_ext_state_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
+	struct phy_device *phydev = to_phy_device(dev);
+	struct nss_phy_device *nss_phydev = dev_get_drvdata(&phydev->mdio.dev);
+	struct nss_phy_ops *ops = (struct nss_phy_ops *)phydev->drv->driver_data;
 	ssize_t count = 0;
 
 	count += scnprintf(buf + count, PAGE_SIZE - count, "NSS PHY Extended State\n");
+
+	if (ops && ops->pcs_status_get) {
+		struct nss_phy_pcs_status status = {0};
+
+		if (!ops->pcs_status_get(nss_phydev, &status)) {
+			count += scnprintf(buf + count, PAGE_SIZE - count, "    %-20s : %u\n", "pcs_locked", status.pcs_locked);
+			count += scnprintf(buf + count, PAGE_SIZE - count, "    %-20s : %u\n", "block_lock", status.block_lock);
+		}
+	}
+
+	if (ops && ops->link_training_completion_get) {
+		u32 training_complete = 0;
+
+		if (!ops->link_training_completion_get(nss_phydev, &training_complete))
+			count += scnprintf(buf + count, PAGE_SIZE - count, "    %-20s : 0x%x\n", "training_complete", training_complete);
+	}
 
 	return count;
 }
@@ -97,6 +121,13 @@ static ssize_t nss_phy_ext_statistics_show(struct device *dev, struct device_att
 		ret_count += scnprintf(buf + ret_count, PAGE_SIZE - ret_count, "    %-20s : %llu\n", "adjust_link_post_count", atomic64_read(&nss_phydev->adjust_link_post_count));
 	}
 
+	if (ops && ops->an_fail_counter_get) {
+		u64 count = 0;
+
+		ops->an_fail_counter_get(nss_phydev, &count);
+		ret_count += scnprintf(buf + ret_count, PAGE_SIZE - ret_count, "    %-20s : %llu\n", "an_fail_count", count);
+	}
+
 	return ret_count;
 }
 
@@ -108,9 +139,12 @@ static ssize_t nss_phy_ext_statistics_reset(struct device *dev, struct device_at
 {
 	struct phy_device *phydev = to_phy_device(dev);
 	struct nss_phy_device *nss_phydev = dev_get_drvdata(&phydev->mdio.dev);
+	struct nss_phy_ops *ops = (struct nss_phy_ops *)phydev->drv->driver_data;
 
 	if (buf[0] == '0' || buf[0] == '\n') { /* Any write with '0' or newline clears statistics */
 		atomic64_set(&nss_phydev->adjust_link_post_count, 0);
+		if (ops && ops->an_fail_counter_reset)
+			ops->an_fail_counter_reset(nss_phydev);
 	}
 
 	return count;
@@ -383,6 +417,7 @@ static int nss_phy_probe(struct phy_device *phydev)
 		return -ENOMEM;
 
 	spin_lock_init(&nss_phydev->fr_sw_cnt_lock);
+	atomic64_set(&nss_phydev->an_fail_count, 0);
 	INIT_DELAYED_WORK(&nss_phydev->status_poll_work, nss_phy_status_poll_work_fn);
 
 	if (nss_phydev_id_compare(phydev, QCA8075_PHY, QCA807X_MASK)) {

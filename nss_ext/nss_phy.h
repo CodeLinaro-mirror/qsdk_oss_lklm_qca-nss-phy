@@ -275,6 +275,19 @@ struct nss_phy_fr_cfg {
 	u32 cisco_fr_en;
 };
 
+/*
+ * PCS status returned by pcs_status_get().
+ *
+ * pcs_locked  — PCS locked bit from PCS Status (MMD3.0x20[12]).
+ *               Valid only at 2.5G and above; returns 0 at lower speeds.
+ * block_lock  — Block lock bit from PCS Status (MMD3.0x20[0]).
+ *               Valid only at 2.5G and above; returns 0 at lower speeds.
+ */
+struct nss_phy_pcs_status {
+	u32 pcs_locked;
+	u32 block_lock;
+};
+
 /* Field layout mirrors fal_port_fr_status_t (enum a_bool_t for every
  * bool-ish field, same field order) so ssdk can pass this struct straight
  * through with a (void*) cast instead of copying field-by-field.
@@ -399,6 +412,13 @@ struct nss_phy_ops {
 	int (*fr_status_get)(struct nss_phy_device *nss_phydev,
 		struct nss_phy_fr_status *status);
 	int (*fr_trigger)(struct nss_phy_device *nss_phydev);
+	int (*pcs_status_get)(struct nss_phy_device *nss_phydev,
+		struct nss_phy_pcs_status *status);
+	int (*link_training_completion_get)(struct nss_phy_device *nss_phydev,
+		u32 *training_complete);
+	void (*an_fail_counter_reset)(struct nss_phy_device *nss_phydev);
+	int (*an_fail_counter_get)(struct nss_phy_device *nss_phydev,
+		u64 *count);
 };
 #ifdef __cplusplus
 }

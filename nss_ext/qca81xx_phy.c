@@ -306,6 +306,10 @@ int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 	ops->fr_cfg_get = nss_phy_c45_common_fr_cfg_get;
 	ops->fr_status_get = nss_phy_c45_common_fr_status_get;
 	ops->fr_trigger = nss_phy_c45_common_fr_trigger;
+	ops->pcs_status_get = nss_phy_c45_common_pcs_status_get;
+	ops->link_training_completion_get = nss_phy_c45_common_link_training_completion_get;
+	ops->an_fail_counter_reset = nss_phy_common_an_fail_counter_reset;
+	ops->an_fail_counter_get = nss_phy_common_an_fail_counter_get;
 
 	return 0;
 }

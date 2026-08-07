@@ -1,18 +1,8 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
  */
+
 #include "nss_phy.h"
 #include "qca833x_phy.h"
 #include "nss_phy_common.h"
@@ -103,6 +93,8 @@ int qca833x_phy_ops_init(struct nss_phy_ops *ops)
 	ops->mdix_set = nss_phy_common_mdix_set;
 	ops->mdix_get = nss_phy_common_mdix_get;
 	ops->mdix_status_get = nss_phy_common_mdix_status_get;
+	ops->an_fail_counter_get = nss_phy_common_an_fail_counter_get;
+	ops->an_fail_counter_reset = nss_phy_common_an_fail_counter_reset;
 
 	return 0;
 }
