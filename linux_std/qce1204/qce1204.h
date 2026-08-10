@@ -10,6 +10,7 @@
 #include <linux/clk.h>
 #include <linux/reset.h>
 #include <linux/build_bug.h>
+#include "../qca81xx/qca81xx.h"
 
 #define QCE1204_PHY				0x004dd190
 #define QCE1204_TLMM_BASE			0x400000
@@ -47,6 +48,7 @@ struct qce1204_priv {
 #if IS_ENABLED(CONFIG_HWMON)
 	struct device *hwmon_dev;
 #endif
+	struct qca81xx_link_flap_stats flap_stats;
 };
 
 /* Clock type index for each channel */
@@ -147,6 +149,7 @@ struct ipq52xx_phy_priv {
 	struct reset_control *rx_reset;
 	struct reset_control *tx_reset;
 	struct reset_control *sys_reset;
+	struct qca81xx_link_flap_stats flap_stats;
 };
 
 int ipq52xx_phy_probe(struct phy_device *phydev);

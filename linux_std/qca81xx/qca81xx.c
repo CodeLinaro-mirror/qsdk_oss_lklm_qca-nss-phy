@@ -8,6 +8,7 @@
 #include <linux/etherdevice.h>
 #include <linux/device.h>
 #include <linux/sysfs.h>
+#include <linux/timekeeping.h>
 
 static void
 qca81xx_priv_atomic64_inc(struct phy_device *phydev, atomic64_t *v)
@@ -1849,8 +1850,12 @@ static int qca81xx_phy_read_status(struct phy_device *phydev)
 	if (ret < 0)
 		return ret;
 
-	if (phydev->link != old_link)
+	if (phydev->link != old_link) {
 		qca81xx_phy_speed_fixup(phydev);
+		qca81xx_phy_flap_stats_update(
+			&((struct qca81xx_private *)phydev->priv)->flap_stats,
+			old_link, phydev->link);
+	}
 
 	return 0;
 }
@@ -3084,6 +3089,128 @@ static DEVICE_ATTR(module_statistics, 0644, qca81xx_phy_show_debug_module_statis
 static DEVICE_ATTR(module_state, 0444, qca81xx_phy_show_debug_module_state, NULL);
 
 /**
+ * qca81xx_phy_flap_stats_update - Update link-flap counters on a transition
+ * @stats: The link-flap statistics structure
+ * @old_link: Link state sampled before the phylib status read
+ * @new_link: Current link state
+ *
+ * Increment the up/down counter for the observed transition and refresh the
+ * matching and last-change timestamps (seconds since boot). Shared by all
+ * QCA81xx-family read_status paths (also reused by qce1204/ipq52xx).
+ */
+void qca81xx_phy_flap_stats_update(struct qca81xx_link_flap_stats *stats,
+	unsigned int old_link, unsigned int new_link)
+{
+	time64_t now = ktime_get_seconds();
+
+	if (new_link && !old_link) {
+		atomic64_inc(&stats->up_count);
+		atomic64_set(&stats->last_up_time, now);
+	} else if (!new_link && old_link) {
+		atomic64_inc(&stats->down_count);
+		atomic64_set(&stats->last_down_time, now);
+	}
+
+	atomic64_set(&stats->last_change_time, now);
+}
+
+/**
+ * qca81xx_phy_flap_stats_show - Format link-flap statistics into a buffer
+ * @stats: The link-flap statistics structure
+ * @buf: Buffer to write the statistics to
+ *
+ * Return: Number of bytes written to buffer
+ */
+ssize_t qca81xx_phy_flap_stats_show(struct qca81xx_link_flap_stats *stats,
+	char *buf)
+{
+	ssize_t size = 0;
+
+	size += scnprintf(buf + size, PAGE_SIZE - size,
+		"QCA81XX PHY Link Flap Statistics\n");
+	size += scnprintf(buf + size, PAGE_SIZE - size,
+		"    Up Count             : %lld\n",
+		atomic64_read(&stats->up_count));
+	size += scnprintf(buf + size, PAGE_SIZE - size,
+		"    Down Count           : %lld\n",
+		atomic64_read(&stats->down_count));
+	size += scnprintf(buf + size, PAGE_SIZE - size,
+		"    Last Up Time (s)     : %lld\n",
+		atomic64_read(&stats->last_up_time));
+	size += scnprintf(buf + size, PAGE_SIZE - size,
+		"    Last Down Time (s)   : %lld\n",
+		atomic64_read(&stats->last_down_time));
+	size += scnprintf(buf + size, PAGE_SIZE - size,
+		"    Last Change Time (s) : %lld\n",
+		atomic64_read(&stats->last_change_time));
+
+	return size;
+}
+
+/**
+ * qca81xx_phy_flap_stats_reset - Zero all link-flap counters and timestamps
+ * @stats: The link-flap statistics structure
+ *
+ * Called once at init (zero start) and on sysfs write.
+ */
+void qca81xx_phy_flap_stats_reset(struct qca81xx_link_flap_stats *stats)
+{
+	atomic64_set(&stats->up_count, 0);
+	atomic64_set(&stats->down_count, 0);
+	atomic64_set(&stats->last_up_time, 0);
+	atomic64_set(&stats->last_down_time, 0);
+	atomic64_set(&stats->last_change_time, 0);
+}
+
+/**
+ * qca81xx_phy_show_link_flap_stats - Show link-flap statistics
+ * @dev: The device structure
+ * @attr: The device attribute structure
+ * @buf: Buffer to write the statistics to
+ *
+ * Return: Number of bytes written to buffer
+ */
+static ssize_t qca81xx_phy_show_link_flap_stats(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct phy_device *phydev = to_phy_device(dev);
+	struct qca81xx_private *priv = phydev->priv;
+
+	if (!priv)
+		return -EINVAL;
+
+	return qca81xx_phy_flap_stats_show(&priv->flap_stats, buf);
+}
+
+/**
+ * qca81xx_phy_reset_link_flap_stats - Reset link-flap statistics on write
+ * @dev: The device structure
+ * @attr: The device attribute structure
+ * @buf: Buffer containing the input
+ * @count: Number of bytes in the buffer
+ *
+ * Reset all link-flap counters and timestamps when '0' or newline is written.
+ *
+ * Return: Number of bytes processed
+ */
+static ssize_t qca81xx_phy_reset_link_flap_stats(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct phy_device *phydev = to_phy_device(dev);
+	struct qca81xx_private *priv = phydev->priv;
+
+	if (!priv)
+		return -EINVAL;
+
+	if (count > 0 && (buf[0] == '0' || buf[0] == '\n'))
+		qca81xx_phy_flap_stats_reset(&priv->flap_stats);
+
+	return count;
+}
+
+static DEVICE_ATTR(link_flap_stats, 0644, qca81xx_phy_show_link_flap_stats, qca81xx_phy_reset_link_flap_stats);
+
+/**
  * qca81xx_debugfs_init - Initialize debugfs support for PHY device
  * @phydev: The PHY device structure
  *
@@ -3102,6 +3229,8 @@ int qca81xx_debugfs_init(struct phy_device *phydev)
 	/* Initialize debug statistics */
 	_qca81xx_phy_debug_module_reset_statistics(priv);
 
+	/* Initialize link-flap statistics */
+	qca81xx_phy_flap_stats_reset(&priv->flap_stats);
 
 	/* Create sysfs attribute files */
 	ret = device_create_file(&phydev->mdio.dev, &dev_attr_module_statistics);
@@ -3113,6 +3242,14 @@ int qca81xx_debugfs_init(struct phy_device *phydev)
 	ret = device_create_file(&phydev->mdio.dev, &dev_attr_module_state);
 	if (ret) {
 		phydev_err(phydev, "Failed to create module_state sysfs file: %d\n", ret);
+		device_remove_file(&phydev->mdio.dev, &dev_attr_module_statistics);
+		return ret;
+	}
+
+	ret = device_create_file(&phydev->mdio.dev, &dev_attr_link_flap_stats);
+	if (ret) {
+		phydev_err(phydev, "Failed to create link_flap_stats sysfs file: %d\n", ret);
+		device_remove_file(&phydev->mdio.dev, &dev_attr_module_state);
 		device_remove_file(&phydev->mdio.dev, &dev_attr_module_statistics);
 		return ret;
 	}
@@ -3130,6 +3267,7 @@ void qca81xx_debugfs_exit(struct phy_device *phydev)
 {
 	device_remove_file(&phydev->mdio.dev, &dev_attr_module_statistics);
 	device_remove_file(&phydev->mdio.dev, &dev_attr_module_state);
+	device_remove_file(&phydev->mdio.dev, &dev_attr_link_flap_stats);
 }
 
 /* QCE1204 PHY ID and function declarations */
