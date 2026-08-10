@@ -322,6 +322,29 @@ struct nss_phy_fr_cnt {
 	u32 tx_count;
 };
 
+/* Quality level derived from per-speed MSE threshold table.
+ * NSS_PHY_MSE_QUALITY_NA means the speed is unsupported (10M) or the
+ * MDIO read returned an error; a successful read of 0 yields GREAT.
+ */
+enum nss_phy_mse_quality {
+	NSS_PHY_MSE_QUALITY_NA = 0,
+	NSS_PHY_MSE_QUALITY_GREAT,
+	NSS_PHY_MSE_QUALITY_GOOD,
+	NSS_PHY_MSE_QUALITY_NORMAL,
+	NSS_PHY_MSE_QUALITY_CRC,
+	NSS_PHY_MSE_QUALITY_LINK_DOWN,
+};
+
+/* Per-channel raw MSE values and quality levels (4 channels/pairs A-D).
+ * Supported at 100M, 1G (via debug registers) and 2.5G/5G/10G (via MMD3).
+ * 10M is not supported; quality fields are set to NSS_PHY_MSE_QUALITY_NA.
+ */
+struct nss_phy_mse {
+	u32 mse[4];
+	enum nss_phy_mse_quality quality[4];
+	s32 snr_margin[4];	/* SNR margin in centidB (0.01 dB units), derived from MSE */
+};
+
 struct nss_phy_ops {
 	int (*hibernation_set)(struct nss_phy_device *nss_phydev, u32 enable);
 	int (*hibernation_get)(struct nss_phy_device *nss_phydev, u32 *enable);
@@ -419,6 +442,8 @@ struct nss_phy_ops {
 	void (*an_fail_counter_reset)(struct nss_phy_device *nss_phydev);
 	int (*an_fail_counter_get)(struct nss_phy_device *nss_phydev,
 		u64 *count);
+	int (*mse_get)(struct nss_phy_device *nss_phydev,
+		struct nss_phy_mse *mse);
 };
 #ifdef __cplusplus
 }

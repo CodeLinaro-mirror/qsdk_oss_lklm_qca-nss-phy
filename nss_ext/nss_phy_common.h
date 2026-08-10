@@ -9,6 +9,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif				/* __cplusplus */
+
 /*PHY debug registers*/
 #define NSS_PHY_DEBUG_PHY_HIBERNATION_CTRL		0xb
 #define NSS_PHY_DEBUG_PHY_HIBERNATION_STAT		0xc
@@ -258,6 +259,26 @@ void nss_phy_common_an_fail_cnt_poll(struct nss_phy_device *nss_phydev,
 int nss_phy_common_an_fail_counter_get(struct nss_phy_device *nss_phydev,
 	u64 *count);
 void nss_phy_common_an_fail_counter_reset(struct nss_phy_device *nss_phydev);
+
+/* MSE debug registers (100M / 1G path).
+ * Enable/disable via NSS_PHY_DEBUG_CONTROL_REGISTER0 (0x1f) BIT(0); channel
+ * read-back registers use per-channel masks (CH0 accumulator is 10-bit;
+ * CH1–CH3 are 12-bit per hardware design).
+ */
+#define NSS_PHY_DEBUG_MSE_100M_1G_EN		BIT(0)
+#define NSS_PHY_DEBUG_MSE_100M_1G_CH0		0x26
+#define NSS_PHY_DEBUG_MSE_100M_1G_CH0_MASK	0x3ff
+#define NSS_PHY_DEBUG_MSE_100M_1G_CH1		0x27
+#define NSS_PHY_DEBUG_MSE_100M_1G_CH1_MASK	0xfff
+#define NSS_PHY_DEBUG_MSE_100M_1G_CH2		0x28
+#define NSS_PHY_DEBUG_MSE_100M_1G_CH2_MASK	0xfff
+#define NSS_PHY_DEBUG_MSE_100M_1G_CH3		0x2c
+#define NSS_PHY_DEBUG_MSE_100M_1G_CH3_MASK	0xfff
+
+int nss_phy_common_mse_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_mse *mse);
+s32 nss_phy_mse_to_snr_centi_db(u32 num, u32 den);
+
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

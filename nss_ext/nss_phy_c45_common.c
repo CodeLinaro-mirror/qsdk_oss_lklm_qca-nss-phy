@@ -1539,3 +1539,127 @@ int nss_phy_c45_common_link_training_completion_get(struct nss_phy_device *nss_p
 
 	return 0;
 }
+
+static int nss_phy_c45_pma_monitor_set(struct nss_phy_device *nss_phydev, bool enable)
+{
+	u16 val;
+	int ret;
+
+	val = enable ? NSS_PHY_MMD3_PHY_PMA_MONITOR_EN0 : 0;
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_PHY_MISC_CTRL0,
+		NSS_PHY_MMD3_PHY_PMA_MONITOR_EN0, val);
+	if (enable && ret < 0)
+		return ret;
+
+	val = enable ? NSS_PHY_MMD3_PHY_PMA_MONITOR_EN1 : 0;
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_PHY_MISC_CTRL1,
+		NSS_PHY_MMD3_PHY_PMA_MONITOR_EN1, val);
+	if (enable && ret < 0)
+		return ret;
+
+	val = enable ? NSS_PHY_MMD3_PHY_PMA_MONITOR_EN : 0;
+	nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_PHY_PMA_MONITOR_STATUS,
+		NSS_PHY_MMD3_PHY_PMA_MONITOR_MASK, val);
+
+	return 0;
+}
+
+int nss_phy_c45_common_mse_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_mse *mse)
+{
+	static const struct {
+		u32 great;
+		u32 good;
+		u32 normal;
+		u32 crc;
+	} thresh_10g     = { 166, 332, 526,  1321 },
+	  thresh_2_5g_5g = { 166, 418, 662,  1321 };
+	const typeof(thresh_10g) *thresh;
+	static const u16 ch_regs[4] = {
+		NSS_PHY_MMD3_MSE_2_5G_5G_10G_CH0, NSS_PHY_MMD3_MSE_2_5G_5G_10G_CH1,
+		NSS_PHY_MMD3_MSE_2_5G_5G_10G_CH2, NSS_PHY_MMD3_MSE_2_5G_5G_10G_CH3,
+	};
+	u32 speed;
+	int val, ret, i;
+
+	if (!mse)
+		return -NSS_PHY_EINVAL;
+
+	speed = nss_phydev_speed_get(nss_phydev);
+
+	if (speed == NSS_PHY_SPEED_100 || speed == NSS_PHY_SPEED_1000)
+		return nss_phy_common_mse_get(nss_phydev, mse);
+
+	memset(mse, 0, sizeof(*mse));
+
+	if (speed != NSS_PHY_SPEED_2500 && speed != NSS_PHY_SPEED_5000 &&
+		speed != NSS_PHY_SPEED_10000)
+		return -NSS_PHY_EOPNOTSUPP;
+
+	mutex_lock(&nss_phydev->mse_lock);
+
+	ret = nss_phy_c45_pma_monitor_set(nss_phydev, true);
+	if (ret < 0) {
+		mutex_unlock(&nss_phydev->mse_lock);
+		return ret;
+	}
+
+	ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_PHY_MISC_CTRL0,
+		NSS_PHY_MMD3_MSE_2_5G_5G_10G_EN,
+		NSS_PHY_MMD3_MSE_2_5G_5G_10G_EN);
+	if (ret < 0) {
+		nss_phy_c45_pma_monitor_set(nss_phydev, false);
+		mutex_unlock(&nss_phydev->mse_lock);
+		return ret;
+	}
+
+	/* MSE accumulator needs ~4s to collect samples after PMA monitor enable. */
+	nss_phy_msleep(4000);
+
+	for (i = 0; i < 4; i++) {
+		val = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM, ch_regs[i]);
+		if (val < 0) {
+			mse->quality[i] = NSS_PHY_MSE_QUALITY_NA;
+			continue;
+		}
+		mse->mse[i] = (u16)val;
+	}
+
+	nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_PHY_MISC_CTRL0,
+		NSS_PHY_MMD3_MSE_2_5G_5G_10G_EN, 0);
+
+	nss_phy_c45_pma_monitor_set(nss_phydev, false);
+
+	mutex_unlock(&nss_phydev->mse_lock);
+
+	thresh = (speed == NSS_PHY_SPEED_10000) ? &thresh_10g : &thresh_2_5g_5g;
+
+	for (i = 0; i < 4; i++) {
+		u32 v = mse->mse[i];
+		s32 thresh_centi_db = (speed == NSS_PHY_SPEED_10000) ? -2500 : -2700;
+
+		if (mse->quality[i] == NSS_PHY_MSE_QUALITY_NA)
+			continue;
+
+		if (v <= thresh->great)
+			mse->quality[i] = NSS_PHY_MSE_QUALITY_GREAT;
+		else if (v <= thresh->good)
+			mse->quality[i] = NSS_PHY_MSE_QUALITY_GOOD;
+		else if (v <= thresh->normal)
+			mse->quality[i] = NSS_PHY_MSE_QUALITY_NORMAL;
+		else if (v <= thresh->crc)
+			mse->quality[i] = NSS_PHY_MSE_QUALITY_CRC;
+		else
+			mse->quality[i] = NSS_PHY_MSE_QUALITY_LINK_DOWN;
+
+		/* num = 85 * 2^12 = 348160 for 2.5G/5G/10G */
+		mse->snr_margin[i] = v ? nss_phy_mse_to_snr_centi_db(348160, v) + thresh_centi_db : 0;
+	}
+
+	return 0;
+}

@@ -993,3 +993,128 @@ void nss_phy_common_an_fail_counter_reset(struct nss_phy_device *nss_phydev)
 {
 	atomic64_set(&nss_phydev->an_fail_count, 0);
 }
+
+/*
+ * log2(1 + k/16) * 1000 for k = 0..15, used by nss_phy_mse_to_snr_centi_db().
+ */
+static const u16 nss_phy_log2_frac[16] = {
+	0, 87, 170, 248, 322, 392, 459, 524,
+	585, 644, 700, 755, 807, 858, 907, 954
+};
+
+/*
+ * Returns 10 * log10(num / den) in centidB (0.01 dB units).
+ * Uses integer arithmetic with approximately 0.2 dB accuracy; the
+ * approximation is systematically conservative (underestimates SNR).
+ * Returns 0 when den or num is 0.
+ */
+s32 nss_phy_mse_to_snr_centi_db(u32 num, u32 den)
+{
+	u64 r;
+	int n;
+	u32 idx;
+	s32 log2_milli;
+
+	if (!den || !num)
+		return 0;
+
+	/* Scale by 2^20 to preserve precision across the range of mse values.
+	 * Use do_div() to avoid __udivdi3 on 32-bit platforms.
+	 */
+	r = (u64)num << 20;
+	do_div(r, den);
+	if (!r)
+		return 0;
+
+	n = (int)(fls64(r) - 1);
+	idx = (n >= 4) ? (u32)((r >> (n - 4)) & 0xf) : (u32)((r << (4 - n)) & 0xf);
+
+	/* log2(num/den) * 1000 millibits: integer + fractional parts */
+	log2_milli = (n - 20) * 1000 + nss_phy_log2_frac[idx];
+
+	/* centidB = log2_milli * 1000/log2(10)/1000 * 100
+	 *         = log2_milli * 30103 / 100000
+	 *         ≈ log2_milli * 301 / 1000
+	 */
+	return log2_milli * 301 / 1000;
+}
+
+int nss_phy_common_mse_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_mse *mse)
+{
+	static const struct {
+		u32 great;
+		u32 good;
+		u32 normal;
+		u32 crc;
+	} thresh_100m = { 15, 30, 150, 349 },
+	  thresh_1g   = { 19, 38, 94,  187 };
+	const typeof(thresh_100m) *thresh;
+	static const u16 ch_regs[4] = {
+		NSS_PHY_DEBUG_MSE_100M_1G_CH0, NSS_PHY_DEBUG_MSE_100M_1G_CH1,
+		NSS_PHY_DEBUG_MSE_100M_1G_CH2, NSS_PHY_DEBUG_MSE_100M_1G_CH3,
+	};
+	static const u16 ch_masks[4] = {
+		NSS_PHY_DEBUG_MSE_100M_1G_CH0_MASK, NSS_PHY_DEBUG_MSE_100M_1G_CH1_MASK,
+		NSS_PHY_DEBUG_MSE_100M_1G_CH2_MASK, NSS_PHY_DEBUG_MSE_100M_1G_CH3_MASK,
+	};
+	u32 speed;
+	int ret, i;
+
+	if (!mse)
+		return -NSS_PHY_EINVAL;
+
+	memset(mse, 0, sizeof(*mse));
+
+	speed = nss_phydev_speed_get(nss_phydev);
+	if (speed != NSS_PHY_SPEED_100 && speed != NSS_PHY_SPEED_1000)
+		return -NSS_PHY_EOPNOTSUPP;
+
+	mutex_lock(&nss_phydev->mse_lock);
+
+	ret = nss_phy_modify_debug(nss_phydev, NSS_PHY_DEBUG_CONTROL_REGISTER0,
+		NSS_PHY_DEBUG_MSE_100M_1G_EN, NSS_PHY_DEBUG_MSE_100M_1G_EN);
+	if (ret < 0) {
+		mutex_unlock(&nss_phydev->mse_lock);
+		return ret;
+	}
+
+	for (i = 0; i < 4; i++) {
+		ret = nss_phy_read_debug(nss_phydev, ch_regs[i]);
+		if (ret < 0) {
+			mse->quality[i] = NSS_PHY_MSE_QUALITY_NA;
+			continue;
+		}
+		mse->mse[i] = ret & ch_masks[i];
+	}
+
+	nss_phy_modify_debug(nss_phydev, NSS_PHY_DEBUG_CONTROL_REGISTER0,
+		NSS_PHY_DEBUG_MSE_100M_1G_EN, 0);
+
+	mutex_unlock(&nss_phydev->mse_lock);
+
+	thresh = (speed == NSS_PHY_SPEED_100) ? &thresh_100m : &thresh_1g;
+
+	for (i = 0; i < 4; i++) {
+		u32 v = mse->mse[i];
+		s32 thresh_centi_db = (speed == NSS_PHY_SPEED_100) ? -2300 : -2500;
+
+		if (mse->quality[i] == NSS_PHY_MSE_QUALITY_NA)
+			continue;
+
+		if (v <= thresh->great)
+			mse->quality[i] = NSS_PHY_MSE_QUALITY_GREAT;
+		else if (v <= thresh->good)
+			mse->quality[i] = NSS_PHY_MSE_QUALITY_GOOD;
+		else if (v <= thresh->normal)
+			mse->quality[i] = NSS_PHY_MSE_QUALITY_NORMAL;
+		else if (v <= thresh->crc)
+			mse->quality[i] = NSS_PHY_MSE_QUALITY_CRC;
+		else
+			mse->quality[i] = NSS_PHY_MSE_QUALITY_LINK_DOWN;
+
+		mse->snr_margin[i] = v ? nss_phy_mse_to_snr_centi_db(29687, v) + thresh_centi_db : 0;
+	}
+
+	return 0;
+}

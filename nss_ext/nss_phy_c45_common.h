@@ -38,6 +38,15 @@ extern "C" {
 #define NSS_PHY_MMD7_TX_CTRL		0x9022
 #define NSS_PHY_MMD7_AUTONEG_STATUS		0x8001
 
+/* PMA monitor control — MMD3 */
+#define NSS_PHY_MMD3_PHY_MISC_CTRL0		0xa010
+#define NSS_PHY_MMD3_PHY_PMA_MONITOR_EN0	BIT(2)
+#define NSS_PHY_MMD3_PHY_MISC_CTRL1		0xa02f
+#define NSS_PHY_MMD3_PHY_PMA_MONITOR_EN1	BIT(13)
+#define NSS_PHY_MMD3_PHY_PMA_MONITOR_STATUS	0xa014
+#define NSS_PHY_MMD3_PHY_PMA_MONITOR_MASK	GENMASK(6, 0)
+#define NSS_PHY_MMD3_PHY_PMA_MONITOR_EN	0x40
+
 /*MMD registers field*/
 #define NSS_PHY_MMD1_PMA_SPEED_MASK		0x207c
 #define NSS_PHY_MMD1_PMA_CONTROL_10000M		0x2040
@@ -261,6 +270,17 @@ int nss_phy_c45_common_pcs_status_get(struct nss_phy_device *nss_phydev,
 	struct nss_phy_pcs_status *status);
 int nss_phy_c45_common_link_training_completion_get(struct nss_phy_device *nss_phydev,
 	u32 *training_complete);
+
+/* MSE MMD registers (2.5G / 5G / 10G path, accessed via MMD3 = PCS) */
+/* NSS_PHY_MMD3_MSE_2_5G_5G_10G_EN_REG == NSS_PHY_MMD3_PHY_MISC_CTRL0 (0xa010) */
+#define NSS_PHY_MMD3_MSE_2_5G_5G_10G_EN	BIT(0)
+#define NSS_PHY_MMD3_MSE_2_5G_5G_10G_CH0	0xa005
+#define NSS_PHY_MMD3_MSE_2_5G_5G_10G_CH1	0xa008
+#define NSS_PHY_MMD3_MSE_2_5G_5G_10G_CH2	0xa00b
+#define NSS_PHY_MMD3_MSE_2_5G_5G_10G_CH3	0xa00e
+
+int nss_phy_c45_common_mse_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_mse *mse);
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

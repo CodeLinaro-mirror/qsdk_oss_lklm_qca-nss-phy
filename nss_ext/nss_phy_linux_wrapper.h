@@ -10,6 +10,7 @@
 extern "C" {
 #endif				/* __cplusplus */
 
+#include <linux/math64.h>
 #include <linux/phy.h>
 #include <linux/pinctrl/pinconf-generic.h>
 #include <linux/sysfs.h>
@@ -61,6 +62,13 @@ struct nss_phy_device {
 	 */
 	struct delayed_work status_poll_work;
 	bool status_poll_prev_link;
+	/*
+	 * Serializes the full enable→measure→disable sequence in mse_get,
+	 * including pma_monitor_set() for the C45 path, so that a concurrent
+	 * caller cannot interleave its own enable/disable with an in-progress
+	 * measurement.
+	 */
+	struct mutex mse_lock;
 };
 
 #define nss_phy_err(nss_phydev, format, args...)	\

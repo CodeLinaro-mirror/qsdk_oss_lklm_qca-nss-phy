@@ -102,6 +102,36 @@ static ssize_t nss_phy_ext_state_show(struct device *dev, struct device_attribut
 			count += scnprintf(buf + count, PAGE_SIZE - count, "    %-20s : 0x%x\n", "training_complete", training_complete);
 	}
 
+	/* mse_get may block ~4s at 2.5G/5G/10G while the MSE accumulator collects samples. */
+	if (ops && ops->mse_get) {
+		static const char * const quality_str[] = {
+			[NSS_PHY_MSE_QUALITY_NA]        = "n/a",
+			[NSS_PHY_MSE_QUALITY_GREAT]     = "great",
+			[NSS_PHY_MSE_QUALITY_GOOD]      = "good",
+			[NSS_PHY_MSE_QUALITY_NORMAL]    = "normal",
+			[NSS_PHY_MSE_QUALITY_CRC]       = "crc",
+			[NSS_PHY_MSE_QUALITY_LINK_DOWN] = "link_down",
+		};
+		struct nss_phy_mse mse = {0};
+		int i;
+
+		if (!ops->mse_get(nss_phydev, &mse)) {
+			for (i = 0; i < 4; i++) {
+				s32 margin = mse.snr_margin[i];
+				s32 abs_margin = margin < 0 ? -margin : margin;
+				const char *qstr = mse.quality[i] < ARRAY_SIZE(quality_str) ?
+					quality_str[mse.quality[i]] : "?";
+
+				count += scnprintf(buf + count, PAGE_SIZE - count,
+					"    ch%d_mse           : %u (%s)\n",
+					i, mse.mse[i], qstr);
+				count += scnprintf(buf + count, PAGE_SIZE - count,
+					"    ch%d_mse_snr_margin: %s%d.%02d dB\n",
+					i, margin < 0 ? "-" : "", abs_margin / 100, abs_margin % 100);
+			}
+		}
+	}
+
 	return count;
 }
 
@@ -417,6 +447,7 @@ static int nss_phy_probe(struct phy_device *phydev)
 		return -ENOMEM;
 
 	spin_lock_init(&nss_phydev->fr_sw_cnt_lock);
+	mutex_init(&nss_phydev->mse_lock);
 	atomic64_set(&nss_phydev->an_fail_count, 0);
 	INIT_DELAYED_WORK(&nss_phydev->status_poll_work, nss_phy_status_poll_work_fn);
 

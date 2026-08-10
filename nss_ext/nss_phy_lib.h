@@ -24,6 +24,7 @@ extern "C" {
 #include "nss_phy_linux_wrapper.h"
 
 void nss_phy_mdelay(u32 msecs);
+void nss_phy_msleep(u32 msecs);
 u32 nss_phydev_id_get(struct phy_device *phydev);
 bool nss_phydev_id_compare(struct phy_device *phydev, u32 phy_id, u32 mask);
 /*mii registers access*/
