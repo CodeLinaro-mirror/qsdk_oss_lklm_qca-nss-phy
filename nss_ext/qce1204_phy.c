@@ -118,6 +118,73 @@ static int qce1204_phy_clk_ppm_offset_get(struct nss_phy_device *nss_phydev,
 		0 /* 5G/10G not supported */);
 }
 
+#define QCE1204_PHY_PORT_MAX	4
+
+static const u32 qce1204_led_gpio[LED_SOURCE_MAX][QCE1204_PHY_PORT_MAX] = {
+	[NSS_PHY_LED_SOURCE0] = {
+		QCE1204_GPIO1, QCE1204_GPIO2, QCE1204_GPIO3, QCE1204_GPIO4
+	},
+	[NSS_PHY_LED_SOURCE1] = {
+		QCE1204_GPIO9, QCE1204_GPIO15, QCE1204_GPIO16, QCE1204_GPIO17
+	},
+	[NSS_PHY_LED_SOURCE2] = {
+		QCE1204_GPIO5, QCE1204_GPIO6, QCE1204_GPIO7, QCE1204_GPIO8
+	},
+};
+
+static const u32 qce1204_led_func[LED_SOURCE_MAX][QCE1204_PHY_PORT_MAX] = {
+	[NSS_PHY_LED_SOURCE0] = {
+		QCE1204_GPIO_FUNC_P0_LED_0, QCE1204_GPIO_FUNC_P1_LED_0,
+		QCE1204_GPIO_FUNC_P2_LED_0, QCE1204_GPIO_FUNC_P3_LED_0
+	},
+	[NSS_PHY_LED_SOURCE1] = {
+		QCE1204_GPIO_FUNC_P0_LED_1, QCE1204_GPIO_FUNC_P1_LED_1,
+		QCE1204_GPIO_FUNC_P2_LED_1, QCE1204_GPIO_FUNC_P3_LED_1
+	},
+	[NSS_PHY_LED_SOURCE2] = {
+		QCE1204_GPIO_FUNC_P0_LED_2, QCE1204_GPIO_FUNC_P1_LED_2,
+		QCE1204_GPIO_FUNC_P2_LED_2, QCE1204_GPIO_FUNC_P3_LED_2
+	},
+};
+
+static int qce1204_phy_led_ctrl_source_pin_cfg(
+	struct nss_phy_device *nss_phydev, u32 source_id)
+{
+	u32 phy_index, led_pin, led_func;
+
+	phy_index = nss_phy_addr_get(nss_phydev) - nss_phy_share_addr_get(nss_phydev);
+	if (source_id >= LED_SOURCE_MAX || phy_index >= QCE1204_PHY_PORT_MAX)
+		return -NSS_PHY_EOPNOTSUPP;
+
+	led_pin = qce1204_led_gpio[source_id][phy_index];
+	led_func = qce1204_led_func[source_id][phy_index];
+
+	return nss_phy_modify_soc(nss_phydev, TO_GPIO_REG(led_pin),
+		QCE1204_GPIO_FUNC_SEL | QCE1204_GPIO_PULL | QCE1204_GPIO_DRV | QCE1204_GPIO_LED_MODE,
+		/* PULL cleared to NO_PULL; LED output pins require no bias */
+		(led_func << 2) | QCE1204_GPIO_DRV | QCE1204_GPIO_LED_MODE);
+}
+
+static int
+qce1204_phy_led_ctrl_source_set(struct nss_phy_device *nss_phydev,
+	u32 source_id, struct nss_phy_led_pattern_ctrl *pattern)
+{
+	int ret = 0;
+
+	ret = nss_phy_2500m_led_ctrl_source_set(nss_phydev, source_id,
+		pattern);
+	if (ret < 0)
+		return ret;
+	if (nss_phy_id_check(nss_phydev, QCE1204_PHY, QCA_PHY_EXACT_MASK)) {
+		ret = qce1204_phy_led_ctrl_source_pin_cfg(nss_phydev,
+			source_id);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
 int qce1204_phy_ops_init(struct nss_phy_ops *ops)
 {
 	ops->hibernation_set = nss_phy_common_hibernation_set;
@@ -148,7 +215,7 @@ int qce1204_phy_ops_init(struct nss_phy_ops *ops)
 	ops->intr_mask_set = nss_phy_c45_common_intr_mask_set;
 	ops->intr_mask_get = nss_phy_c45_common_intr_mask_get;
 	ops->intr_status_get = nss_phy_c45_common_intr_status_get;
-	ops->led_ctrl_source_set = nss_phy_2500m_led_ctrl_source_set;
+	ops->led_ctrl_source_set = qce1204_phy_led_ctrl_source_set;
 	ops->led_ctrl_source_get = nss_phy_2500m_led_ctrl_source_get;
 	ops->fr_cfg_set = nss_phy_c45_common_fr_cfg_set;
 	ops->fr_cfg_get = nss_phy_c45_common_fr_cfg_get;
