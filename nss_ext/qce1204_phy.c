@@ -109,6 +109,15 @@ static int qce1204_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 	return ret;
 }
 
+static int qce1204_phy_clk_ppm_offset_get(struct nss_phy_device *nss_phydev,
+	int *ppm)
+{
+	return nss_phy_c45_common_clk_ppm_offset_get(nss_phydev, ppm,
+		QCE1204_PPM_DIV_1G,
+		QCE1204_PPM_DIV_2_5G,
+		0 /* 5G/10G not supported */);
+}
+
 int qce1204_phy_ops_init(struct nss_phy_ops *ops)
 {
 	ops->hibernation_set = nss_phy_common_hibernation_set;
@@ -150,6 +159,7 @@ int qce1204_phy_ops_init(struct nss_phy_ops *ops)
 	ops->an_fail_counter_reset = nss_phy_common_an_fail_counter_reset;
 	ops->an_fail_counter_get = nss_phy_common_an_fail_counter_get;
 	ops->mse_get = nss_phy_c45_common_mse_get;
+	ops->clk_ppm_offset_get = qce1204_phy_clk_ppm_offset_get;
 
 	return 0;
 }

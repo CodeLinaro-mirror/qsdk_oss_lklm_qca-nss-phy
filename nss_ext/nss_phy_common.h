@@ -28,6 +28,7 @@ extern "C" {
 #define NSS_PHY_AUTONEG_ADV		0x4
 #define NSS_PHY_SPEC_CONTROL		0x10
 #define NSS_PHY_SPEC_STATUS		0x11
+#define NSS_PHY_SPEC_STATUS_LINK_UP	0x400	/* bit 10: real-time link status */
 #define NSS_PHY_INTR_MASK		0x12
 #define NSS_PHY_INTR_STATUS		0x13
 #define NSS_PHY_CDT_CONTROL		0x16
@@ -278,6 +279,24 @@ void nss_phy_common_an_fail_counter_reset(struct nss_phy_device *nss_phydev);
 int nss_phy_common_mse_get(struct nss_phy_device *nss_phydev,
 	struct nss_phy_mse *mse);
 s32 nss_phy_mse_to_snr_centi_db(u32 num, u32 den);
+
+/* Master/slave control — MII reg 9 (1000BASE-T Control), used by NAPA (QCA808X).
+ * C45 PHYs (Laguna, Huntington, Hermosa) use MMD7 reg 0x20 instead; see
+ * nss_phy_c45_common.h.
+ */
+#define NSS_PHY_MII_CTRL1000		9
+#define NSS_PHY_MII_STAT1000		0xa
+#define NSS_PHY_MII_MS_MANUAL_EN	BIT(13)
+#define NSS_PHY_MII_MS_MASTER_VAL	BIT(12)
+#define NSS_PHY_MII_MS_CTRL_MASK	GENMASK(13, 12)
+/* MII 0xa bit 13: resolved MS config (1=master, 0=slave) */
+#define NSS_PHY_MII_MS_RESOLVED_MASTER	BIT(13)
+
+int nss_phy_common_ms_set(struct nss_phy_device *nss_phydev,
+	enum nss_phy_ms_mode mode);
+int nss_phy_common_ms_get(struct nss_phy_device *nss_phydev,
+	enum nss_phy_ms_mode *mode);
+int nss_phy_common_ms_status_get(struct nss_phy_device *nss_phydev);
 
 #ifdef __cplusplus
 }

@@ -503,6 +503,15 @@ static int qca808x_phy_intr_status_get(struct nss_phy_device *nss_phydev,
 	return 0;
 }
 
+static int qca808x_phy_clk_ppm_offset_get(struct nss_phy_device *nss_phydev,
+	int *ppm)
+{
+	return nss_phy_c45_common_clk_ppm_offset_get(nss_phydev, ppm,
+		QCA808X_PPM_DIV_1G,
+		QCA808X_PPM_DIV_2_5G,
+		0 /* 5G/10G not supported */);
+}
+
 int qca808x_phy_ops_init(struct nss_phy_ops *ops)
 {
 	ops->hibernation_set = nss_phy_common_hibernation_set;
@@ -546,6 +555,7 @@ int qca808x_phy_ops_init(struct nss_phy_ops *ops)
 	ops->an_fail_counter_get = nss_phy_common_an_fail_counter_get;
 	ops->an_fail_counter_reset = nss_phy_common_an_fail_counter_reset;
 	ops->mse_get = nss_phy_c45_common_mse_get;
+	ops->clk_ppm_offset_get = qca808x_phy_clk_ppm_offset_get;
 
 	return 0;
 }

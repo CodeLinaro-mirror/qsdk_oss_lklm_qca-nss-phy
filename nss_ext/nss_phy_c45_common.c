@@ -1627,6 +1627,7 @@ int nss_phy_c45_common_mse_get(struct nss_phy_device *nss_phydev,
 			continue;
 		}
 		mse->mse[i] = (u16)val;
+		mse->quality[i] = NSS_PHY_MSE_QUALITY_LINK_DOWN; /* threshold loop will classify */
 	}
 
 	nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
@@ -1662,4 +1663,256 @@ int nss_phy_c45_common_mse_get(struct nss_phy_device *nss_phydev,
 	}
 
 	return 0;
+}
+
+static int nss_phy_c45_ms_read(struct nss_phy_device *nss_phydev, u16 *val)
+{
+	int ret = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM, NSS_PHY_MMD7_FR_ADV);
+
+	if (ret < 0)
+		return ret;
+	*val = (u16)ret & NSS_PHY_AN_MS_CTRL_MASK;
+	return 0;
+}
+
+static int nss_phy_c45_ms_write(struct nss_phy_device *nss_phydev, u16 mask, u16 val)
+{
+	return nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_FR_ADV, mask, val);
+}
+
+int nss_phy_c45_common_ms_set(struct nss_phy_device *nss_phydev,
+	enum nss_phy_ms_mode mode)
+{
+	u16 val;
+	int ret;
+
+	switch (mode) {
+	case NSS_PHY_MS_AUTO:
+		val = 0;
+		break;
+	case NSS_PHY_MS_PREFER_MASTER:
+		val = NSS_PHY_AN_MS_PREFER_MASTER;
+		break;
+	case NSS_PHY_MS_FORCE_MASTER:
+		val = NSS_PHY_AN_MS_FORCE_EN | NSS_PHY_AN_MS_MASTER_VAL;
+		break;
+	case NSS_PHY_MS_FORCE_SLAVE:
+		val = NSS_PHY_AN_MS_FORCE_EN;
+		break;
+	default:
+		return -NSS_PHY_EINVAL;
+	}
+
+	ret = nss_phy_c45_ms_write(nss_phydev, NSS_PHY_AN_MS_CTRL_MASK, val);
+	if (ret < 0)
+		return ret;
+
+	return nss_phy_c45_common_autoneg_restart(nss_phydev);
+}
+
+int nss_phy_c45_common_ms_get(struct nss_phy_device *nss_phydev,
+	enum nss_phy_ms_mode *mode)
+{
+	u16 val;
+	int ret = nss_phy_c45_ms_read(nss_phydev, &val);
+
+	if (ret < 0)
+		return ret;
+
+	if (!(val & NSS_PHY_AN_MS_FORCE_EN))
+		*mode = (val & NSS_PHY_AN_MS_PREFER_MASTER) ?
+			NSS_PHY_MS_PREFER_MASTER : NSS_PHY_MS_AUTO;
+	else
+		*mode = (val & NSS_PHY_AN_MS_MASTER_VAL) ?
+			NSS_PHY_MS_FORCE_MASTER : NSS_PHY_MS_FORCE_SLAVE;
+
+	return 0;
+}
+
+/* Returns 1 if local PHY resolved as master, 0 if slave, <0 on error.
+ * MMD7.0x21 bit 14: set means local PHY resolved as master (IEEE 802.3-2018 §45.2.55).
+ */
+int nss_phy_c45_common_ms_status_get(struct nss_phy_device *nss_phydev)
+{
+	int ret = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_LP_FR_ABILITY);
+
+	if (ret < 0)
+		return ret;
+
+	return ((u16)ret & NSS_PHY_AN_MS_RESOLUTION_MASTER) ? 1 : 0;
+}
+
+int nss_phy_c45_common_link_status_get(struct nss_phy_device *nss_phydev, bool is_c45)
+{
+	int val = is_c45
+		? nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD31_NUM, NSS_PHY_SPEC_STATUS)
+		: nss_phy_read(nss_phydev, NSS_PHY_SPEC_STATUS);
+
+	if (val < 0)
+		return val;
+
+	return !!(val & NSS_PHY_SPEC_STATUS_LINK_UP);
+}
+
+int nss_phy_c45_common_clk_ppm_offset_get(struct nss_phy_device *nss_phydev,
+	int *ppm, u64 div_1g, u64 div_2_5g, u64 div_5g_10g)
+{
+	bool is_c45 = nss_phydev_is_c45(nss_phydev);
+	enum nss_phy_ms_mode prev_ms_mode;
+	bool ms_forced = false;
+	u64 divisor;
+	bool link_up = false;
+	int ret, raw;
+	u32 speed;
+	int i;
+
+	if (!ppm)
+		return -NSS_PHY_EINVAL;
+
+	speed = nss_phydev_speed_get(nss_phydev);
+
+	switch (speed) {
+	case NSS_PHY_SPEED_1000:
+		if (!div_1g)
+			return -NSS_PHY_EOPNOTSUPP;
+		divisor = div_1g;
+		break;
+	case NSS_PHY_SPEED_2500:
+		if (!div_2_5g)
+			return -NSS_PHY_EOPNOTSUPP;
+		divisor = div_2_5g;
+		break;
+	case NSS_PHY_SPEED_5000:
+	case NSS_PHY_SPEED_10000:
+		if (!div_5g_10g)
+			return -NSS_PHY_EOPNOTSUPP;
+		divisor = div_5g_10g;
+		break;
+	default:
+		return -NSS_PHY_EOPNOTSUPP;
+	}
+
+	/*
+	 * Serialise the entire ms-swap → measure → restore sequence.
+	 * Using a dedicated mutex (not phydev->lock) avoids deadlock with
+	 * the PHY state machine.
+	 */
+	mutex_lock(&nss_phydev->ppm_lock);
+
+	/* PPM measurement requires the local PHY to be in slave role.
+	 * If already slave, read PPM directly.  If master, force slave,
+	 * wait for link-up via hardware register (MMD31.0x11 bit 10 for C45,
+	 * MII 0x11 bit 10 for C22), then measure.
+	 */
+	ret = is_c45 ? nss_phy_c45_common_ms_status_get(nss_phydev)
+		     : nss_phy_common_ms_status_get(nss_phydev);
+	if (ret < 0)
+		goto unlock;
+
+	if (ret != 0) {
+		/* Currently master — save config, force slave, wait for link */
+		ret = is_c45 ? nss_phy_c45_common_ms_get(nss_phydev, &prev_ms_mode)
+			     : nss_phy_common_ms_get(nss_phydev, &prev_ms_mode);
+		if (ret < 0)
+			goto unlock;
+
+		ret = is_c45 ? nss_phy_c45_common_ms_set(nss_phydev, NSS_PHY_MS_FORCE_SLAVE)
+			     : nss_phy_common_ms_set(nss_phydev, NSS_PHY_MS_FORCE_SLAVE);
+		if (ret < 0)
+			goto unlock;
+		ms_forced = true;
+
+		for (i = 0; i < 150; i++) {
+			nss_phy_msleep(100);
+			ret = nss_phy_c45_common_link_status_get(nss_phydev, is_c45);
+			if (ret < 0)
+				goto restore;
+			if (ret) {
+				link_up = true;
+				break;
+			}
+		}
+
+		if (!link_up) {
+			ret = -NSS_PHY_ETIMEOUT;
+			goto restore;
+		}
+	} else {
+		/* Already slave — verify link is actually up before reading PPM.
+		 * ms_status_get may return 0 (no resolution) when link is down,
+		 * which would cause a stale PPM read.
+		 */
+		ret = nss_phy_c45_common_link_status_get(nss_phydev, is_c45);
+		if (ret < 0)
+			goto unlock;
+		if (!ret) {
+			ret = -NSS_PHY_ENOLINK;
+			goto unlock;
+		}
+		link_up = true;
+	}
+
+	if (speed == NSS_PHY_SPEED_1000) {
+		ret = nss_phy_modify_debug(nss_phydev, NSS_PHY_DEBUG_CONTROL_REGISTER0,
+				     NSS_PHY_DEBUG_MSE_100M_1G_EN, NSS_PHY_DEBUG_MSE_100M_1G_EN);
+		if (ret < 0)
+			goto restore;
+		nss_phy_msleep(100);
+		raw = nss_phy_read_debug(nss_phydev, NSS_PHY_DEBUG_PPM_OFFSET);
+	} else {
+		/* NSS_PHY_MMD3_PHY_MISC_CTRL0 BIT(2) enables the PPM database. */
+		ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+			NSS_PHY_MMD3_PHY_MISC_CTRL0,
+			NSS_PHY_MMD3_PHY_PMA_MONITOR_EN0,
+			NSS_PHY_MMD3_PHY_PMA_MONITOR_EN0);
+		if (ret < 0)
+			goto restore;
+		/* NSS_PHY_MMD3_PHY_MISC_CTRL1 BIT(13) is the PPM capture trigger;
+		 * the hardware self-clears it after latching the offset value,
+		 * so no explicit restore of this bit is required.
+		 */
+		ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+			NSS_PHY_MMD3_PHY_MISC_CTRL1,
+			NSS_PHY_MMD3_PHY_PMA_MONITOR_EN1,
+			NSS_PHY_MMD3_PHY_PMA_MONITOR_EN1);
+		if (ret < 0)
+			goto restore;
+		/* Allow the hardware one measurement window to latch the
+		 * PPM offset after the capture trigger (BIT(13)) is set.
+		 */
+		nss_phy_msleep(100);
+		raw = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+			NSS_PHY_MMD3_PPM_OFFSET);
+	}
+
+	if (raw < 0) {
+		ret = raw;
+		goto restore;
+	}
+
+	*ppm = (int)div_s64((s64)((s16)(u16)raw) * 1000000, (s64)divisor);
+	ret = 0;
+
+restore:
+	if (link_up) {
+		if (speed == NSS_PHY_SPEED_1000)
+			nss_phy_modify_debug(nss_phydev, NSS_PHY_DEBUG_CONTROL_REGISTER0,
+					     NSS_PHY_DEBUG_MSE_100M_1G_EN, 0);
+		else
+			nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+				NSS_PHY_MMD3_PHY_MISC_CTRL0,
+				NSS_PHY_MMD3_PHY_PMA_MONITOR_EN0, 0);
+	}
+	if (ms_forced) {
+		if (is_c45)
+			nss_phy_c45_common_ms_set(nss_phydev, prev_ms_mode);
+		else
+			nss_phy_common_ms_set(nss_phydev, prev_ms_mode);
+	}
+
+unlock:
+	mutex_unlock(&nss_phydev->ppm_lock);
+	return ret;
 }

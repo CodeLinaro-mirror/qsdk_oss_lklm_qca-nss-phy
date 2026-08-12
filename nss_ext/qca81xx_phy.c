@@ -258,6 +258,15 @@ static int qca81xx_phy_adjust_link_post(struct nss_phy_device *nss_phydev)
 	return 0;
 }
 
+static int qca81xx_phy_clk_ppm_offset_get(struct nss_phy_device *nss_phydev,
+	int *ppm)
+{
+	return nss_phy_c45_common_clk_ppm_offset_get(nss_phydev, ppm,
+		QCA81XX_PPM_DIV_1G,
+		QCA81XX_PPM_DIV_2_5G,
+		QCA81XX_PPM_DIV_5G_10G);
+}
+
 int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 {
 	ops->hibernation_set = nss_phy_common_hibernation_set;
@@ -300,6 +309,7 @@ int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 	ops->an_fail_counter_reset = nss_phy_common_an_fail_counter_reset;
 	ops->an_fail_counter_get = nss_phy_common_an_fail_counter_get;
 	ops->mse_get = nss_phy_c45_common_mse_get;
+	ops->clk_ppm_offset_get = qca81xx_phy_clk_ppm_offset_get;
 
 	return 0;
 }

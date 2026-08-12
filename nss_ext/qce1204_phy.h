@@ -17,6 +17,11 @@ extern "C"
 #define QCE1204_PHY_CLD_FORCE_EN		0x100
 #define QCE1204_PHY_MMD3_CLD_RESULT		0x808c
 #define QCE1204_PHY_CLD_CABLE_LENGTH		0xff
+
+/* PPM offset clock frequency divisors for QCE1204 (Huntington) and IPQ52XX (Hermosa) */
+#define QCE1204_PPM_DIV_1G		(512ULL << 18)
+#define QCE1204_PPM_DIV_2_5G		(640ULL << 15)
+
 int qce1204_phy_ops_init(struct nss_phy_ops *ops);
 #ifdef __cplusplus
 }

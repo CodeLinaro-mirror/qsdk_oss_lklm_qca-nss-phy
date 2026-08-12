@@ -281,6 +281,51 @@ int nss_phy_c45_common_link_training_completion_get(struct nss_phy_device *nss_p
 
 int nss_phy_c45_common_mse_get(struct nss_phy_device *nss_phydev,
 	struct nss_phy_mse *mse);
+
+/* Master/slave control — MMD7 reg 0x20 (AN 10GBT Control), used by
+ * Laguna, Huntington, and Hermosa. NAPA (QCA808X) uses MII reg 9 instead.
+ */
+#define NSS_PHY_AN_MS_CTRL_MASK		(BIT(15) | BIT(14) | BIT(13))
+#define NSS_PHY_AN_MS_FORCE_EN		BIT(15)
+#define NSS_PHY_AN_MS_MASTER_VAL	BIT(14)
+#define NSS_PHY_AN_MS_PREFER_MASTER	BIT(13)
+
+/* MMD7 0x21 bit 14: 1 = local PHY resolved as Master, 0 = local PHY resolved as Slave. */
+#define NSS_PHY_AN_MS_RESOLUTION_MASTER	BIT(14)
+
+/* 1G PPM offset (debug-port indirect access).
+ * NSS_PHY_DEBUG_MSE_100M_1G_EN (BIT(0) of NSS_PHY_DEBUG_CONTROL_REGISTER0) doubles
+ * as the PPM enable; the same bit enables both MSE and PPM capture.
+ */
+#define NSS_PHY_DEBUG_PPM_OFFSET	0x25
+
+/* 2.5G / 5G / 10G PPM offset register (MMD3 / PCS).
+ * NSS_PHY_MMD3_PHY_MISC_CTRL0 BIT(2) doubles as the PPM-database enable;
+ * NSS_PHY_MMD3_PHY_MISC_CTRL1 BIT(13) doubles as the PPM capture trigger
+ * (hardware self-clears after latching the offset).
+ */
+#define NSS_PHY_MMD3_PPM_OFFSET		0xa06f
+
+/*
+ * nss_phy_c45_common_clk_ppm_offset_get - Read the PHY clock frequency offset
+ *
+ * WARNING: this function has an intrusive side-effect — it temporarily forces
+ * the PHY into slave role via ms_set (which internally restarts autoneg) to
+ * obtain a stable readback.  A live link will be disrupted for up to ~15 s.
+ * Do not call this from a context where brief link loss is unacceptable.
+ *
+ * Pass 0 for any divisor to mark that speed as unsupported.
+ */
+int nss_phy_c45_common_link_status_get(struct nss_phy_device *nss_phydev, bool is_c45);
+int nss_phy_c45_common_clk_ppm_offset_get(struct nss_phy_device *nss_phydev,
+	int *ppm, u64 div_1g, u64 div_2_5g, u64 div_5g_10g);
+
+int nss_phy_c45_common_ms_set(struct nss_phy_device *nss_phydev,
+	enum nss_phy_ms_mode mode);
+int nss_phy_c45_common_ms_get(struct nss_phy_device *nss_phydev,
+	enum nss_phy_ms_mode *mode);
+int nss_phy_c45_common_ms_status_get(struct nss_phy_device *nss_phydev);
+
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

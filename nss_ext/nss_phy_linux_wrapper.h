@@ -69,6 +69,12 @@ struct nss_phy_device {
 	 * measurement.
 	 */
 	struct mutex mse_lock;
+	/*
+	 * Serializes the full ms-swap→measure→restore sequence in
+	 * clk_ppm_offset_get so that concurrent callers cannot interleave
+	 * their save/restore of the master/slave configuration.
+	 */
+	struct mutex ppm_lock;
 };
 
 #define nss_phy_err(nss_phydev, format, args...)	\
@@ -85,6 +91,7 @@ struct nss_phy_device {
 #define NSS_PHY_EINVAL		EINVAL
 #define NSS_PHY_ENOSPC		ENOSPC
 #define NSS_PHY_ETIMEOUT		ETIMEDOUT
+#define NSS_PHY_ENOLINK		ENOLINK
 
 #define NSS_PHY_INTERFACE_MODE_RGMII_AMDET		12
 #define nss_phy_interface_t phy_interface_t

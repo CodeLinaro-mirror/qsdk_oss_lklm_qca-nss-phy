@@ -47,6 +47,13 @@ extern "C" {
 #define XGE_EEE		(EEE_2500BASE_T | EEE_5000BASE_T | EEE_10000BASE_T)
 #define ALL_SPEED_EEE		(GE_EEE | XGE_EEE)
 
+enum nss_phy_ms_mode {
+	NSS_PHY_MS_AUTO = 0,
+	NSS_PHY_MS_PREFER_MASTER = 1,
+	NSS_PHY_MS_FORCE_MASTER = 2,
+	NSS_PHY_MS_FORCE_SLAVE = 3,
+};
+
 /* IEEE FR speed/bypass bits (0x40-0x800) and Cisco FR ability bits
  * (0x1000-0x8000) are disjoint, so nss_phy_fr_status::negotiated can OR
  * them together into a single bitmap without collision.
@@ -444,6 +451,7 @@ struct nss_phy_ops {
 		u64 *count);
 	int (*mse_get)(struct nss_phy_device *nss_phydev,
 		struct nss_phy_mse *mse);
+	int (*clk_ppm_offset_get)(struct nss_phy_device *nss_phydev, int *ppm);
 };
 #ifdef __cplusplus
 }

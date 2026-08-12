@@ -1086,6 +1086,7 @@ int nss_phy_common_mse_get(struct nss_phy_device *nss_phydev,
 			continue;
 		}
 		mse->mse[i] = ret & ch_masks[i];
+		mse->quality[i] = NSS_PHY_MSE_QUALITY_LINK_DOWN; /* threshold loop will classify */
 	}
 
 	nss_phy_modify_debug(nss_phydev, NSS_PHY_DEBUG_CONTROL_REGISTER0,
@@ -1118,3 +1119,66 @@ int nss_phy_common_mse_get(struct nss_phy_device *nss_phydev,
 
 	return 0;
 }
+
+int nss_phy_common_ms_set(struct nss_phy_device *nss_phydev,
+	enum nss_phy_ms_mode mode)
+{
+	u16 val;
+	int ret;
+
+	switch (mode) {
+	case NSS_PHY_MS_AUTO:
+	case NSS_PHY_MS_PREFER_MASTER:
+		/* MII reg 9 has no "prefer master" bit; PREFER_MASTER maps to AUTO. */
+		val = 0;
+		break;
+	case NSS_PHY_MS_FORCE_MASTER:
+		val = NSS_PHY_MII_MS_MANUAL_EN | NSS_PHY_MII_MS_MASTER_VAL;
+		break;
+	case NSS_PHY_MS_FORCE_SLAVE:
+		val = NSS_PHY_MII_MS_MANUAL_EN;
+		break;
+	default:
+		return -NSS_PHY_EINVAL;
+	}
+
+	ret = nss_phy_modify(nss_phydev, NSS_PHY_MII_CTRL1000,
+		NSS_PHY_MII_MS_CTRL_MASK, val);
+	if (ret < 0)
+		return ret;
+
+	return nss_phy_common_autoneg_restart(nss_phydev);
+}
+
+int nss_phy_common_ms_get(struct nss_phy_device *nss_phydev,
+	enum nss_phy_ms_mode *mode)
+{
+	int ret = nss_phy_read(nss_phydev, NSS_PHY_MII_CTRL1000);
+	u16 val;
+
+	if (ret < 0)
+		return ret;
+
+	val = (u16)ret & NSS_PHY_MII_MS_CTRL_MASK;
+
+	if (!(val & NSS_PHY_MII_MS_MANUAL_EN))
+		*mode = NSS_PHY_MS_AUTO;
+	else if (val & NSS_PHY_MII_MS_MASTER_VAL)
+		*mode = NSS_PHY_MS_FORCE_MASTER;
+	else
+		*mode = NSS_PHY_MS_FORCE_SLAVE;
+
+	return 0;
+}
+
+/* Returns 1 if PHY resolved as master, 0 if slave, <0 on error. */
+int nss_phy_common_ms_status_get(struct nss_phy_device *nss_phydev)
+{
+	int ret = nss_phy_read(nss_phydev, NSS_PHY_MII_STAT1000);
+
+	if (ret < 0)
+		return ret;
+
+	return ((u16)ret & NSS_PHY_MII_MS_RESOLVED_MASTER) ? 1 : 0;
+}
+

@@ -132,6 +132,23 @@ static ssize_t nss_phy_ext_state_show(struct device *dev, struct device_attribut
 		}
 	}
 
+	/* clk_ppm_offset_get is intrusive: it forces slave mode and restarts AN,
+	 * disrupting any live link for up to ~15 s when the PHY is currently master.
+	 * Reading this sysfs attribute on an active link is intentional for
+	 * lab/debug use only.
+	 */
+	if (ops && ops->clk_ppm_offset_get) {
+		int ppm = 0;
+		int ret = ops->clk_ppm_offset_get(nss_phydev, &ppm);
+
+		if (!ret)
+			count += scnprintf(buf + count, PAGE_SIZE - count,
+				"    clk_ppm_offset      : %d\n", ppm);
+		else
+			count += scnprintf(buf + count, PAGE_SIZE - count,
+				"    clk_ppm_offset      : n/a\n");
+	}
+
 	return count;
 }
 
@@ -448,6 +465,7 @@ static int nss_phy_probe(struct phy_device *phydev)
 
 	spin_lock_init(&nss_phydev->fr_sw_cnt_lock);
 	mutex_init(&nss_phydev->mse_lock);
+	mutex_init(&nss_phydev->ppm_lock);
 	atomic64_set(&nss_phydev->an_fail_count, 0);
 	INIT_DELAYED_WORK(&nss_phydev->status_poll_work, nss_phy_status_poll_work_fn);
 

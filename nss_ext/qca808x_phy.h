@@ -72,6 +72,11 @@ enum qca808x_phy_addr_offset {
 
 int qca808x_phy_ops_init(struct nss_phy_ops *ops);
 int qca8084_phy_fixup(struct nss_phy_device *nss_phydev);
+
+/* PPM offset clock frequency divisors for QCA808X (NAPA) */
+#define QCA808X_PPM_DIV_1G		(384ULL << 18)
+#define QCA808X_PPM_DIV_2_5G		(1ULL << 26)
+
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

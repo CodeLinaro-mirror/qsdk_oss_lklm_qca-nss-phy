@@ -44,6 +44,12 @@ enum qca81xx_phy_addr_offset {
 };
 
 int qca81xx_phy_ops_init(struct nss_phy_ops *ops);
+
+/* PPM offset clock frequency divisors for QCA81XX (Laguna) */
+#define QCA81XX_PPM_DIV_1G		(768ULL << 18)
+#define QCA81XX_PPM_DIV_2_5G		(1ULL << 25)
+#define QCA81XX_PPM_DIV_5G_10G		(1ULL << 26)
+
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */
