@@ -175,6 +175,23 @@ static ssize_t nss_phy_ext_statistics_show(struct device *dev, struct device_att
 		ret_count += scnprintf(buf + ret_count, PAGE_SIZE - ret_count, "    %-20s : %llu\n", "an_fail_count", count);
 	}
 
+	if (ops && ops->ldpc_stats_get) {
+		struct nss_phy_ldpc_stats s = {0};
+		int ret = ops->ldpc_stats_get(nss_phydev, &s);
+
+		if (!ret)
+			ret_count += scnprintf(buf + ret_count, PAGE_SIZE - ret_count,
+				"    %-20s : iter0=%llu iter1=%llu iter2=%llu iter3=%llu iter4=%llu"
+				" uncorrected=%u avg_iter=%d.%02d\n",
+				"ldpc_stats",
+				s.iter[0], s.iter[1], s.iter[2], s.iter[3], s.iter[4],
+				s.uncorrected,
+				s.avg_iter_x100 / 100, s.avg_iter_x100 % 100);
+		else
+			ret_count += scnprintf(buf + ret_count, PAGE_SIZE - ret_count,
+				"    %-20s : n/a (%d)\n", "ldpc_stats", ret);
+	}
+
 	return ret_count;
 }
 

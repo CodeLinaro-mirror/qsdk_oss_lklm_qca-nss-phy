@@ -352,6 +352,13 @@ struct nss_phy_mse {
 	s32 snr_margin[4];	/* SNR margin in centidB (0.01 dB units), derived from MSE */
 };
 
+/* LDPC decoder statistics collected from per-iteration bucket counters. */
+struct nss_phy_ldpc_stats {
+	u64 iter[5];		/* codewords corrected at each iteration depth (0..4) */
+	u16 uncorrected;	/* frames that exceeded all LDPC iterations (16-bit hw register) */
+	int avg_iter_x100;	/* (1*iter1+2*iter2+3*iter3+4*iter4)/iter_total, scaled ×100 */
+};
+
 struct nss_phy_ops {
 	int (*hibernation_set)(struct nss_phy_device *nss_phydev, u32 enable);
 	int (*hibernation_get)(struct nss_phy_device *nss_phydev, u32 *enable);
@@ -452,6 +459,8 @@ struct nss_phy_ops {
 	int (*mse_get)(struct nss_phy_device *nss_phydev,
 		struct nss_phy_mse *mse);
 	int (*clk_ppm_offset_get)(struct nss_phy_device *nss_phydev, int *ppm);
+	int (*ldpc_stats_get)(struct nss_phy_device *nss_phydev,
+		struct nss_phy_ldpc_stats *stats);
 };
 #ifdef __cplusplus
 }

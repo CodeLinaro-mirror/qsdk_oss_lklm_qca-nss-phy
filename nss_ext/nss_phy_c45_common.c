@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: ISC
  */
 
+#include <linux/math64.h>
 #include "nss_phy.h"
 #include "nss_phy_c45_common.h"
 
@@ -1915,4 +1916,99 @@ restore:
 unlock:
 	mutex_unlock(&nss_phydev->ppm_lock);
 	return ret;
+}
+
+/*
+ * nss_phy_c45_common_ldpc_stats_get()
+ *	Read LDPC decoder statistics from the per-iteration bucket counters.
+ *
+ * Each of the five iteration buckets is stored as four consecutive 16-bit
+ * sub-registers (a=LSW .. d=MSW) in MMD3.  0xFFFFFFFFFFFFFFFF (all sub-registers
+ * 0xffff) is the hardware sentinel for "counter not available / clamped";
+ * treat the whole bucket as zero.
+ *
+ * Only meaningful when the link is operating at 2.5G or above
+ * (IEEE 802.3bz for NBase-T, IEEE 802.3an for 10GBASE-T).
+ * Returns -NSS_PHY_EOPNOTSUPP at lower speeds, -NSS_PHY_EINVAL if @stats is NULL,
+ * or a negative MDIO error code on register read failure.
+ *
+ * avg_iter_x100 is the weighted average of iterations needed to decode a
+ * codeword, scaled by 100.  iter[0] (decoded without any extra iteration) has
+ * weight 0 and is counted only in the denominator; iter[1..4] carry weights 1..4.
+ */
+int nss_phy_c45_common_ldpc_stats_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_ldpc_stats *stats)
+{
+	static const u16 iter_regs[5][4] = {
+		{ NSS_PHY_MMD3_LDPC_ITER0_A, NSS_PHY_MMD3_LDPC_ITER0_B,
+		  NSS_PHY_MMD3_LDPC_ITER0_C, NSS_PHY_MMD3_LDPC_ITER0_D },
+		{ NSS_PHY_MMD3_LDPC_ITER1_A, NSS_PHY_MMD3_LDPC_ITER1_B,
+		  NSS_PHY_MMD3_LDPC_ITER1_C, NSS_PHY_MMD3_LDPC_ITER1_D },
+		{ NSS_PHY_MMD3_LDPC_ITER2_A, NSS_PHY_MMD3_LDPC_ITER2_B,
+		  NSS_PHY_MMD3_LDPC_ITER2_C, NSS_PHY_MMD3_LDPC_ITER2_D },
+		{ NSS_PHY_MMD3_LDPC_ITER3_A, NSS_PHY_MMD3_LDPC_ITER3_B,
+		  NSS_PHY_MMD3_LDPC_ITER3_C, NSS_PHY_MMD3_LDPC_ITER3_D },
+		{ NSS_PHY_MMD3_LDPC_ITER4_A, NSS_PHY_MMD3_LDPC_ITER4_B,
+		  NSS_PHY_MMD3_LDPC_ITER4_C, NSS_PHY_MMD3_LDPC_ITER4_D },
+	};
+	static const u64 bucket_cap = U64_MAX / 1000ULL;
+	u64 iter[5], iter_total, weighted;
+	int i, iter_err;
+
+	if (!stats)
+		return -NSS_PHY_EINVAL;
+
+	if (nss_phydev_speed_get(nss_phydev) < NSS_PHY_SPEED_2500)
+		return -NSS_PHY_EOPNOTSUPP;
+
+	for (i = 0; i < 5; i++) {
+		int ra, rb, rc, rd;
+
+		ra = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM, iter_regs[i][0]);
+		if (ra < 0)
+			return ra;
+		rb = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM, iter_regs[i][1]);
+		if (rb < 0)
+			return rb;
+		rc = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM, iter_regs[i][2]);
+		if (rc < 0)
+			return rc;
+		rd = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM, iter_regs[i][3]);
+		if (rd < 0)
+			return rd;
+
+		iter[i] = ((u64)(u16)rd << 48) | ((u64)(u16)rc << 32) |
+			  ((u64)(u16)rb << 16) | (u64)(u16)ra;
+		if (iter[i] == U64_MAX)
+			iter[i] = 0;
+	}
+
+	/*
+	 * Clamp per-bucket values so weighted and 100*weighted cannot wrap u64.
+	 * With cap = U64_MAX/1000: sum of (1+2+3+4)*cap = U64_MAX/100, and
+	 * 100 * (U64_MAX/100) == U64_MAX, staying within range.
+	 * iter_total uses the same clamped values for consistency.
+	 */
+	weighted = 1ULL * min(iter[1], bucket_cap) +
+		   2ULL * min(iter[2], bucket_cap) +
+		   3ULL * min(iter[3], bucket_cap) +
+		   4ULL * min(iter[4], bucket_cap);
+
+	iter_total = min(iter[0], bucket_cap) +
+		     min(iter[1], bucket_cap) +
+		     min(iter[2], bucket_cap) +
+		     min(iter[3], bucket_cap) +
+		     min(iter[4], bucket_cap);
+
+	iter_err = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+				    NSS_PHY_MMD3_LDPC_ITER_ERR);
+	if (iter_err < 0 || (u16)iter_err == 0xffff)
+		iter_err = 0;
+
+	memcpy(stats->iter, iter, sizeof(stats->iter));
+	stats->uncorrected   = (u16)iter_err;
+	stats->avg_iter_x100 = (iter_total == 0) ? 0 :
+		(int)div64_u64(100ULL * weighted, iter_total);
+
+	return 0;
 }

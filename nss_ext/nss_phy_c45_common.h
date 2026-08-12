@@ -325,6 +325,31 @@ int nss_phy_c45_common_ms_set(struct nss_phy_device *nss_phydev,
 int nss_phy_c45_common_ms_get(struct nss_phy_device *nss_phydev,
 	enum nss_phy_ms_mode *mode);
 int nss_phy_c45_common_ms_status_get(struct nss_phy_device *nss_phydev);
+/* LDPC per-iteration bucket registers (MMD3) */
+#define NSS_PHY_MMD3_LDPC_ITER0_A		0xa0ed
+#define NSS_PHY_MMD3_LDPC_ITER0_B		0xa0ee
+#define NSS_PHY_MMD3_LDPC_ITER0_C		0xa0ef
+#define NSS_PHY_MMD3_LDPC_ITER0_D		0xa0f0
+#define NSS_PHY_MMD3_LDPC_ITER1_A		0xa0d0
+#define NSS_PHY_MMD3_LDPC_ITER1_B		0xa0d1
+#define NSS_PHY_MMD3_LDPC_ITER1_C		0xa0d2
+#define NSS_PHY_MMD3_LDPC_ITER1_D		0xa0d3
+#define NSS_PHY_MMD3_LDPC_ITER2_A		0xa0d4
+#define NSS_PHY_MMD3_LDPC_ITER2_B		0xa0d5
+#define NSS_PHY_MMD3_LDPC_ITER2_C		0xa0d6
+#define NSS_PHY_MMD3_LDPC_ITER2_D		0xa0d7
+#define NSS_PHY_MMD3_LDPC_ITER3_A		0xa0d8
+#define NSS_PHY_MMD3_LDPC_ITER3_B		0xa0d9
+#define NSS_PHY_MMD3_LDPC_ITER3_C		0xa0da
+#define NSS_PHY_MMD3_LDPC_ITER3_D		0xa0db
+#define NSS_PHY_MMD3_LDPC_ITER4_A		0xa0dc
+#define NSS_PHY_MMD3_LDPC_ITER4_B		0xa0dd
+#define NSS_PHY_MMD3_LDPC_ITER4_C		0xa0de
+#define NSS_PHY_MMD3_LDPC_ITER4_D		0xa0df
+#define NSS_PHY_MMD3_LDPC_ITER_ERR		0xa064
+
+int nss_phy_c45_common_ldpc_stats_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_ldpc_stats *stats);
 
 #ifdef __cplusplus
 }
