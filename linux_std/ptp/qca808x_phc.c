@@ -898,8 +898,7 @@ static int qca808x_ptp_adjfine(struct ptp_clock_info *ptp, long scaled_ppm)
 		   scaled_ppm, neg_adj, nsec, (unsigned long long)adj);
 
 	mutex_lock(&clock->tsreg_lock);
-	ret = phy_write_mmd(phydev, MDIO_MMD_PCS, QCA808X_RTC_INC_CONF_1, adj & 0xffff);
-	ret |= phy_write_mmd(phydev, MDIO_MMD_PCS, QCA808X_RTC_INC_CONF_0, adj >> 16);
+	ret = qca808x_ptp_rtc_incval_set(phydev, adj >> 26, adj & GENMASK(25, 0));
 	mutex_unlock(&clock->tsreg_lock);
 
 	return ret;
