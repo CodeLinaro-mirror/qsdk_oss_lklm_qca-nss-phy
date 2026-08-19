@@ -2537,32 +2537,58 @@ static int qce1204_phy_10m_dac_init(struct phy_device *phydev)
 
 static int qce1204_phy_tlmm_init(struct phy_device *phydev)
 {
-	int ret = 0, pin_id = 0;
+	static const struct {
+		u8 gpio_num;
+		u8 fun;
+		u8 drv;
+		u8 led_en;
+		u8 pull;
+	} pin_cfgs[] = {
+#define NC QCE1204_TLMM_NC
+		{  0, QCE1204_GPIO0_FUNC_PHY_INT,  NC,                    NC, NC                       },
+		{  1, QCE1204_GPIO1_FUNC_P0_LED_0, QCE1204_TLMM_DRV_16_MA, 1, QCE1204_TLMM_PULL_NO_PULL },
+		{  2, QCE1204_GPIO2_FUNC_P1_LED_0, QCE1204_TLMM_DRV_16_MA, 1, QCE1204_TLMM_PULL_NO_PULL },
+		{  3, QCE1204_GPIO3_FUNC_P2_LED_0, QCE1204_TLMM_DRV_16_MA, 1, QCE1204_TLMM_PULL_NO_PULL },
+		{  4, QCE1204_GPIO4_FUNC_P3_LED_0, QCE1204_TLMM_DRV_16_MA, 1, QCE1204_TLMM_PULL_NO_PULL },
+		{  5, QCE1204_GPIO5_FUNC_P0_LED_2, QCE1204_TLMM_DRV_16_MA, 1, QCE1204_TLMM_PULL_NO_PULL },
+		{  6, QCE1204_GPIO6_FUNC_P1_LED_2, QCE1204_TLMM_DRV_16_MA, 1, QCE1204_TLMM_PULL_NO_PULL },
+		{  7, QCE1204_GPIO7_FUNC_P2_LED_2, QCE1204_TLMM_DRV_16_MA, 1, QCE1204_TLMM_PULL_NO_PULL },
+		{  8, QCE1204_GPIO8_FUNC_P3_LED_2, QCE1204_TLMM_DRV_16_MA, 1, QCE1204_TLMM_PULL_NO_PULL },
+		{  9, QCE1204_GPIO9_FUNC_P0_LED_1, QCE1204_TLMM_DRV_16_MA, 1, QCE1204_TLMM_PULL_NO_PULL },
+		{ 15, QCE1204_GPIO15_FUNC_P1_LED_1, QCE1204_TLMM_DRV_16_MA, 1, QCE1204_TLMM_PULL_NO_PULL },
+		{ 16, QCE1204_GPIO16_FUNC_P2_LED_1, QCE1204_TLMM_DRV_16_MA, 1, QCE1204_TLMM_PULL_NO_PULL },
+		{ 17, QCE1204_GPIO17_FUNC_P3_LED_1, QCE1204_TLMM_DRV_16_MA, 1, QCE1204_TLMM_PULL_NO_PULL },
+#undef NC
+	};
+	int ret, i;
 
-	/* GPIO0, FUNC 1 */
-	ret = qce1204_soc_modify(phydev, TO_TLMM_CFG_REG(QCE1204_GPIO0_PHY_INT),
-		QCE1204_TLMM_FUNC_MASK, BIT(2));
-	if (ret < 0)
-		return ret;
-	/* GPIO1~GPIO4, FUNC 1, LED_MODE, DRV_16_MA, NO_PULL */
-	for (pin_id  = QCE1204_GPIO1_P0_LED_0; pin_id <= QCE1204_GPIO4_P3_LED_0; pin_id++) {
-		ret = qce1204_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
-			QCE1204_TLMM_GPIO_PULL | QCE1204_TLMM_FUNC_MASK | QCE1204_TLMM_DRV | QCE1204_TLMM_LED_MODE,
-			BIT(2) | QCE1204_TLMM_DRV_16_MA | QCE1204_TLMM_LED_MODE);
-		if (ret < 0)
-			return ret;
-	}
+	for (i = 0; i < ARRAY_SIZE(pin_cfgs); i++) {
+		u32 mask = 0;
+		u32 set = 0;
 
-	/* GPIO9, FUNC 4 */
-	ret = qce1204_soc_modify(phydev, TO_TLMM_CFG_REG(QCE1204_GPIO9_P0_WOL_INT),
-		QCE1204_TLMM_FUNC_MASK, BIT(4));
-	if (ret < 0)
-		return ret;
+		if (pin_cfgs[i].fun != QCE1204_TLMM_NC) {
+			mask |= QCE1204_TLMM_FUNC_MASK;
+			set  |= FIELD_PREP(QCE1204_TLMM_FUNC_MASK, pin_cfgs[i].fun);
+		}
+		if (pin_cfgs[i].drv != QCE1204_TLMM_NC) {
+			mask |= QCE1204_TLMM_DRV;
+			set  |= FIELD_PREP(QCE1204_TLMM_DRV, pin_cfgs[i].drv);
+		}
+		if (pin_cfgs[i].led_en != QCE1204_TLMM_NC) {
+			mask |= QCE1204_TLMM_LED_MODE;
+			if (pin_cfgs[i].led_en)
+				set |= QCE1204_TLMM_LED_MODE;
+		}
+		if (pin_cfgs[i].pull != QCE1204_TLMM_NC) {
+			mask |= QCE1204_TLMM_GPIO_PULL;
+			set  |= FIELD_PREP(QCE1204_TLMM_GPIO_PULL, pin_cfgs[i].pull);
+		}
 
-	/* GPIO15~GPIO17, FUNC 1, LED_MODE, DRV_16_MA, NO_PULL */
-	for (pin_id  = QCE1204_GPIO15_P1_WOL_INT; pin_id <= QCE1204_GPIO17_P3_WOL_INT; pin_id++) {
-		ret = qce1204_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
-		QCE1204_TLMM_FUNC_MASK, BIT(3));
+		if (!mask)
+			continue;
+
+		ret = qce1204_soc_modify(phydev, TO_TLMM_CFG_REG(pin_cfgs[i].gpio_num),
+			mask, set);
 		if (ret < 0)
 			return ret;
 	}
