@@ -2320,8 +2320,28 @@ int qce1204_phy_probe(struct phy_device *phydev)
 			phydev_err(phydev, "Failed to parse SKU information: %d\n", ret);
 			return ret;
 		}
-	}
+		ret = qce1204_pcs_sys_clk_set_rate(phydev, QCE1204_CLK_RATE_25M);
+		if (ret < 0)
+			return ret;
 
+		if (qce1204_get_package_mode(phydev) == PHY_INTERFACE_MODE_QUSGMII) {
+			ret = qce1204_pcs_sys_clk_set(phydev, true);
+			if (ret < 0)
+				return ret;
+			ret = qce1204_pcs_sys_reset(phydev);
+			if (ret < 0)
+				return ret;
+		}
+	}
+	/* Enable PHY system clock and reset once at probe time; not repeated in config_init
+	 * which may be called on interface changes.
+	 */
+	ret = qce1204_phy_sys_clk_set(phydev, true);
+	if (ret < 0)
+		return ret;
+	ret = qce1204_phy_sys_reset(phydev);
+	if (ret < 0)
+		return ret;
 #if IS_ENABLED(CONFIG_HWMON)
 	qce1204_hwmon_probe(phydev);
 #endif
@@ -2558,19 +2578,10 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 
 	package_mode = qce1204_get_package_mode(phydev);
 	if (phy_package_init_once(phydev)) {
-		ret = qce1204_pcs_sys_clk_set_rate(phydev, QCE1204_CLK_RATE_25M);
-		if (ret < 0)
-			return ret;
 		if (package_mode == PHY_INTERFACE_MODE_QUSGMII) {
 			/* configure work mode as PHY */
 			ret = qce1204_soc_modify(phydev, QCE1204_WORK_MODE_SEL,
 				QCE1204_PHY_MODE_MASK, QCE1204_PHY_MODE);
-			if (ret < 0)
-				return ret;
-			ret = qce1204_pcs_sys_clk_set(phydev, true);
-			if (ret < 0)
-				return ret;
-			ret = qce1204_pcs_sys_reset(phydev);
 			if (ret < 0)
 				return ret;
 			ret = qce1204_pcs_qusgmii_mode_set(phydev);
@@ -2604,13 +2615,6 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 	}
 
 	ret = qce1204_phy_clk_parent_init(phydev);
-	if (ret < 0)
-		return ret;
-
-	ret = qce1204_phy_sys_clk_set(phydev, true);
-	if (ret < 0)
-		return ret;
-	ret = qce1204_phy_sys_reset(phydev);
 	if (ret < 0)
 		return ret;
 	ret = qce1204_phy_eee_init(phydev);
