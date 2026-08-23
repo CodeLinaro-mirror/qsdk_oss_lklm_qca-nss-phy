@@ -23,8 +23,26 @@
 #define QCE1204_TLMM_GPIO_PULL			GENMASK(1, 0)
 #define QCE1204_TLMM_FUNC_MASK			GENMASK(5, 2)
 #define QCE1204_TLMM_DRV			GENMASK(8, 6)
-#define QCE1204_TLMM_DRV_16_MA			0x1c0
 #define QCE1204_TLMM_LED_MODE			BIT(11)
+
+/* GPIO_PULL field values (bits 1:0) — complete enumeration for future use */
+#define QCE1204_TLMM_PULL_NO_PULL		0
+#define QCE1204_TLMM_PULL_DOWN			1
+#define QCE1204_TLMM_PULL_KEEPER		2
+#define QCE1204_TLMM_PULL_UP			3
+
+/* DRV_STRENGTH field values (bits 8:6) — complete enumeration for future use */
+#define QCE1204_TLMM_DRV_2_MA			0
+#define QCE1204_TLMM_DRV_4_MA			1
+#define QCE1204_TLMM_DRV_6_MA			2
+#define QCE1204_TLMM_DRV_8_MA			3
+#define QCE1204_TLMM_DRV_10_MA			4
+#define QCE1204_TLMM_DRV_12_MA			5
+#define QCE1204_TLMM_DRV_14_MA			6
+#define QCE1204_TLMM_DRV_16_MA			7
+
+/* Sentinel: field left at hardware default, no register write for this field */
+#define QCE1204_TLMM_NC				0xFF
 
 #define QCE1204_SKU_REG				0x90607C
 #define QCE1204_SKU_ID_MASK			GENMASK(23, 0)
@@ -114,18 +132,22 @@ struct qce1204_shared_priv {
 static_assert(offsetof(struct qce1204_shared_priv, sku) == 0,
 	      "qce1204_shared_priv.sku must stay the first member (MACsec shadow struct)");
 
-enum {
-	QCE1204_GPIO0_PHY_INT = 0,
-	QCE1204_GPIO1_P0_LED_0,
-	QCE1204_GPIO2_P1_LED_0,
-	QCE1204_GPIO3_P2_LED_0,
-	QCE1204_GPIO4_P3_LED_0,
-	QCE1204_GPIO9_P0_WOL_INT = 9,
-	QCE1204_GPIO15_P1_WOL_INT = 15,
-	QCE1204_GPIO16_P2_WOL_INT,
-	QCE1204_GPIO17_P3_WOL_INT,
-	QCE1204_GPIO_MAX
-};
+#define QCE1204_GPIO0_FUNC_PHY_INT		1
+
+#define QCE1204_GPIO1_FUNC_P0_LED_0		1
+#define QCE1204_GPIO2_FUNC_P1_LED_0		1
+#define QCE1204_GPIO3_FUNC_P2_LED_0		1
+#define QCE1204_GPIO4_FUNC_P3_LED_0		1
+
+#define QCE1204_GPIO5_FUNC_P0_LED_2		2
+#define QCE1204_GPIO6_FUNC_P1_LED_2		2
+#define QCE1204_GPIO7_FUNC_P2_LED_2		3
+#define QCE1204_GPIO8_FUNC_P3_LED_2		3
+
+#define QCE1204_GPIO9_FUNC_P0_LED_1		3
+#define QCE1204_GPIO15_FUNC_P1_LED_1		1
+#define QCE1204_GPIO16_FUNC_P2_LED_1		1
+#define QCE1204_GPIO17_FUNC_P3_LED_1		1
 
 u32 __qce1204_soc_read(struct phy_device *phydev, u32 reg);
 void __qce1204_soc_write(struct phy_device *phydev, u32 reg, u32 val);
