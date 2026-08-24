@@ -28,9 +28,19 @@ struct nss_phy_fr_sw_cnt {
 	u64 tx_total;
 };
 
+/* Software link-flap counters + timestamps (seconds since boot) */
+struct nss_phy_link_flap_stats {
+	atomic64_t up_count;
+	atomic64_t down_count;
+	atomic64_t last_up_time;	/* ktime_get_seconds() at 0->1; 0 = never */
+	atomic64_t last_down_time;	/* ktime_get_seconds() at 1->0; 0 = never */
+	atomic64_t last_change_time;	/* ktime_get_seconds() at any transition; 0 = never */
+};
+
 struct nss_phy_device {
 	struct phy_device *phydev;
 	atomic64_t adjust_link_post_count;
+	struct nss_phy_link_flap_stats flap_stats;
 	/*
 	 * Software cache of the Fast Retrain enable state set by the most
 	 * recent nss_phy_c45_common_fr_cfg_set() call. MMD1.93 is a

@@ -298,6 +298,12 @@ int nss_phy_common_ms_get(struct nss_phy_device *nss_phydev,
 	enum nss_phy_ms_mode *mode);
 int nss_phy_common_ms_status_get(struct nss_phy_device *nss_phydev);
 
+void nss_phy_common_flap_stats_update(struct nss_phy_device *nss_phydev,
+	bool link_up_transition, bool link_down_transition);
+int nss_phy_common_flap_stats_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_link_flap_stats *out);
+void nss_phy_common_flap_stats_reset(struct nss_phy_device *nss_phydev);
+
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */

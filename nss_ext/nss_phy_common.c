@@ -1182,3 +1182,46 @@ int nss_phy_common_ms_status_get(struct nss_phy_device *nss_phydev)
 	return ((u16)ret & NSS_PHY_MII_MS_RESOLVED_MASTER) ? 1 : 0;
 }
 
+void nss_phy_common_flap_stats_update(struct nss_phy_device *nss_phydev,
+	bool link_up_transition, bool link_down_transition)
+{
+	struct nss_phy_link_flap_stats *stats = &nss_phydev->flap_stats;
+	time64_t now = ktime_get_seconds();
+
+	if (link_up_transition) {
+		atomic64_inc(&stats->up_count);
+		atomic64_set(&stats->last_up_time, now);
+	} else if (link_down_transition) {
+		atomic64_inc(&stats->down_count);
+		atomic64_set(&stats->last_down_time, now);
+	}
+
+	atomic64_set(&stats->last_change_time, now);
+}
+
+int nss_phy_common_flap_stats_get(struct nss_phy_device *nss_phydev,
+	struct nss_phy_link_flap_stats *out)
+{
+	if (!out)
+		return -NSS_PHY_EINVAL;
+
+	atomic64_set(&out->up_count,          atomic64_read(&nss_phydev->flap_stats.up_count));
+	atomic64_set(&out->down_count,        atomic64_read(&nss_phydev->flap_stats.down_count));
+	atomic64_set(&out->last_up_time,      atomic64_read(&nss_phydev->flap_stats.last_up_time));
+	atomic64_set(&out->last_down_time,    atomic64_read(&nss_phydev->flap_stats.last_down_time));
+	atomic64_set(&out->last_change_time,  atomic64_read(&nss_phydev->flap_stats.last_change_time));
+
+	return 0;
+}
+
+void nss_phy_common_flap_stats_reset(struct nss_phy_device *nss_phydev)
+{
+	struct nss_phy_link_flap_stats *stats = &nss_phydev->flap_stats;
+
+	atomic64_set(&stats->up_count, 0);
+	atomic64_set(&stats->down_count, 0);
+	atomic64_set(&stats->last_up_time, 0);
+	atomic64_set(&stats->last_down_time, 0);
+	atomic64_set(&stats->last_change_time, 0);
+}
+

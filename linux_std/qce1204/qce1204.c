@@ -2159,65 +2159,6 @@ static int qce1204_clk_probe(struct phy_device *phydev)
 
 static DEVICE_ATTR(snr, 0444, qca81xx_phy_show_snr, NULL);
 
-/* Link-flap statistics: thin per-priv wrappers delegating to the shared trio */
-static ssize_t qce1204_phy_show_link_flap_stats(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct phy_device *phydev = to_phy_device(dev);
-	struct qce1204_priv *priv = phydev->priv;
-
-	if (!priv)
-		return -EINVAL;
-
-	return qca81xx_phy_flap_stats_show(&priv->flap_stats, buf);
-}
-
-static ssize_t qce1204_phy_reset_link_flap_stats(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct phy_device *phydev = to_phy_device(dev);
-	struct qce1204_priv *priv = phydev->priv;
-
-	if (!priv)
-		return -EINVAL;
-
-	if (count > 0 && (buf[0] == '0' || buf[0] == '\n'))
-		qca81xx_phy_flap_stats_reset(&priv->flap_stats);
-
-	return count;
-}
-
-static ssize_t ipq52xx_phy_show_link_flap_stats(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct phy_device *phydev = to_phy_device(dev);
-	struct ipq52xx_phy_priv *priv = phydev->priv;
-
-	if (!priv)
-		return -EINVAL;
-
-	return qca81xx_phy_flap_stats_show(&priv->flap_stats, buf);
-}
-
-static ssize_t ipq52xx_phy_reset_link_flap_stats(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct phy_device *phydev = to_phy_device(dev);
-	struct ipq52xx_phy_priv *priv = phydev->priv;
-
-	if (!priv)
-		return -EINVAL;
-
-	if (count > 0 && (buf[0] == '0' || buf[0] == '\n'))
-		qca81xx_phy_flap_stats_reset(&priv->flap_stats);
-
-	return count;
-}
-
-static struct device_attribute dev_attr_qce1204_link_flap_stats =
-	__ATTR(link_flap_stats, 0644, qce1204_phy_show_link_flap_stats, qce1204_phy_reset_link_flap_stats);
-static struct device_attribute dev_attr_ipq52xx_link_flap_stats =
-	__ATTR(link_flap_stats, 0644, ipq52xx_phy_show_link_flap_stats, ipq52xx_phy_reset_link_flap_stats);
 /*
 |   sku   | ptp | macsec | P3/P4 2.5g |
 |---------|-----|--------|------------|
@@ -2345,9 +2286,7 @@ int qce1204_phy_probe(struct phy_device *phydev)
 #if IS_ENABLED(CONFIG_HWMON)
 	qce1204_hwmon_probe(phydev);
 #endif
-	qca81xx_phy_flap_stats_reset(&priv->flap_stats);
 	device_create_file(&phydev->mdio.dev, &dev_attr_snr);
-	device_create_file(&phydev->mdio.dev, &dev_attr_qce1204_link_flap_stats);
 
 	return 0;
 }
@@ -2355,13 +2294,6 @@ int qce1204_phy_probe(struct phy_device *phydev)
 void qce1204_phy_remove(struct phy_device *phydev)
 {
 	device_remove_file(&phydev->mdio.dev, &dev_attr_snr);
-	/*
-	 * device_remove_file matches by attr->name ("link_flap_stats"), not by
-	 * pointer identity, so passing either dev_attr_qce1204_link_flap_stats or
-	 * dev_attr_ipq52xx_link_flap_stats removes whichever node was created --
-	 * both __ATTR macros use the same name string.
-	 */
-	device_remove_file(&phydev->mdio.dev, &dev_attr_qce1204_link_flap_stats);
 }
 
 static int qce1204_phy_ability_fix_up(struct phy_device *phydev)
@@ -2927,9 +2859,6 @@ int qce1204_phy_read_status(struct phy_device *phydev)
 	if (ret < 0)
 		return ret;
 	if (phydev->link != old_link) {
-		qca81xx_phy_flap_stats_update(
-			&((struct qce1204_priv *)phydev->priv)->flap_stats,
-			old_link, phydev->link);
 		if (phydev->interface == PHY_INTERFACE_MODE_QUSGMII) {
 			ret = qce1204_phy_qusgmii_speed_fix_up(phydev);
 			if (ret < 0)
@@ -3278,9 +3207,6 @@ int ipq52xx_phy_read_status(struct phy_device *phydev)
 	if (ret < 0)
 		return ret;
 	if (phydev->link != old_link) {
-		qca81xx_phy_flap_stats_update(
-			&((struct ipq52xx_phy_priv *)phydev->priv)->flap_stats,
-			old_link, phydev->link);
 		ret = ipq52xx_phy_internal_speed_fix_up(phydev);
 		if (ret < 0)
 			return ret;
@@ -3321,9 +3247,7 @@ int ipq52xx_phy_probe(struct phy_device *phydev)
 		return ret;
 	}
 
-	qca81xx_phy_flap_stats_reset(&priv->flap_stats);
 	device_create_file(&phydev->mdio.dev, &dev_attr_snr);
-	device_create_file(&phydev->mdio.dev, &dev_attr_ipq52xx_link_flap_stats);
 
 	return 0;
 }

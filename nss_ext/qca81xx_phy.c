@@ -308,6 +308,8 @@ int qca81xx_phy_ops_init(struct nss_phy_ops *ops)
 	ops->link_training_completion_get = nss_phy_c45_common_link_training_completion_get;
 	ops->an_fail_counter_reset = nss_phy_common_an_fail_counter_reset;
 	ops->an_fail_counter_get = nss_phy_common_an_fail_counter_get;
+	ops->flap_stats_get = nss_phy_common_flap_stats_get;
+	ops->flap_stats_reset = nss_phy_common_flap_stats_reset;
 	ops->mse_get = nss_phy_c45_common_mse_get;
 	ops->clk_ppm_offset_get = qca81xx_phy_clk_ppm_offset_get;
 	ops->ldpc_stats_get = nss_phy_c45_common_ldpc_stats_get;

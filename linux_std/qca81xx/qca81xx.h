@@ -100,15 +100,6 @@ struct qca81xx_debug_stats {
 	atomic64_t resume_count;
 };
 
-/* Software link-flap counters + timestamps (seconds since boot) */
-struct qca81xx_link_flap_stats {
-	atomic64_t up_count;
-	atomic64_t down_count;
-	atomic64_t last_up_time;	/* ktime_get_seconds() at 0->1; 0 = never */
-	atomic64_t last_down_time;	/* ktime_get_seconds() at 1->0; 0 = never */
-	atomic64_t last_change_time;	/* ktime_get_seconds() at any transition; 0 = never */
-};
-
 struct qca81xx_private {
 
 	struct qca81xx_sku_info sku;
@@ -118,7 +109,6 @@ struct qca81xx_private {
 	u16 afe_dac8;
 	u16 afe_dac9;
 	struct qca81xx_debug_stats debug_stats;
-	struct qca81xx_link_flap_stats flap_stats;
 	enum qca81xx_init_state init_state;
 	bool pcs_assert;
 #if IS_ENABLED(CONFIG_HWMON)
@@ -141,17 +131,6 @@ int qca81xx_phy_resume(struct phy_device *phydev);
 #if IS_ENABLED(CONFIG_HWMON)
 void qca81xx_thermal_check(struct phy_device *phydev);
 #endif
-
-/*
- * Shared link-flap statistics helpers used by qce1204/ipq52xx.
- * These are non-static symbols but NOT exported across modules; qca81xx.o and
- * qce1204.o must be compiled into the same kernel module (qcom-lnx-phy.ko).
- */
-void qca81xx_phy_flap_stats_update(struct qca81xx_link_flap_stats *stats,
-	unsigned int old_link, unsigned int new_link);
-ssize_t qca81xx_phy_flap_stats_show(struct qca81xx_link_flap_stats *stats,
-	char *buf);
-void qca81xx_phy_flap_stats_reset(struct qca81xx_link_flap_stats *stats);
 
 /* Master/slave control bits in MDIO_AN_10GBT_CTRL (MMD7, reg 0x20) */
 #define QCA81XX_MS_FORCE_EN		BIT(15)

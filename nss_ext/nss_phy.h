@@ -456,6 +456,9 @@ struct nss_phy_ops {
 	void (*an_fail_counter_reset)(struct nss_phy_device *nss_phydev);
 	int (*an_fail_counter_get)(struct nss_phy_device *nss_phydev,
 		u64 *count);
+	int (*flap_stats_get)(struct nss_phy_device *nss_phydev,
+		struct nss_phy_link_flap_stats *out);
+	void (*flap_stats_reset)(struct nss_phy_device *nss_phydev);
 	int (*mse_get)(struct nss_phy_device *nss_phydev,
 		struct nss_phy_mse *mse);
 	int (*clk_ppm_offset_get)(struct nss_phy_device *nss_phydev, int *ppm);

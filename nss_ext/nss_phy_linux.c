@@ -67,6 +67,11 @@ static void nss_phy_status_poll_work_fn(struct work_struct *work)
 		nss_phy_common_an_fail_cnt_poll(nss_phydev,
 			link_up_transition || link_down_transition);
 
+	if (ops && ops->flap_stats_get &&
+	    (link_up_transition || link_down_transition))
+		nss_phy_common_flap_stats_update(nss_phydev,
+			link_up_transition, link_down_transition);
+
 	schedule_delayed_work(&nss_phydev->status_poll_work,
 		msecs_to_jiffies(NSS_PHY_STATUS_POLL_INTERVAL_MS));
 }
@@ -192,6 +197,28 @@ static ssize_t nss_phy_ext_statistics_show(struct device *dev, struct device_att
 				"    %-20s : n/a (%d)\n", "ldpc_stats", ret);
 	}
 
+	if (ops && ops->flap_stats_get) {
+		struct nss_phy_link_flap_stats s = {0};
+
+		if (!ops->flap_stats_get(nss_phydev, &s)) {
+			ret_count += scnprintf(buf + ret_count, PAGE_SIZE - ret_count,
+				"    %-20s : %lld\n", "flap_up_count",
+				atomic64_read(&s.up_count));
+			ret_count += scnprintf(buf + ret_count, PAGE_SIZE - ret_count,
+				"    %-20s : %lld\n", "flap_down_count",
+				atomic64_read(&s.down_count));
+			ret_count += scnprintf(buf + ret_count, PAGE_SIZE - ret_count,
+				"    %-20s : %lld\n", "flap_last_up_time",
+				atomic64_read(&s.last_up_time));
+			ret_count += scnprintf(buf + ret_count, PAGE_SIZE - ret_count,
+				"    %-20s : %lld\n", "flap_last_down_time",
+				atomic64_read(&s.last_down_time));
+			ret_count += scnprintf(buf + ret_count, PAGE_SIZE - ret_count,
+				"    %-20s : %lld\n", "flap_last_change_time",
+				atomic64_read(&s.last_change_time));
+		}
+	}
+
 	return ret_count;
 }
 
@@ -209,6 +236,8 @@ static ssize_t nss_phy_ext_statistics_reset(struct device *dev, struct device_at
 		atomic64_set(&nss_phydev->adjust_link_post_count, 0);
 		if (ops && ops->an_fail_counter_reset)
 			ops->an_fail_counter_reset(nss_phydev);
+		if (ops && ops->flap_stats_reset)
+			ops->flap_stats_reset(nss_phydev);
 	}
 
 	return count;
@@ -530,6 +559,7 @@ static int nss_phy_probe(struct phy_device *phydev)
 
 	/* Initialize extended statistics */
 	atomic64_set(&nss_phydev->adjust_link_post_count, 0);
+	nss_phy_common_flap_stats_reset(nss_phydev);
 
 	nss_phy_debugfs_init(phydev);
 	/* init eee status */

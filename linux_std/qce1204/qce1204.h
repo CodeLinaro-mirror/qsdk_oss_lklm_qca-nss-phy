@@ -73,7 +73,6 @@ struct qce1204_priv {
 	long temp_crit_mdeg[QCE1204_SENSORS_NUM];
 	bool temp_shutdown_latched;
 #endif
-	struct qca81xx_link_flap_stats flap_stats;
 };
 
 /* Clock type index for each channel */
@@ -180,7 +179,6 @@ struct ipq52xx_phy_priv {
 	struct reset_control *rx_reset;
 	struct reset_control *tx_reset;
 	struct reset_control *sys_reset;
-	struct qca81xx_link_flap_stats flap_stats;
 };
 
 int ipq52xx_phy_probe(struct phy_device *phydev);

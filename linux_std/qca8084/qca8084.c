@@ -108,20 +108,10 @@ struct qca8084_debug_stats {
 	atomic64_t fifo_reset_count;
 };
 
-/* Software link-flap counters + timestamps (seconds since boot) */
-struct qca8084_link_flap_stats {
-	atomic64_t up_count;
-	atomic64_t down_count;
-	atomic64_t last_up_time;	/* ktime_get_seconds() at 0->1; 0 = never */
-	atomic64_t last_down_time;	/* ktime_get_seconds() at 1->0; 0 = never */
-	atomic64_t last_change_time;	/* ktime_get_seconds() at any transition; 0 = never */
-};
-
 struct qca8084_priv {
 	u32 icc_value;
 	enum qca8084_init_state init_state;
 	struct qca8084_debug_stats debug_stats;
-	struct qca8084_link_flap_stats flap_stats;
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(eee_disabled_by_wa);
 };
 
@@ -511,23 +501,6 @@ static int qca8084_read_specific_status(struct phy_device *phydev)
 	return qca8084_phy_mdix_ctrl_get(phydev);
 }
 
-/* Update link-flap counters + timestamps on a link transition */
-static void qca8084_phy_flap_stats_update(struct qca8084_link_flap_stats *stats,
-	unsigned int old_link, unsigned int new_link)
-{
-	time64_t now = ktime_get_seconds();
-
-	if (new_link && !old_link) {
-		atomic64_inc(&stats->up_count);
-		atomic64_set(&stats->last_up_time, now);
-	} else if (!new_link && old_link) {
-		atomic64_inc(&stats->down_count);
-		atomic64_set(&stats->last_down_time, now);
-	}
-
-	atomic64_set(&stats->last_change_time, now);
-}
-
 static int qca8084_read_status(struct phy_device *phydev)
 {
 	int ret, old_link;
@@ -553,9 +526,6 @@ static int qca8084_read_status(struct phy_device *phydev)
 
 	if (phydev->link != old_link) {
 		qca8084_link_change(phydev);
-		qca8084_phy_flap_stats_update(
-			&((struct qca8084_priv *)phydev->priv)->flap_stats,
-			old_link, phydev->link);
 	}
 
 	return 0;
@@ -904,86 +874,19 @@ static ssize_t qca8084_phy_debug_module_reset_statistics(struct device *dev,
 static DEVICE_ATTR(module_state, 0444, qca8084_phy_show_debug_module_state, NULL);
 static DEVICE_ATTR(module_statistics, 0644, qca8084_phy_show_debug_module_statistics, qca8084_phy_debug_module_reset_statistics);
 
-static ssize_t qca8084_phy_flap_stats_show(struct qca8084_link_flap_stats *stats,
-	char *buf)
-{
-	ssize_t len = 0;
-
-	len += scnprintf(buf + len, PAGE_SIZE - len,
-		"QCA8084 PHY Link Flap Statistics\n");
-	len += scnprintf(buf + len, PAGE_SIZE - len,
-		"    Up Count             : %lld\n",
-		atomic64_read(&stats->up_count));
-	len += scnprintf(buf + len, PAGE_SIZE - len,
-		"    Down Count           : %lld\n",
-		atomic64_read(&stats->down_count));
-	len += scnprintf(buf + len, PAGE_SIZE - len,
-		"    Last Up Time (s)     : %lld\n",
-		atomic64_read(&stats->last_up_time));
-	len += scnprintf(buf + len, PAGE_SIZE - len,
-		"    Last Down Time (s)   : %lld\n",
-		atomic64_read(&stats->last_down_time));
-	len += scnprintf(buf + len, PAGE_SIZE - len,
-		"    Last Change Time (s) : %lld\n",
-		atomic64_read(&stats->last_change_time));
-
-	return len;
-}
-
-static void _qca8084_phy_flap_stats_reset(struct qca8084_link_flap_stats *stats)
-{
-	atomic64_set(&stats->up_count, 0);
-	atomic64_set(&stats->down_count, 0);
-	atomic64_set(&stats->last_up_time, 0);
-	atomic64_set(&stats->last_down_time, 0);
-	atomic64_set(&stats->last_change_time, 0);
-}
-
-static ssize_t qca8084_phy_show_link_flap_stats(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct phy_device *phydev = to_phy_device(dev);
-	struct qca8084_priv *priv = phydev->priv;
-
-	if (!priv)
-		return -EINVAL;
-
-	return qca8084_phy_flap_stats_show(&priv->flap_stats, buf);
-}
-
-static ssize_t qca8084_phy_reset_link_flap_stats(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct phy_device *phydev = to_phy_device(dev);
-	struct qca8084_priv *priv = phydev->priv;
-
-	if (!priv)
-		return -EINVAL;
-
-	if (count > 0 && (buf[0] == '0' || buf[0] == '\n'))
-		_qca8084_phy_flap_stats_reset(&priv->flap_stats);
-
-	return count;
-}
-
-static DEVICE_ATTR(link_flap_stats, 0644, qca8084_phy_show_link_flap_stats, qca8084_phy_reset_link_flap_stats);
-
 static void qca8084_sysfs_init(struct phy_device *phydev)
 {
 	struct qca8084_priv *priv = phydev->priv;
 
 	_qca8084_phy_debug_module_reset_statistics(priv);
-	_qca8084_phy_flap_stats_reset(&priv->flap_stats);
 	device_create_file(&phydev->mdio.dev, &dev_attr_module_state);
 	device_create_file(&phydev->mdio.dev, &dev_attr_module_statistics);
-	device_create_file(&phydev->mdio.dev, &dev_attr_link_flap_stats);
 }
 
 static void qca8084_sysfs_exit(struct phy_device *phydev)
 {
 	device_remove_file(&phydev->mdio.dev, &dev_attr_module_state);
 	device_remove_file(&phydev->mdio.dev, &dev_attr_module_statistics);
-	device_remove_file(&phydev->mdio.dev, &dev_attr_link_flap_stats);
 }
 
 static int qca8084_probe(struct phy_device *phydev)
