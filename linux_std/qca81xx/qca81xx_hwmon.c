@@ -19,9 +19,10 @@
 #include <linux/ctype.h>
 #include "qca81xx.h"
 
-#define QCA81XX_TEMP_WARN_DEFAULT_MDEG	100000	/* 100C */
-#define QCA81XX_TEMP_CRIT_DEFAULT_MDEG	120000	/* 120C */
+#define QCA81XX_TEMP_WARN_DEFAULT_MDEG	120000	/* 120C */
+#define QCA81XX_TEMP_CRIT_DEFAULT_MDEG	140000	/* 140C */
 #define QCA81XX_TEMP_MIN_MDEG		40000	/* 40C: reject implausibly low thresholds */
+#define QCA81XX_TEMP_MAX_VALID_MDEG	200000	/* 200C: sensor reading is unreliable above this */
 
 #define QFPROM_RAW_CALIBRATION_ROW6_MSB	0x290005C
 #define TSENSOR_BASE_CODE_120C		GENMASK(19, 10)
@@ -357,6 +358,9 @@ void qca81xx_thermal_check(struct phy_device *phydev)
 
 	for (i = 0; i < QCA81XX_SENSORS_NUM; i++) {
 		long temp = qca81xx_hwmon_temp_read(phydev, i);
+
+		if (temp < 0 || temp > QCA81XX_TEMP_MAX_VALID_MDEG)
+			continue;
 
 		if (temp >= priv->temp_crit_mdeg[i]) {
 			dev_err_ratelimited(&phydev->mdio.dev,
