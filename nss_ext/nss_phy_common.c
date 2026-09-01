@@ -1225,3 +1225,60 @@ void nss_phy_common_flap_stats_reset(struct nss_phy_device *nss_phydev)
 	atomic64_set(&stats->last_change_time, 0);
 }
 
+int nss_phy_common_cld_enable(struct nss_phy_device *nss_phydev)
+{
+	int ret;
+
+	ret = nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
+		NSS_PHY_MMD3_CLD_CTRL16, NSS_PHY_MMD3_CLD_CTRL16_VAL);
+	if (ret < 0)
+		return ret;
+
+	return nss_phy_write_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_CLD_CTRL, NSS_PHY_MMD7_CLD_CTRL_VAL);
+}
+
+int nss_phy_common_cld_enable_get(struct nss_phy_device *nss_phydev,
+	bool *enabled)
+{
+	int ret;
+
+	ret = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+		NSS_PHY_MMD7_CLD_CTRL);
+	if (ret < 0)
+		return ret;
+
+	*enabled = !!((u16)ret & NSS_PHY_MMD7_CLD_CTRL_VAL);
+	return 0;
+}
+
+int nss_phy_common_cld_cable_len_read(struct nss_phy_device *nss_phydev,
+	u16 cld_len_reg, u16 cld_len_mask, u32 *cable_len)
+{
+	bool cld_enabled;
+	int ret, restore_ret;
+
+	ret = nss_phy_common_cld_enable_get(nss_phydev, &cld_enabled);
+	if (ret < 0)
+		return ret;
+
+	if (!cld_enabled) {
+		ret = nss_phy_common_cld_enable(nss_phydev);
+		if (ret < 0)
+			return ret;
+	}
+
+	ret = nss_phy_read_mmd(nss_phydev, NSS_PHY_MMD3_NUM, cld_len_reg);
+	if (ret >= 0)
+		*cable_len = (u32)ret & cld_len_mask;
+
+	if (!cld_enabled) {
+		restore_ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD7_NUM,
+			NSS_PHY_MMD7_CLD_CTRL, NSS_PHY_MMD7_CLD_CTRL_VAL, 0);
+		if (restore_ret < 0 && ret >= 0)
+			return restore_ret;
+	}
+
+	return (ret < 0) ? ret : 0;
+}
+

@@ -15,6 +15,14 @@ static int qca833x_phy_cdt(struct nss_phy_device *nss_phydev,
           link_st = NSS_PHY_FALSE;
 	int ret = 0;
 
+	if (nss_phydev_link_get(nss_phydev) != NSS_PHY_FALSE) {
+		*cable_status = CABLE_NORMAL;
+		/* mdi_pair is not applicable for CLD; ignore it */
+		return nss_phy_common_cld_cable_len_read(nss_phydev,
+			NSS_PHY_MMD3_CLD_LEN, NSS_PHY_MMD3_CLD_LEN_MASK,
+			cable_len);
+	}
+
 	/* disable clock gating */
 	org_debug_value = nss_phy_read_debug(nss_phydev,
 		QCA833X_PHY_LOW_POWER_CONTROL);
@@ -37,7 +45,7 @@ static int qca833x_phy_cdt(struct nss_phy_device *nss_phydev,
 	pair_c_len = (cable_delta_time * 824) / 1000;
 	if ((pair_c_status == 1) && (pair_c_len <= 20)) {
 		ret = nss_phy_modify_mmd(nss_phydev, NSS_PHY_MMD3_NUM,
-			QCA833X_PHY_CLD16,
+			NSS_PHY_MMD3_CLD_CTRL16,
 			QCA833X_PHY_MMD3_BP_AUTO_VCT, 0);
 		if (ret < 0)
 			return ret;

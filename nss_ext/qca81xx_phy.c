@@ -123,14 +123,15 @@ static int qca81xx_phy_function_reset(struct nss_phy_device *nss_phydev,
 static int qca81xx_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 	enum nss_phy_cable_status *status, u32 *cable_len)
 {
-	int ret;
+	int ret, cdt_ret;
 	u16 dac8_tmp, dac9_tmp;
 
-	/* if PHY link up, cdt status is noarmal and cable length is 0 */
+	/* if PHY link up, report cable length via CLD; mdi_pair is not applicable */
 	if (nss_phydev_link_get(nss_phydev) != NSS_PHY_FALSE) {
 		*status = CABLE_NORMAL;
-		*cable_len = 0;
-		return 0;
+		return nss_phy_common_cld_cable_len_read(nss_phydev,
+			NSS_PHY_MMD3_CLD_LEN, NSS_PHY_MMD3_CLD_LEN_MASK,
+			cable_len);
 	}
 
 	dac8_tmp = nss_phy_read_debug(nss_phydev,
@@ -152,7 +153,7 @@ static int qca81xx_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 		return ret;
 
 	/* Get cable status */
-	ret = nss_phy_common_cdt_status_get(nss_phydev, mdi_pair, status,
+	cdt_ret = nss_phy_common_cdt_status_get(nss_phydev, mdi_pair, status,
 		cable_len);
 
 	/* recover the analog AFE DAC value */
@@ -162,8 +163,13 @@ static int qca81xx_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 		return ret;
 	ret = nss_phy_write_debug(nss_phydev,
 		QCA81XX_PHY_DEBUG_AFE_DAC9_DP, dac9_tmp);
+	if (ret < 0)
+		return ret;
 
-	return ret;
+	if (cdt_ret < 0)
+		return cdt_ret;
+
+	return 0;
 }
 
 static int qca81xx_phy_mdix_set(struct nss_phy_device *nss_phydev,
