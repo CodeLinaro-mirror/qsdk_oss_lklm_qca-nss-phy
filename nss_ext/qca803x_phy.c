@@ -134,6 +134,14 @@ static int qca803x_phy_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 	u16 status;
 	int ret;
 
+	if (nss_phydev_link_get(nss_phydev) != NSS_PHY_FALSE) {
+		*cable_status = CABLE_NORMAL;
+		/* mdi_pair is not applicable for CLD; ignore it */
+		return nss_phy_common_cld_cable_len_read(nss_phydev,
+			QCA803X_PHY_MMD3_CLD_LEN, QCA803X_PHY_CLD_LEN_MASK,
+			cable_len);
+	}
+
 	if (mdi_pair >= NSS_PHY_MDI_PAIR_NUM)
 		return -NSS_PHY_EINVAL;
 
