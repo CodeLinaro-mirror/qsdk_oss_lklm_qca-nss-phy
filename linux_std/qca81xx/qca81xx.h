@@ -111,6 +111,7 @@ struct qca81xx_private {
 	struct qca81xx_debug_stats debug_stats;
 	enum qca81xx_init_state init_state;
 	bool pcs_assert;
+	bool hibernation;
 #if IS_ENABLED(CONFIG_HWMON)
 	long temp_warn_mdeg[QCA81XX_SENSORS_NUM];	/* milli-C, default 100000 */
 	long temp_crit_mdeg[QCA81XX_SENSORS_NUM];	/* milli-C, default 120000 */
@@ -128,6 +129,7 @@ static_assert(offsetof(struct qca81xx_private, sku) == 0,
 ssize_t qca81xx_phy_show_snr(struct device *dev, struct device_attribute *attr, char *buf);
 int qca81xx_phy_suspend(struct phy_device *phydev);
 int qca81xx_phy_resume(struct phy_device *phydev);
+int qca81xx_phy_hibernation_get(struct phy_device *phydev, bool *enabled);
 #if IS_ENABLED(CONFIG_HWMON)
 void qca81xx_thermal_check(struct phy_device *phydev);
 #endif

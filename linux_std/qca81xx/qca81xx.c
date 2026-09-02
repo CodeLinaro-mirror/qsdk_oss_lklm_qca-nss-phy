@@ -77,6 +77,8 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_DEBUG_ANA_RX_SENS_VAL		0xdc3
 #define QCA81XX_DEBUG_ANA_OPEN_RAMPING_CRTL0	0x9180
 #define QCA81XX_DEBUG_ANA_OPEN_RAMPING_EN	BIT(7)
+#define QCA81XX_DEBUG_HIBERNATION_STATUS_REG	0xc
+#define QCA81XX_DEBUG_HIBERNATION_BIT		BIT(11)
 
 /*PHY MMD1 registers*/
 #define QCA81XX_MMD1_2P5G_VGA_BW_CTRL		0x8108
@@ -1389,35 +1391,16 @@ static int qca81xx_phy_ana_capacitance_update(struct phy_device *phydev)
 
 int qca81xx_phy_suspend(struct phy_device *phydev)
 {
-	int ret;
-
 	qca81xx_priv_atomic64_inc(phydev,
 		&((struct qca81xx_private *)phydev->priv)->debug_stats.suspend_count);
-
-	ret = phy_read_mmd(phydev, MDIO_MMD_VEND2,
-		QCA81XX_SPEC_STATUS);
-	if (!(ret & QCA81XX_SS_LINK_STATUS)) {
-		ret = qca81xx_phy_pcs_assert(phydev, true);
-		if (ret < 0)
-			return ret;
-	}
-	if (phydev->suspended)
-		return 0;
 
 	return genphy_c45_pma_suspend(phydev);
 }
 
 int qca81xx_phy_resume(struct phy_device *phydev)
 {
-	int ret;
-
 	qca81xx_priv_atomic64_inc(phydev,
 		&((struct qca81xx_private *)phydev->priv)->debug_stats.resume_count);
-
-	/* make sure the PHY PCS is enabled */
-	ret = qca81xx_phy_pcs_assert(phydev, false);
-	if (ret < 0)
-		return ret;
 
 	return genphy_c45_pma_resume(phydev);
 }
@@ -1777,6 +1760,36 @@ static int qca81xx_phy_speed_fixup(struct phy_device *phydev)
 	return 0;
 }
 
+int qca81xx_phy_hibernation_get(struct phy_device *phydev, bool *enabled)
+{
+	int phy_data;
+
+	phy_data = qca81xx_phy_debug_read(phydev, QCA81XX_DEBUG_HIBERNATION_STATUS_REG);
+	if (phy_data < 0)
+		return phy_data;
+
+	/* bit 11 is cleared by hardware when the PHY is in hibernation (active-low) */
+	*enabled = !(phy_data & QCA81XX_DEBUG_HIBERNATION_BIT);
+	return 0;
+}
+
+static int qca81xx_phy_pcs_check(struct phy_device *phydev)
+{
+	struct qca81xx_private *priv = phydev->priv;
+	bool hibernation;
+	int ret;
+
+	ret = qca81xx_phy_hibernation_get(phydev, &hibernation);
+	if (ret < 0)
+		return ret;
+
+	if (hibernation == priv->hibernation)
+		return 0;
+
+	priv->hibernation = hibernation;
+	return qca81xx_phy_pcs_assert(phydev, hibernation);
+}
+
 static int qca81xx_phy_read_status(struct phy_device *phydev)
 {
 	int ret = 0;
@@ -1847,6 +1860,10 @@ static int qca81xx_phy_read_status(struct phy_device *phydev)
 		return ret;
 
 	ret = qca81xx_phy_master_slave_get(phydev);
+	if (ret < 0)
+		return ret;
+
+	ret = qca81xx_phy_pcs_check(phydev);
 	if (ret < 0)
 		return ret;
 
@@ -2033,6 +2050,7 @@ static int qca81xx_phy_probe(struct phy_device *phydev)
 
 	priv = phydev->priv;
 	priv->pcs_assert = false;
+	priv->hibernation = false;
 
 	qca81xx_phy_sku_probe(phydev);
 #if IS_ENABLED(CONFIG_HWMON)

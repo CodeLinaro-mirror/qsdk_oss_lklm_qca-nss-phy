@@ -239,22 +239,7 @@ static int qca81xx_phy_stats_get(struct nss_phy_device *nss_phydev,
 
 static int qca81xx_phy_adjust_link_post(struct nss_phy_device *nss_phydev)
 {
-	int ret = 0;
-
 	atomic64_inc(&nss_phydev->adjust_link_post_count);
-
-	/* disable PHY PCS if PHY is suspended and link is down */
-	nss_phydev_lock(nss_phydev);
-	if (nss_phy_is_suspended(nss_phydev) &&
-		nss_phydev_link_get(nss_phydev) == NSS_PHY_FALSE) {
-		ret = nss_phy_do_suspend(nss_phydev);
-		if (ret < 0) {
-			nss_phydev_unlock(nss_phydev);
-			return ret;
-		}
-	}
-	nss_phydev_unlock(nss_phydev);
-
 	return 0;
 }
 
