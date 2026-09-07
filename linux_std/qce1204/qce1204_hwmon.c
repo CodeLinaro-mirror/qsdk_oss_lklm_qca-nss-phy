@@ -8,9 +8,10 @@
 #include <linux/ctype.h>
 #include "qce1204.h"
 
-#define QCE1204_TEMP_WARN_DEFAULT_MDEG	100000	/* 100C */
-#define QCE1204_TEMP_CRIT_DEFAULT_MDEG	120000	/* 120C */
+#define QCE1204_TEMP_WARN_DEFAULT_MDEG	120000	/* 120C */
+#define QCE1204_TEMP_CRIT_DEFAULT_MDEG	140000	/* 140C */
 #define QCE1204_TEMP_MIN_MDEG		40000	/* 40C: reject implausibly low thresholds */
+#define QCE1204_TEMP_MAX_VALID_MDEG	200000	/* 200C: sensor reading is unreliable above this */
 
 #define QCE1204_VDD4BLOW_EN					0x902038
 #define QCE1204_POWER_DOWN					BIT(2)
@@ -492,6 +493,9 @@ void qce1204_thermal_check(struct phy_device *phydev)
 
 	for (i = 0; i < QCE1204_SENSORS_NUM; i++) {
 		long temp = qce1204_hwmon_temp_read(phydev, i);
+
+		if (temp < 0 || temp > QCE1204_TEMP_MAX_VALID_MDEG)
+			continue;
 
 		if (temp >= priv->temp_crit_mdeg[i]) {
 			dev_err_ratelimited(&phydev->mdio.dev,
