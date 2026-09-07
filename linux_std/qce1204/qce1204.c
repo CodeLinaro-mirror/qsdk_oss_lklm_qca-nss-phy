@@ -3,6 +3,9 @@
 * SPDX-License-Identifier: ISC
 */
 
+#include <linux/bitops.h>
+#include <linux/iopoll.h>
+#include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/phy.h>
 #include "qce1204.h"
@@ -473,23 +476,17 @@ static int qce1204_pcs_8023az_enable(struct phy_device *phydev)
 
 static int qce1204_pcs_calibration(struct phy_device *phydev)
 {
-	u16 pcs_data = 0;
-	u32 retries = 100, calibration_done = 0;
+	int pcs_data, ret;
 
 	/* wait calibration done to uniphy */
-	while (calibration_done != QCE1204_PCS_MMD1_CALIBRATION_DONE) {
-		mdelay(1);
-		if (retries-- == 0) {
-			phydev_err(phydev, "pcs calibration time out!\n");
-			return -ETIMEDOUT;
-		}
-		pcs_data = qce1204_pcs_read_mmd(phydev,
-			MDIO_MMD_PMAPMD, QCE1204_PCS_MMD1_CALIBRATION4);
+	ret = read_poll_timeout(qce1204_pcs_read_mmd,
+		pcs_data, (pcs_data & QCE1204_PCS_MMD1_CALIBRATION_DONE),
+		1000, 100000, true, phydev, MDIO_MMD_PMAPMD,
+		QCE1204_PCS_MMD1_CALIBRATION4);
+	if (ret < 0)
+		phydev_err(phydev, "pcs calibration time out!\n");
 
-		calibration_done = (pcs_data & QCE1204_PCS_MMD1_CALIBRATION_DONE);
-	}
-
-	return 0;
+	return ret;
 }
 
 static int qce1204_pcs_ana_assert(struct phy_device *phydev,
@@ -500,6 +497,123 @@ static int qce1204_pcs_ana_assert(struct phy_device *phydev,
 		QCE1204_PCS_MMD1_ANA_SOFT_RESET_MASK,
 		assert ? QCE1204_PCS_MMD1_ANA_SOFT_RESET :
 		QCE1204_PCS_MMD1_ANA_SOFT_RELEASE);
+}
+
+/*
+ * Count the number of PHY ports configured in DTS for this package.
+ * Counts available child nodes of the package node whose "reg" value falls
+ * within the valid address range [shared->addr, shared->addr + QCE1204_PORT_NUM).
+ * The "reg" property of each child uses the same MDIO address space as
+ * shared->addr, so a direct numeric comparison is valid.
+ * Falls back to QCE1204_PORT_NUM if the package node is unavailable, or if the
+ * count is zero or exceeds QCE1204_PORT_NUM.  Note that a DTS repeating a "reg"
+ * value within range is not detected here: it inflates the count above the
+ * number of ports that can ever set their port_active bit, which leaves
+ * probe_complete unset and so keeps the PCS de-asserted (link stays up, the
+ * hibernation optimisation is simply disabled).
+ */
+static u8 qce1204_count_package_ports(struct phy_device *phydev)
+{
+	struct phy_package_shared *shared = phydev->shared;
+	u8 count = 0;
+	u32 reg;
+
+	if (!shared || !shared->np)
+		return QCE1204_PORT_NUM;
+
+	for_each_available_child_of_node_scoped(shared->np, child) {
+		if (!of_property_read_u32(child, "reg", &reg) &&
+		    reg >= shared->addr &&
+		    reg < shared->addr + QCE1204_PORT_NUM)
+			count++;
+	}
+
+	if (!count || count > QCE1204_PORT_NUM)
+		return QCE1204_PORT_NUM;
+
+	return count;
+}
+
+/*
+ * Check hibernation state across all active ports and assert/de-assert the
+ * shared PCS ANA soft-reset accordingly.  Assert only when every active port
+ * is hibernating; de-assert as soon as any active port is not hibernating.
+ * Active ports are those that have completed probe (tracked in port_active).
+ * Assertion is suppressed until probe_complete is set, i.e. until all ports
+ * configured in DTS have finished probe and joined port_active.
+ */
+static int qce1204_pcs_check_hibernate(struct phy_device *phydev)
+{
+	struct phy_package_shared *shared = phydev->shared;
+	struct qce1204_shared_priv *shared_priv;
+	bool hibernation, all_hibernate;
+	int port_idx, ret, i;
+
+	if (!shared)
+		return -EINVAL;
+
+	shared_priv = (struct qce1204_shared_priv *)shared->priv;
+	if (!shared_priv)
+		return -EINVAL;
+
+	port_idx = phydev->mdio.addr - shared->addr;
+	if (port_idx < 0 || port_idx >= QCE1204_PORT_NUM)
+		return -EINVAL;
+
+	ret = qca81xx_phy_hibernation_get(phydev, &hibernation);
+	if (ret < 0)
+		return ret;
+
+	mutex_lock(&shared_priv->pcs_lock);
+	shared_priv->port_hibernation[port_idx] = hibernation;
+
+	all_hibernate = true;
+	for (i = 0; i < QCE1204_PORT_NUM; i++) {
+		if (!(shared_priv->port_active & BIT(i)))
+			continue;
+		if (!shared_priv->port_hibernation[i]) {
+			all_hibernate = false;
+			break;
+		}
+	}
+
+	/*
+	 * Do not assert until all configured ports have completed probe.  Warn
+	 * once if that is what suppressed an otherwise valid assertion: a
+	 * sibling port whose probe failed never sets its port_active bit, so
+	 * probe_complete stays clear and the power saving is silently lost.
+	 */
+	if (all_hibernate && !shared_priv->probe_complete) {
+		all_hibernate = false;
+		if (!shared_priv->incomplete_warned) {
+			shared_priv->incomplete_warned = true;
+			phydev_warn(phydev,
+				    "only %u of %u DTS ports probed (active 0x%x); PCS power saving disabled\n",
+				    hweight8(shared_priv->port_active),
+				    shared_priv->num_active_ports,
+				    shared_priv->port_active);
+		}
+	}
+
+	if (all_hibernate == shared_priv->pcs_assert) {
+		mutex_unlock(&shared_priv->pcs_lock);
+		return 0;
+	}
+
+	ret = qce1204_pcs_ana_assert(phydev, all_hibernate);
+	if (!ret)
+		shared_priv->pcs_assert = all_hibernate;
+	mutex_unlock(&shared_priv->pcs_lock);
+
+	/*
+	 * After de-asserting PCS ANA soft-reset, wait for PLL to re-lock.
+	 * Done outside the lock to avoid blocking other ports' read_status
+	 * for up to 100 ms.
+	 */
+	if (!ret && !all_hibernate)
+		ret = qce1204_pcs_calibration(phydev);
+
+	return ret;
 }
 
 /**
@@ -2218,13 +2332,16 @@ static int qce1204_phy_sku_probe(struct phy_device *phydev)
 int qce1204_phy_probe(struct phy_device *phydev)
 {
 	struct device *dev = &phydev->mdio.dev;
+	struct qce1204_shared_priv *shared_priv;
 	struct qce1204_priv *priv;
-	int ret;
+	int port_idx, ret;
 
 	/* Join PHY package and allocate shared private data */
 	ret = devm_of_phy_package_join(dev, phydev, sizeof(struct qce1204_shared_priv));
 	if (ret < 0)
 		return ret;
+
+	shared_priv = (struct qce1204_shared_priv *)phydev->shared->priv;
 
 	/* Allocate private data structure for this PHY */
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
@@ -2241,6 +2358,9 @@ int qce1204_phy_probe(struct phy_device *phydev)
 	}
 
 	if (phy_package_probe_once(phydev)) {
+		mutex_init(&shared_priv->pcs_lock);
+		shared_priv->num_active_ports = qce1204_count_package_ports(phydev);
+
 		/* Initialize shared clocks only once for the package */
 		ret = qce1204_shared_clk_probe(phydev);
 		if (ret < 0) {
@@ -2288,12 +2408,47 @@ int qce1204_phy_probe(struct phy_device *phydev)
 #endif
 	device_create_file(&phydev->mdio.dev, &dev_attr_snr);
 
+	port_idx = phydev->mdio.addr - phydev->shared->addr;
+	if (port_idx >= 0 && port_idx < QCE1204_PORT_NUM) {
+		mutex_lock(&shared_priv->pcs_lock);
+		shared_priv->port_active |= BIT(port_idx);
+		if (!shared_priv->probe_complete &&
+		    /* >= rather than == to guard against DTS miscounting */
+		    hweight8(shared_priv->port_active) >= shared_priv->num_active_ports)
+			shared_priv->probe_complete = true;
+		mutex_unlock(&shared_priv->pcs_lock);
+	} else {
+		phydev_warn(phydev,
+			    "port_idx %d out of range [0, %d): probe_complete will never be set\n",
+			    port_idx, QCE1204_PORT_NUM);
+	}
+
 	return 0;
 }
 
 void qce1204_phy_remove(struct phy_device *phydev)
 {
+	struct phy_package_shared *shared = phydev->shared;
+	struct qce1204_shared_priv *shared_priv;
+	int port_idx;
+
 	device_remove_file(&phydev->mdio.dev, &dev_attr_snr);
+
+	if (!shared)
+		return;
+
+	shared_priv = (struct qce1204_shared_priv *)shared->priv;
+	if (!shared_priv)
+		return;
+
+	port_idx = phydev->mdio.addr - shared->addr;
+	if (port_idx < 0 || port_idx >= QCE1204_PORT_NUM)
+		return;
+
+	mutex_lock(&shared_priv->pcs_lock);
+	shared_priv->port_active &= ~BIT(port_idx);
+	shared_priv->port_hibernation[port_idx] = false;
+	mutex_unlock(&shared_priv->pcs_lock);
 }
 
 static int qce1204_phy_ability_fix_up(struct phy_device *phydev)
@@ -2531,6 +2686,7 @@ static int qce1204_phy_tlmm_init(struct phy_device *phydev)
 
 int qce1204_phy_config_init(struct phy_device *phydev)
 {
+	struct qce1204_shared_priv *shared_priv;
 	int ret = 0;
 	phy_interface_t package_mode;
 
@@ -2545,6 +2701,18 @@ int qce1204_phy_config_init(struct phy_device *phydev)
 			ret = qce1204_pcs_qusgmii_mode_set(phydev);
 			if (ret < 0)
 				return ret;
+			/*
+			 * _qce1204_pcs_qusgmii_mode_set() calls qce1204_pcs_ana_assert()
+			 * directly, bypassing qce1204_pcs_check_hibernate(). Sync
+			 * pcs_assert cache so the short-circuit check sees a consistent
+			 * value. The sequence ends with assert(false).
+			 */
+			shared_priv = (struct qce1204_shared_priv *)phydev->shared->priv;
+			if (shared_priv) {
+				mutex_lock(&shared_priv->pcs_lock);
+				shared_priv->pcs_assert = false;
+				mutex_unlock(&shared_priv->pcs_lock);
+			}
 			ret = qce1204_ahb_clk_set_rate(phydev, QCE1204_CLK_RATE_104M);
 			if (ret < 0)
 				return ret;
@@ -2858,6 +3026,23 @@ int qce1204_phy_read_status(struct phy_device *phydev)
 	ret = qce_phy_read_status(phydev);
 	if (ret < 0)
 		return ret;
+
+	/*
+	 * Gate on the package mode, the same criterion config_init() and probe()
+	 * use to bring up the PCS.  Keying off the per-port phydev->interface
+	 * would let a mismatched "phy-mode" skip this port's hibernation update,
+	 * leaving its port_hibernation[] slot false forever and so suppressing
+	 * the assertion for the whole package.
+	 */
+	if (qce1204_get_package_mode(phydev) == PHY_INTERFACE_MODE_QUSGMII) {
+		ret = qce1204_pcs_check_hibernate(phydev);
+		if (ret < 0) {
+			dev_warn_ratelimited(&phydev->mdio.dev,
+				"PCS hibernation check failed: %d\n", ret);
+			ret = 0;
+		}
+	}
+
 	if (phydev->link != old_link) {
 		if (phydev->interface == PHY_INTERFACE_MODE_QUSGMII) {
 			ret = qce1204_phy_qusgmii_speed_fix_up(phydev);
@@ -3250,6 +3435,11 @@ int ipq52xx_phy_probe(struct phy_device *phydev)
 	device_create_file(&phydev->mdio.dev, &dev_attr_snr);
 
 	return 0;
+}
+
+void ipq52xx_phy_remove(struct phy_device *phydev)
+{
+	device_remove_file(&phydev->mdio.dev, &dev_attr_snr);
 }
 
 /**

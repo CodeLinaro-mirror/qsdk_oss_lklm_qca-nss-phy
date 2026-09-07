@@ -3209,6 +3209,7 @@ int qce1204_phy_soft_reset(struct phy_device *phydev);
 
 int ipq52xx_phy_config_init(struct phy_device *phydev);
 int ipq52xx_phy_probe(struct phy_device *phydev);
+void ipq52xx_phy_remove(struct phy_device *phydev);
 int ipq52xx_phy_read_status(struct phy_device *phydev);
 
 static struct phy_driver qcom_phy_driver[] = {
@@ -3298,7 +3299,7 @@ static struct phy_driver qcom_phy_driver[] = {
 	.led_polarity_set = qca81xx_led_polarity_set,
 	.config_init = ipq52xx_phy_config_init,
 	.probe = ipq52xx_phy_probe,
-	.remove = qce1204_phy_remove,
+	.remove = ipq52xx_phy_remove,
 },
 };
 module_phy_driver(qcom_phy_driver);

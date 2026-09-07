@@ -16,6 +16,8 @@
 #define QCE1204_SENSORS_NUM			2
 #endif
 
+#define QCE1204_PORT_NUM			4
+
 #define QCE1204_PHY				0x004dd190
 #define QCE1204_TLMM_BASE			0x400000
 #define QCE1204_TLMM_GPIO_OFFSET		0x1000
@@ -91,7 +93,7 @@ struct qce1204_channel_clk {
 };
 
 struct qce1204_shared_clk_data {
-	struct qce1204_channel_clk channels[4];
+	struct qce1204_channel_clk channels[QCE1204_PORT_NUM];
 	struct clk *pcs_sys_clk;
 	struct clk *ahb_clk;
 	struct clk *tx_parent;
@@ -118,7 +120,31 @@ struct qce1204_shared_priv {
 	struct qce1204_sku_info sku;
 	struct qce1204_shared_clk_data shared_clk_data;
 	phy_interface_t package_mode;
-	atomic_t ppsin_refcount;   /* PPS_IN GPIO reference count (shared by all 4 ports of one chip) */
+	atomic_t ppsin_refcount;   /* PPS_IN GPIO refcount (all ports of one chip) */
+	/* protects port_hibernation[], port_active, pcs_assert and probe_complete */
+	struct mutex pcs_lock;
+	u8 port_active;            /* bitmask of ports that completed probe, bit i = port i */
+	/*
+	 * Number of ports configured in DTS for this package (1-QCE1204_PORT_NUM).
+	 * Written once in qce1204_phy_probe(), inside the phy_package_probe_once()
+	 * guard, before any other port has joined the package.
+	 */
+	u8 num_active_ports;
+	/*
+	 * Set under pcs_lock once all num_active_ports have set their port_active
+	 * bit; never cleared (one-shot).  Guards premature PCS assertion during
+	 * the initial probe sequence.
+	 */
+	bool probe_complete;
+	/*
+	 * One-shot latch: set when the PCS power saving was suppressed because
+	 * probe_complete is unset, so the warning is emitted only once per
+	 * package instead of on every read_status poll.
+	 */
+	bool incomplete_warned;
+	/* per-port hibernation state, indexed by (mdio.addr - shared->addr) */
+	bool port_hibernation[QCE1204_PORT_NUM];
+	bool pcs_assert;           /* current PCS ANA soft-reset state (true = asserted) */
 #if IS_ENABLED(CONFIG_HWMON)
 	u64 tem_base_code;
 #endif
@@ -182,6 +208,7 @@ struct ipq52xx_phy_priv {
 };
 
 int ipq52xx_phy_probe(struct phy_device *phydev);
+void ipq52xx_phy_remove(struct phy_device *phydev);
 int ipq52xx_phy_config_init(struct phy_device *phydev);
 int ipq52xx_phy_read_status(struct phy_device *phydev);
 #endif /* _QCE1204_H_ */
