@@ -3432,6 +3432,15 @@ int ipq52xx_phy_probe(struct phy_device *phydev)
 		return ret;
 	}
 
+	/* enable efuse loading into analog circuit */
+	ret = ipq52xx_phy_ldo_loading_enable(phydev);
+	if (ret < 0)
+		return ret;
+	msleep(10);
+	ret = ipq52xx_phy_sys_clk_reset(phydev);
+	if (ret < 0)
+		return ret;
+
 	device_create_file(&phydev->mdio.dev, &dev_attr_snr);
 
 	return 0;
@@ -3483,14 +3492,6 @@ int ipq52xx_phy_config_init(struct phy_device *phydev)
 {
 	int ret = 0;
 
-	/* enable efuse loading into analog circuit */
-	ret = ipq52xx_phy_ldo_loading_enable(phydev);
-	if (ret < 0)
-		return ret;
-	mdelay(10);
-	ret = ipq52xx_phy_sys_clk_reset(phydev);
-	if (ret < 0)
-		return ret;
 	ret = ipq52xx_phy_eee_init(phydev);
 	if (ret < 0)
 		return ret;
