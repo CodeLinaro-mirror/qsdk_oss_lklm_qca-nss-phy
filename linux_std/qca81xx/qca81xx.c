@@ -79,6 +79,8 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_DEBUG_ANA_OPEN_RAMPING_EN	BIT(7)
 #define QCA81XX_DEBUG_HIBERNATION_STATUS_REG	0xc
 #define QCA81XX_DEBUG_HIBERNATION_BIT		BIT(11)
+#define QCA81XX_DEBUG_SYSTEM_MODE_CTRL		0x5
+#define QCA81XX_DEBUG_RETRAIN_EN_BIT		BIT(15)
 
 /*PHY MMD1 registers*/
 #define QCA81XX_MMD1_2P5G_VGA_BW_CTRL		0x8108
@@ -1478,6 +1480,13 @@ static int qca81xx_phy_config_init(struct phy_device *phydev)
 	qca81xx_phy_stats_enable(phydev);
 
 	qca81xx_phy_ana_capacitance_update(phydev);
+
+	/* enable re-train for 1G speed to fix CRC issue with some link partner */
+	ret = qca81xx_phy_debug_modify(phydev, QCA81XX_DEBUG_SYSTEM_MODE_CTRL,
+		QCA81XX_DEBUG_RETRAIN_EN_BIT, QCA81XX_DEBUG_RETRAIN_EN_BIT);
+	if (ret < 0)
+		goto err_out_no_lock;
+
 	mutex_lock(&phydev->lock);
 	ret = qca81xx_phy_resume(phydev);
 	if (ret < 0)
