@@ -1404,10 +1404,16 @@ static int nss_phy_c45_common_fr_cnt_get(struct nss_phy_device *nss_phydev,
 		NSS_PHY_MMD1_FR_TX_CNT_SHIFT;
 
 	if (cnt->rx_count == NSS_PHY_MMD1_FR_CNT_MAX ||
-	    cnt->tx_count == NSS_PHY_MMD1_FR_CNT_MAX)
-		nss_phy_warn(nss_phydev,
-			"FR counter saturated (rx=%u tx=%u): retrain rate >31/s, counts may be lost\n",
-			cnt->rx_count, cnt->tx_count);
+	    cnt->tx_count == NSS_PHY_MMD1_FR_CNT_MAX) {
+		if (!nss_phydev->fr_cnt_saturated_warned) {
+			nss_phydev->fr_cnt_saturated_warned = true;
+			nss_phy_warn(nss_phydev,
+				"FR counter saturated (rx=%u tx=%u): retrain rate >31/s, counts may be lost\n",
+				cnt->rx_count, cnt->tx_count);
+		}
+	} else {
+		nss_phydev->fr_cnt_saturated_warned = false;
+	}
 
 	return 0;
 }
