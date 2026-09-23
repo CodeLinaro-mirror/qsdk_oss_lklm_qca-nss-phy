@@ -1178,6 +1178,14 @@ static int qca_macsec_secy_ctrl_set(struct phy_device *phydev, bool enable)
 				     val);
 		if (ret)
 			return ret;
+	} else if ((phyid & phydev->drv->phy_id_mask) == QCA81xx_PHY) {
+		/* WAR: sequence order forward must be off in MACsec mode */
+		val = enable ? 0 : I_SEQ_FWD_EN;
+		ret = phy_modify_mmd(phydev, MDIO_MMD_PCS,
+				     MACSEC_INGRESS_CTRL0,
+				     I_SEQ_FWD_EN, val);
+		if (ret)
+			return ret;
 	}
 	val = enable ? SYS_PORT_EN : 0;
 	return phy_modify_mmd(phydev, MDIO_MMD_PCS,
