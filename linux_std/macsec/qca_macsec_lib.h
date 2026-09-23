@@ -81,6 +81,10 @@
 #define E_MAC_LPI_EN				BIT(15)
 #define I_MAC_LPI_EN				BIT(14)
 
+/* MACsec ingress control register, 	XG(81xx) only */
+#define MACSEC_INGRESS_CTRL0			0xF000
+#define I_SEQ_FWD_EN				BIT(6)
+
 /* SA TX/RX control registers */
 #define MACSEC_TX_SA_CONTROL		(MACSEC_SA_CONTROL_BASE + 0x00)
 #define MACSEC_RX_SA_CONTROL		(MACSEC_SA_CONTROL_BASE + 0x02)
