@@ -242,6 +242,21 @@ int nss_phy_common_cdt_status_get(struct nss_phy_device *nss_phydev,
 	u32 mdi_pair, enum nss_phy_cable_status *cable_status, u32 *cable_len);
 int nss_phy_common_cdt(struct nss_phy_device *nss_phydev, u32 mdi_pair,
 	enum nss_phy_cable_status *cable_status, u32 *cable_len);
+
+/* CLD enable configuration registers */
+#define NSS_PHY_MMD3_CLD_CTRL16		0x806e
+#define NSS_PHY_MMD3_CLD_CTRL16_VAL	0x848b
+#define NSS_PHY_MMD7_CLD_CTRL		0x9010
+#define NSS_PHY_MMD7_CLD_CTRL_VAL	0x0080
+#define NSS_PHY_MMD3_CLD_LEN		0x806d
+#define NSS_PHY_MMD3_CLD_LEN_MASK	0xff
+
+int nss_phy_common_cld_enable(struct nss_phy_device *nss_phydev);
+int nss_phy_common_cld_enable_get(struct nss_phy_device *nss_phydev,
+	bool *enabled);
+int nss_phy_common_cld_cable_len_read(struct nss_phy_device *nss_phydev,
+	u16 cld_len_reg, u16 cld_len_mask, u32 *cable_len);
+
 u32 nss_phy_common_reset_done(struct nss_phy_device *nss_phydev);
 u16 nss_phy_common_intr_to_reg(struct nss_phy_device *nss_phydev,
 	u32 mask);
