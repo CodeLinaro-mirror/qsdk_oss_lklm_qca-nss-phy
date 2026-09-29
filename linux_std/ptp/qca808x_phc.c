@@ -207,6 +207,8 @@ struct qca808x_ptp_info {
 	struct list_head list;
 	bool pin_active;
 	bool pps_enabled;
+	bool hwts_active;
+	bool perout_active;
 	struct delayed_work pin_work;
 };
 
@@ -925,17 +927,6 @@ static int qca808x_ppsin_gettime(struct phy_device *phydev,
 	return 0;
 }
 
-static int qca808x_ptp_cancel_func(struct qca808x_ptp_info *clock)
-{
-	if (!clock->pin_active)
-		return 0;
-
-	clock->pin_active = false;
-	cancel_delayed_work_sync(&clock->pin_work);
-
-	return 0;
-}
-
 static void qca808x_ptp_extts_work(struct work_struct *pin_work)
 {
 	struct qca808x_ptp_info *clock = container_of(pin_work,
@@ -968,36 +959,8 @@ static void qca808x_ptp_extts_work(struct work_struct *pin_work)
 	ptp_clock_event(clock->ptp_clock, &event);
 
 extts_work_out:
-	mutex_unlock(&clock->tsreg_lock);
 	schedule_delayed_work(&clock->pin_work, QCA808X_PIN_WORK_TIMEOUT);
-}
-
-static int qca808x_ptp_extts_locked(struct qca808x_ptp_info *clock, int on)
-{
-	if (!on)
-		return qca808x_ptp_cancel_func(clock);
-
-	if (clock->pin_active)
-		cancel_delayed_work_sync(&clock->pin_work);
-
-	clock->pin_active = true;
-	INIT_DELAYED_WORK(&clock->pin_work, qca808x_ptp_extts_work);
-	schedule_delayed_work(&clock->pin_work, 0);
-
-	return 0;
-}
-
-static int qca808x_pps_configure(struct ptp_clock_info *ptp,
-				 struct ptp_clock_request *rq,
-				 int on)
-{
-	struct qca808x_ptp_info *ptp_info = container_of(ptp,
-							 struct qca808x_ptp_info,
-							 caps);
-	qca808x_ptp_extts_locked(ptp_info, on);
-	ptp_info->pps_enabled = !!on;
-
-	return 0;
+	mutex_unlock(&clock->tsreg_lock);
 }
 
 static int qca81xx_ptp_ppsout_pin_config(struct phy_device *phydev, bool en)
@@ -1043,6 +1006,7 @@ static int qca81xx_ptp_ppsin_pin_config(struct phy_device *phydev, bool en)
 		 * starts at 0 without explicit initialisation.
 		 */
 		struct qce1204_shared_priv *shared_priv;
+		int ret;
 
 		if (!phydev->shared || !phydev->shared->priv)
 			return -EINVAL;
@@ -1066,9 +1030,21 @@ static int qca81xx_ptp_ppsin_pin_config(struct phy_device *phydev, bool en)
 				return 0;  /* was 0 (nothing to disable) or still > 0 (in use) */
 		}
 
-		return qce1204_soc_modify(phydev, QCE1204_TO_TLMM_CFG_REG(pin_id),
-					  QCE1204_TLMM_FUNC_MASK,
-					  en ? BIT(2) : 0);
+		ret = qce1204_soc_modify(phydev, QCE1204_TO_TLMM_CFG_REG(pin_id),
+					 QCE1204_TLMM_FUNC_MASK,
+					 en ? BIT(2) : 0);
+		if (ret) {
+			/* Roll back the refcount adjustment above so a retry sees the
+			 * pin's true un-configured/still-configured state instead of
+			 * a permanently desynced counter.
+			 */
+			if (en)
+				atomic_dec(&shared_priv->ppsin_refcount);
+			else
+				atomic_inc(&shared_priv->ppsin_refcount);
+		}
+
+		return ret;
 	} else if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD],
 				  QCA8111_PHY_ID, 0x00ffffff)) {
 		pin_id = GPIO5_PPS_IN;
@@ -1079,6 +1055,62 @@ static int qca81xx_ptp_ppsin_pin_config(struct phy_device *phydev, bool en)
 	}
 
 	return 0;
+}
+
+static int qca81xx_ptp_synce_pin_config(struct phy_device *phydev, bool en)
+{
+	int ret, pin_id;
+
+	for (pin_id = GPIO5_PPS_IN; pin_id <= GPIO7_REFCLK_IN; pin_id++) {
+		ret = qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
+					 TLMM_FUNC_MASK, en ? BIT(2) : 0);
+		if (ret)
+			return ret;
+	}
+
+	for (pin_id = GPIO10_PPS_OUT; pin_id <= GPIO12_CLK125_TDI; pin_id++) {
+		ret = qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
+					 TLMM_FUNC_MASK, en ? BIT(2) : 0);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+/* QCA8111, QCE1204 and IPQ52XX ("internal_phc") gate their RTC input clock
+ * behind qca81xx_ptp_clock_set(); QCA8081/QCA8084 don't need it.
+ */
+static bool qca81xx_ptp_clock_gated_family(struct phy_device *phydev)
+{
+	return phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD],
+			      QCA8111_PHY_ID, 0x00ffffff) ||
+	       phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD],
+			      IPQ52XX_PHY_ID, 0x00ffffff) ||
+	       phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD],
+			      QCE1204_PHY_ID, 0x00ffffff);
+}
+
+static int qca81xx_ptp_clock_set(struct phy_device *phydev, bool enable)
+{
+	int ret;
+
+	ret = phy_modify_mmd(phydev, MDIO_MMD_PMAPMD, QCA81XX_MMD1_SYNCE_CLK_CTRL,
+			     QCA81XX_SYNCE_CLK_DISABLE,
+			     enable ? 0 : QCA81XX_SYNCE_CLK_DISABLE);
+	if (ret)
+		return ret;
+
+	ret = qca81xx_phy_debug_modify(phydev, QCA81XX_DBG_PORT31,
+				       QCA81XX_1588_EN,
+				       enable ? QCA81XX_1588_EN : 0);
+	if (ret)
+		return ret;
+
+	if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], QCA8111_PHY_ID, 0x00ffffff))
+		ret = qca81xx_ptp_synce_pin_config(phydev, enable);
+
+	return ret;
 }
 
 static int qca808x_ptp_enable_set(struct phy_device *phydev, bool en, bool one_step)
@@ -1099,6 +1131,64 @@ static int qca808x_ptp_enable_set(struct phy_device *phydev, bool en, bool one_s
 			      mask, data);
 }
 
+/* qca808x_hwtstamp() (SIOCSHWTSTAMP) and qca808x_ptp_enable() (EXTTS/PEROUT/PPS
+ * on the PHC char device, as driven directly by ts2phc/phc2sys) are independent
+ * triggers that share the same PTP-block-bypass and, on qca81xx_ptp_clock_gated_family()
+ * chips, RTC-input-clock gate. Route every write through this helper with
+ * qca808x_ptp_clock_domain_wanted() so that one trigger turning off never gates
+ * a clock another trigger still needs, and so the one-step mode bit (also in
+ * QCA808X_PTP_MAIN_CONFIG's mask) is re-asserted from clock->hwts_tx_type on
+ * every write instead of being clobbered.
+ */
+static bool qca808x_ptp_clock_domain_wanted(struct qca808x_ptp_info *clock)
+{
+	return clock->hwts_active || clock->pin_active || clock->perout_active;
+}
+
+static int qca808x_ptp_clock_domain_set(struct qca808x_ptp_info *clock, bool en)
+{
+	struct phy_device *phydev = clock->phydev;
+	bool one_step = clock->hwts_tx_type == HWTSTAMP_TX_ONESTEP_SYNC ||
+			 clock->hwts_tx_type == HWTSTAMP_TX_ONESTEP_P2P;
+	int err;
+
+	err = qca808x_ptp_enable_set(phydev, en, one_step);
+	if (err)
+		return err;
+
+	if (qca81xx_ptp_clock_gated_family(phydev))
+		err = qca81xx_ptp_clock_set(phydev, en);
+
+	return err;
+}
+
+/* PPS_IN is used for a single purpose at a time: EXTTS, or PPS when pps is set.
+ *
+ * Called with tsreg_lock held, which qca808x_ptp_extts_work() also takes, so
+ * this must never wait for the work to finish (no cancel_delayed_work_sync()).
+ * Stopping relies on the work re-checking pin_active under tsreg_lock and not
+ * re-arming itself once it is false.
+ */
+static int qca808x_ptp_ppsin_request(struct qca808x_ptp_info *clock,
+				     bool on, bool pps)
+{
+	int err;
+
+	err = qca81xx_ptp_ppsin_pin_config(clock->phydev, on);
+	if (err)
+		return err;
+
+	clock->pin_active = on;
+	clock->pps_enabled = on && pps;
+
+	if (on)
+		mod_delayed_work(system_wq, &clock->pin_work, 0);
+	else
+		cancel_delayed_work(&clock->pin_work);
+
+	return 0;
+}
+
 static int qca808x_ptp_enable(struct ptp_clock_info *ptp,
 			      struct ptp_clock_request *rq, int on)
 {
@@ -1109,29 +1199,44 @@ static int qca808x_ptp_enable(struct ptp_clock_info *ptp,
 
 	phydev_dbg(clock->phydev, "[PHC] enable: type=%d on=%d\n", rq->type, on);
 
+	clock->mii_ts.link_state(&clock->mii_ts, clock->phydev);
+
 	mutex_lock(&clock->tsreg_lock);
+
+	if (on) {
+		err = qca808x_ptp_clock_domain_set(clock, true);
+		if (err) {
+			mutex_unlock(&clock->tsreg_lock);
+			return err;
+		}
+	}
 
 	switch (rq->type) {
 	case PTP_CLK_REQ_EXTTS:
-		if (!!on)
-			qca808x_ptp_enable_set(clock->phydev, true, false);
-
-		err = qca81xx_ptp_ppsin_pin_config(clock->phydev, !!on);
-		if (!err)
-			err = qca808x_ptp_extts_locked(clock, on);
+		err = qca808x_ptp_ppsin_request(clock, !!on, false);
 		break;
 	case PTP_CLK_REQ_PEROUT:
-		if (!!on)
-			qca808x_ptp_enable_set(clock->phydev, true, false);
-
 		err = qca81xx_ptp_ppsout_pin_config(clock->phydev, !!on);
+		if (!err)
+			clock->perout_active = !!on;
 		break;
 	case PTP_CLK_REQ_PPS:
-		err = qca808x_pps_configure(ptp, rq, on);
+		err = qca808x_ptp_ppsin_request(clock, !!on, true);
 		break;
 	default:
 		err = -EOPNOTSUPP;
 		break;
+	}
+
+	/* Re-sync the shared domain after a disable, or after a failed enable
+	 * that already switched it on, so it is off once nothing wants it.
+	 */
+	if (!on || err) {
+		int sync_err = qca808x_ptp_clock_domain_set(clock,
+							    qca808x_ptp_clock_domain_wanted(clock));
+
+		if (!err)
+			err = sync_err;
 	}
 
 	mutex_unlock(&clock->tsreg_lock);
@@ -1269,49 +1374,6 @@ static void qca808x_ptp_change_notify(struct mii_timestamper *mii_ts, struct phy
 	mutex_unlock(&clock->tsreg_lock);
 }
 
-static int qca81xx_ptp_synce_pin_config(struct phy_device *phydev, bool en)
-{
-	int  ret, pin_id;
-
-	for (pin_id = GPIO5_PPS_IN; pin_id <= GPIO7_REFCLK_IN; pin_id++) {
-		ret = qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
-					 TLMM_FUNC_MASK, en ? BIT(2) : 0);
-		if (ret)
-			return ret;
-	}
-
-	for (pin_id = GPIO10_PPS_OUT; pin_id <= GPIO12_CLK125_TDI; pin_id++) {
-		ret = qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
-					 TLMM_FUNC_MASK, en ? BIT(2) : 0);
-		if (ret)
-			return ret;
-	}
-
-	return 0;
-}
-
-static int qca81xx_ptp_clock_set(struct phy_device *phydev, bool enable)
-{
-	int ret;
-
-	ret = phy_modify_mmd(phydev, MDIO_MMD_PMAPMD, QCA81XX_MMD1_SYNCE_CLK_CTRL,
-			     QCA81XX_SYNCE_CLK_DISABLE,
-			     enable ? 0 : QCA81XX_SYNCE_CLK_DISABLE);
-	if (ret)
-		return ret;
-
-	ret = qca81xx_phy_debug_modify(phydev, QCA81XX_DBG_PORT31,
-				       QCA81XX_1588_EN,
-				       enable ? QCA81XX_1588_EN : 0);
-	if (ret)
-		return ret;
-
-	if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], QCA8111_PHY_ID, 0x00ffffff))
-		ret = qca81xx_ptp_synce_pin_config(phydev, enable);
-
-	return ret;
-}
-
 static int qca808x_rx_timestamp_mode_set(struct phy_device *phydev, bool embeded)
 {
 	int misc_data, main_data;
@@ -1378,7 +1440,7 @@ static int qca808x_hwtstamp(struct mii_timestamper *mii_ts, struct ifreq *ifr)
 							 struct qca808x_ptp_info,
 							 mii_ts);
 	struct phy_device *phydev = ptp_info->phydev;
-	bool ptp_en = false, one_step = false;
+	bool ptp_en = false;
 	struct hwtstamp_config cfg = {0};
 
 	if (copy_from_user(&cfg, ifr->ifr_data, sizeof(cfg)))
@@ -1414,17 +1476,6 @@ static int qca808x_hwtstamp(struct mii_timestamper *mii_ts, struct ifreq *ifr)
 			break;
 	}
 
-	switch (ptp_info->hwts_tx_type) {
-		case HWTSTAMP_TX_ONESTEP_SYNC:
-		case HWTSTAMP_TX_ONESTEP_P2P:
-			one_step = true;
-			break;
-		case HWTSTAMP_TX_OFF:
-		case HWTSTAMP_TX_ON:
-		default:
-			break;
-	}
-
 	if (ptp_info->hwts_tx_type || ptp_info->hwts_rx_type)
 		ptp_en = true;
 
@@ -1435,13 +1486,10 @@ static int qca808x_hwtstamp(struct mii_timestamper *mii_ts, struct ifreq *ifr)
 	qca808x_ptp_tx_ts_ready(phydev);
 
 	mutex_lock(&ptp_info->tsreg_lock);
-	qca808x_ptp_enable_set(phydev, ptp_en, one_step);
+	ptp_info->hwts_active = ptp_en;
+	qca808x_ptp_clock_domain_set(ptp_info,
+				     qca808x_ptp_clock_domain_wanted(ptp_info));
 	qca808x_ptp_clock_mode_update(phydev, &ptp_info->ptp_mode);
-
-	if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], QCA8111_PHY_ID, 0x00ffffff) ||
-	    phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], IPQ52XX_PHY_ID, 0x00ffffff) ||
-	    phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD], QCE1204_PHY_ID, 0x00ffffff))
-		qca81xx_ptp_clock_set(phydev, ptp_en);
 
 	mutex_unlock(&ptp_info->tsreg_lock);
 
@@ -1709,6 +1757,7 @@ int qca808x_ptp_probe(struct phy_device *phydev)
 	skb_queue_head_init(&ptp_info->tx_queue);
 	skb_queue_head_init(&ptp_info->rx_queue);
 	mutex_init(&ptp_info->tsreg_lock);
+	INIT_DELAYED_WORK(&ptp_info->pin_work, qca808x_ptp_extts_work);
 
 	mutex_lock(&qca8xxx_phcs_lock);
 	list_add_tail(&ptp_info->list, &qca8xxx_phcs);
@@ -1726,6 +1775,11 @@ void qca808x_ptp_remove(struct phy_device *phydev)
 	struct qca808x_ptp_info *ptp_info = container_of(phydev->mii_ts,
 							 struct qca808x_ptp_info,
 							 mii_ts);
+
+	mutex_lock(&ptp_info->tsreg_lock);
+	ptp_info->pin_active = false;
+	mutex_unlock(&ptp_info->tsreg_lock);
+	cancel_delayed_work_sync(&ptp_info->pin_work);
 
 	if (ptp_info->ptp_clock)
 		ptp_clock_unregister(ptp_info->ptp_clock);
