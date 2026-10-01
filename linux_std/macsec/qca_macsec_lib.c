@@ -674,7 +674,6 @@ static int qca_macsec_secy_tx_sa_npn_set(struct phy_device *phydev, u32 sc_index
 	u32 npn = 0;
 	u16 val = 0;
 	u16 channel = 0;
-	int ret;
 
 	if ((sc_index >= QCA_SECY_SC_MAX_NUM) ||
 		(an >= SECY_AN_IDX_MAX_NUM))
@@ -682,18 +681,18 @@ static int qca_macsec_secy_tx_sa_npn_set(struct phy_device *phydev, u32 sc_index
 
 	channel = (sc_index * 2 + SECY_AN_TO_SA_MAPPING(an));
 
-	ret = phy_read_mmd(phydev, MDIO_MMD_PCS, MACSEC_SYS_FRAME_CTRL);
-	if (ret < 0)
-		return ret;
-	if (SYS_XPN_EN & ret) {
-		npn = (u32)(next_pn >> 32);
-		val = (u16)(npn & 0xffff);
-		phy_write_mmd(phydev, MDIO_MMD_PCS,
-				MACSEC_TX_XPN(channel), val);
-		val = (u16)((npn >> 16) & 0xffff);
-		phy_write_mmd(phydev, MDIO_MMD_PCS,
-				MACSEC_TX_XPN(channel) + 1, val);
-	}
+	/* Always write the XPN high 32 bits. When XPN is disabled the
+	 * hardware ignores these registers, so this is harmless and also
+	 * ensures they are cleared during initialization.
+	 */
+	npn = (u32)(next_pn >> 32);
+	val = (u16)(npn & 0xffff);
+	phy_write_mmd(phydev, MDIO_MMD_PCS,
+			MACSEC_TX_XPN(channel), val);
+	val = (u16)((npn >> 16) & 0xffff);
+	phy_write_mmd(phydev, MDIO_MMD_PCS,
+			MACSEC_TX_XPN(channel) + 1, val);
+
 	npn = (u32)(next_pn & 0xffffffff);
 	val = (u16)(npn & 0xffff);
 	phy_write_mmd(phydev, MDIO_MMD_PCS,
@@ -711,7 +710,6 @@ static int qca_macsec_secy_rx_sa_npn_set(struct phy_device *phydev, u32 sc_index
 	u32 npn = 0;
 	u16 val = 0;
 	u16 channel = 0;
-	int ret;
 
 	if ((sc_index >= QCA_SECY_SC_MAX_NUM) ||
 		(an >= SECY_AN_IDX_MAX_NUM))
@@ -719,18 +717,18 @@ static int qca_macsec_secy_rx_sa_npn_set(struct phy_device *phydev, u32 sc_index
 
 	channel = (sc_index * 2 + SECY_AN_TO_SA_MAPPING(an));
 
-	ret = phy_read_mmd(phydev, MDIO_MMD_PCS, MACSEC_SYS_FRAME_CTRL);
-	if (ret < 0)
-		return ret;
-	if (SYS_XPN_EN & ret) {
-		npn = (u32)(next_pn >> 32);
-		val = (u16)(npn & 0xffff);
-		phy_write_mmd(phydev, MDIO_MMD_PCS,
-				MACSEC_RX_XPN(channel), val);
-		val = (u16)((npn >> 16) & 0xffff);
-		phy_write_mmd(phydev, MDIO_MMD_PCS,
-				MACSEC_RX_XPN(channel) + 1, val);
-	}
+	/* Always write the XPN high 32 bits. When XPN is disabled the
+	 * hardware ignores these registers, so this is harmless and also
+	 * ensures they are cleared during initialization.
+	 */
+	npn = (u32)(next_pn >> 32);
+	val = (u16)(npn & 0xffff);
+	phy_write_mmd(phydev, MDIO_MMD_PCS,
+			MACSEC_RX_XPN(channel), val);
+	val = (u16)((npn >> 16) & 0xffff);
+	phy_write_mmd(phydev, MDIO_MMD_PCS,
+			MACSEC_RX_XPN(channel) + 1, val);
+
 	npn = (u32)(next_pn & 0xffffffff);
 	val = (u16)(npn & 0xffff);
 	phy_write_mmd(phydev, MDIO_MMD_PCS,
@@ -744,7 +742,7 @@ static int qca_macsec_secy_rx_sa_npn_set(struct phy_device *phydev, u32 sc_index
 /* ===== SSCI and KI setters (common) ===== */
 
 static int qca_macsec_secy_tx_sc_ssci_set(struct phy_device *phydev,
-					  u32 sc_index, ssci_t ssci)
+					  u32 sc_index, u32 ssci)
 {
 	u16 val = 0;
 	u16 reg = 0;
@@ -763,7 +761,7 @@ static int qca_macsec_secy_tx_sc_ssci_set(struct phy_device *phydev,
 }
 
 static int qca_macsec_secy_rx_sc_ssci_set(struct phy_device *phydev,
-					  u32 sc_index, ssci_t ssci)
+					  u32 sc_index, u32 ssci)
 {
 	u16 val = 0;
 	u16 reg = 0;
@@ -1499,15 +1497,22 @@ static int qca_macsec_create_rxsc(struct phy_device *phydev, const u32 channel,
 static int qca_macsec_update_txsa(struct phy_device *phydev,
 				  const int channel,
 				  const unsigned char an,
-				  const struct macsec_tx_sa *tx_sa)
+				  const struct macsec_tx_sa *tx_sa,
+				  bool update_pn)
 {
 	int ret = 0;
 
-	ret = qca_macsec_secy_tx_sa_npn_set(phydev, channel, an, tx_sa->next_pn);
-	if (ret) {
-		phydev_warn(phydev, "%s: fail to tx_sa_next_pn_set!\n", __func__);
-		return ret;
+	if (update_pn) {
+		ret = qca_macsec_secy_tx_sa_npn_set(phydev, channel, an,
+						    tx_sa->next_pn);
+		if (ret) {
+			phydev_warn(phydev,
+				    "%s: fail to tx_sa_next_pn_set!\n",
+				    __func__);
+			return ret;
+		}
 	}
+
 	ret = qca_macsec_secy_tx_sa_en_set(phydev, channel, an, tx_sa->active);
 	return ret;
 }
@@ -1515,14 +1520,20 @@ static int qca_macsec_update_txsa(struct phy_device *phydev,
 static int qca_macsec_update_rxsa(struct phy_device *phydev,
 				  const int channel,
 				  const unsigned char an,
-				  const struct macsec_rx_sa *rx_sa)
+				  const struct macsec_rx_sa *rx_sa,
+				  bool update_pn)
 {
 	int ret = 0;
 
-	ret = qca_macsec_secy_rx_sa_npn_set(phydev, channel, an, rx_sa->next_pn);
-	if (ret) {
-		phydev_warn(phydev, "%s: fail to rx_sa_next_pn_set!\n", __func__);
-		return ret;
+	if (update_pn) {
+		ret = qca_macsec_secy_rx_sa_npn_set(phydev, channel, an,
+						    rx_sa->next_pn);
+		if (ret) {
+			phydev_warn(phydev,
+				    "%s: fail to rx_sa_next_pn_set!\n",
+				    __func__);
+			return ret;
+		}
 	}
 
 	ret = qca_macsec_secy_rx_sa_en_set(phydev, channel, an, rx_sa->active);
@@ -1558,9 +1569,6 @@ static int qca_mdo_add_secy(struct macsec_context *ctx)
 	struct qca_macsec_chip_info chip_info;
 	u32 txsc_idx = 0;
 	int ret = 0;
-
-	if (ctx->secy->xpn)
-		return -EOPNOTSUPP;
 
 	if (hweight_long(pcfg->txsc_idx_bits) >= QCA_SECY_SC_MAX_NUM)
 		return -ENOSPC;
@@ -1756,7 +1764,7 @@ static int qca_mdo_add_txsa(struct macsec_context *ctx)
 
 	if (ctx->secy->xpn) {
 		ret = qca_macsec_secy_tx_sc_ssci_set(ctx->phydev, channel,
-						ctx->sa.tx_sa->ssci);
+			be32_to_cpu((__force __be32)ctx->sa.tx_sa->ssci));
 		if (ret) {
 			phydev_warn(ctx->phydev,
 				    "%s: fail to secy_tx_ssci_set!\n", __func__);
@@ -1783,23 +1791,22 @@ static int qca_mdo_add_txsa(struct macsec_context *ctx)
 		return ret;
 	}
 
-	ret = qca_macsec_update_txsa(ctx->phydev,
-				     channel, ctx->sa.assoc_num, ctx->sa.tx_sa);
+	ret = qca_macsec_update_txsa(ctx->phydev, channel, ctx->sa.assoc_num,
+				     ctx->sa.tx_sa, true);
 	return ret;
 }
 
 static int qca_mdo_upd_txsa(struct macsec_context *ctx)
 {
 	struct qca_macsec_cfg_t *pcfg = qca_macsec_get_cfg(ctx->phydev);
-	int channel = 0, ret = 0;
+	int channel = 0;
 
 	channel = qca_get_txsc_idx_from_secy(pcfg, ctx->secy);
 	if (channel < 0)
 		return -ENOENT;
 
-	ret = qca_macsec_update_txsa(ctx->phydev,
-				     channel, ctx->sa.assoc_num, ctx->sa.tx_sa);
-	return ret;
+	return qca_macsec_update_txsa(ctx->phydev, channel, ctx->sa.assoc_num,
+				      ctx->sa.tx_sa, ctx->sa.update_pn);
 }
 
 static int qca_mdo_del_txsa(struct macsec_context *ctx)
@@ -1865,7 +1872,7 @@ static int qca_mdo_add_rxsa(struct macsec_context *ctx)
 
 	if (ctx->secy->xpn) {
 		ret = qca_macsec_secy_rx_sc_ssci_set(ctx->phydev, channel,
-						ctx->sa.rx_sa->ssci);
+			be32_to_cpu((__force __be32)ctx->sa.rx_sa->ssci));
 		if (ret) {
 			phydev_warn(ctx->phydev,
 				    "%s: fail to secy_rx_ssci_set!\n", __func__);
@@ -1884,8 +1891,8 @@ static int qca_mdo_add_rxsa(struct macsec_context *ctx)
 		}
 	}
 
-	ret = qca_macsec_update_rxsa(ctx->phydev,
-					   channel, ctx->sa.assoc_num, ctx->sa.rx_sa);
+	ret = qca_macsec_update_rxsa(ctx->phydev, channel, ctx->sa.assoc_num,
+				     ctx->sa.rx_sa, true);
 	return ret;
 }
 
@@ -1893,15 +1900,14 @@ static int qca_mdo_upd_rxsa(struct macsec_context *ctx)
 {
 	struct qca_macsec_cfg_t *pcfg = qca_macsec_get_cfg(ctx->phydev);
 	const struct macsec_rx_sc *rx_sc = ctx->sa.rx_sa->sc;
-	int channel = 0, ret = 0;
+	int channel = 0;
 
 	channel = qca_get_rxsc_idx_from_rxsc(pcfg, rx_sc);
 	if (channel < 0)
 		return -ENOENT;
 
-	ret = qca_macsec_update_rxsa(ctx->phydev,
-					   channel, ctx->sa.assoc_num, ctx->sa.rx_sa);
-	return ret;
+	return qca_macsec_update_rxsa(ctx->phydev, channel, ctx->sa.assoc_num,
+				      ctx->sa.rx_sa, ctx->sa.update_pn);
 }
 
 static int qca_mdo_del_rxsa(struct macsec_context *ctx)
