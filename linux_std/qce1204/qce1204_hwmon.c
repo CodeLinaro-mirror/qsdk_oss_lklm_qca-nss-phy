@@ -83,7 +83,15 @@ static long qce1204_hwmon_temp_read(struct phy_device *phydev, int sensor_id)
 	__qce1204_soc_modify(phydev, QCE1204_TSENS_CTRL, QCE1204_TSENS_GLOBAL_EN | QCE1204_TSENSORS_EN, 0);
 	phy_unlock_mdio_bus(phydev);
 
-	return temp * 100;
+	temp *= 100;
+	/* A failed indirect register read returns all-1s, which decodes into
+	 * a bogus but in-range temperature; clamp it to 0. Negative values
+	 * are legitimate sub-zero Celsius readings and are left untouched.
+	 */
+	if (temp > QCE1204_TEMP_MAX_VALID_MDEG)
+		temp = 0;
+
+	return temp;
 }
 
 static int qce1204_hwmon_read(struct device *dev, enum hwmon_sensor_types type,
@@ -493,9 +501,6 @@ void qce1204_thermal_check(struct phy_device *phydev)
 
 	for (i = 0; i < QCE1204_SENSORS_NUM; i++) {
 		long temp = qce1204_hwmon_temp_read(phydev, i);
-
-		if (temp < 0 || temp > QCE1204_TEMP_MAX_VALID_MDEG)
-			continue;
 
 		if (temp >= priv->temp_crit_mdeg[i]) {
 			dev_err_ratelimited(&phydev->mdio.dev,
