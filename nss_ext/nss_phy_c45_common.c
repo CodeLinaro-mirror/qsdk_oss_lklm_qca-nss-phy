@@ -1509,7 +1509,7 @@ int nss_phy_c45_common_pcs_status_get(struct nss_phy_device *nss_phydev,
 /*
  * nss_phy_c45_common_link_training_completion_get()
  *
- * Reads link training completion bitmap from MMD7.0x8001 bits[10:8].
+ * Reads link training completion bitmap from MMD7.0x8001 bits 12, 10, 8.
  * Valid only at 2.5G and above; returns 0 at lower speeds.
  */
 int nss_phy_c45_common_link_training_completion_get(struct nss_phy_device *nss_phydev,
