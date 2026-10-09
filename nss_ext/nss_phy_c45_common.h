@@ -167,13 +167,13 @@ extern "C" {
  * NSS_PHY_MMD7_AUTONEG_STATUS).  Only valid at 2.5G and above.
  * These bits are returned as the training_complete u32 by link_training_completion_get().
  */
-#define NSS_PHY_MMD7_LINK_OK_10G		0x0400	/* bit 10: 10G training done */
-#define NSS_PHY_MMD7_LINK_OK_5G			0x0200	/* bit 9:  5G training done */
+#define NSS_PHY_MMD7_LINK_OK_10G		0x1000	/* bit 12: 10G training done */
+#define NSS_PHY_MMD7_LINK_OK_5G			0x0400	/* bit 10:  5G training done */
 #define NSS_PHY_MMD7_LINK_OK_2P5G		0x0100	/* bit 8:  2.5G training done */
-#define NSS_PHY_MMD7_LINK_OK_MASK		0x0700	/* bits[10:8]: all training bits */
+#define NSS_PHY_MMD7_LINK_OK_MASK		0x1500	/* bit 8, 10, 12: all training bits */
 
 /* Bitmap values for training_complete (returned by link_training_completion_get(), mapped from
- * MMD7_reg_8001 bits[10:8] to a compact 3-bit field).
+ * MMD7_reg_8001 bits 12, 10, 8 to a compact 3-bit field).
  */
 #define NSS_PHY_TRAINING_COMPLETE_10G		BIT(2)
 #define NSS_PHY_TRAINING_COMPLETE_5G		BIT(1)
