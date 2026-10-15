@@ -126,9 +126,10 @@ struct qca81xx_phy_mdio_data {
 #define QCA81XX_MMD3_REDUCE_NOISE_CTRL		0xa016
 #define QCA81XX_MMD3_REDUCE_NOISE_EN		BIT(13)
 #define QCA81XX_MMD3_10G_EEE_CFG		0xa04b
-#define QCA81XX_MMD3_10G_EEE_CFG_MASK		GENMASK(15, 0) /* Full register configuration */
-#define QCA81XX_MMD3_10G_EEE_MST_CFG		0x931c /* Master: [15:8]=0x93, [7:0]=0x1c */
-#define QCA81XX_MMD3_10G_EEE_SLV_CFG		0x351c /* Slave: [15:8]=0x35, [7:0]=0x1c */
+#define QCA81XX_MMD3_10G_EEE_CFG_MASK		GENMASK(15, 8)
+#define QCA81XX_MMD3_10G_EEE_MST_CFG		0x9300 /* Master: [15:8]=0x93 */
+#define QCA81XX_MMD3_10G_EEE_SLV_CFG		0x3500 /* Slave: [15:8]=0x35 */
+#define QCA81XX_MMD3_10G_EEE_SLV_FREQ_DIS	BIT(6)
 #define QCA81XX_MMD3_ROTCLK_CTRL		0xa034
 #define QCA81XX_MMD3_ROTCLK_SEL			BIT(14)
 #define QCA81XX_MMD3_CDR_TRACING_CTRL		0xa101
@@ -171,6 +172,8 @@ struct qca81xx_phy_mdio_data {
 /* improve master control performance for 10G interoperability */
 #define QCA81XX_MMD3_MST_CTRL			0xa04c
 #define QCA81XX_MMD3_MST_VAL			BIT(14)
+#define QCA81XX_MMD3_TRAINING_METHOD_MASK	GENMASK(13, 8)
+#define QCA81XX_MMD3_TRAINING_METHOD_VAL	0x1500 /* [13:8]=0x15 */
 
 /*PHY MMD7 registers*/
 #define QCA81XX_MMD7_COUNTER_CTRL		0x8029
@@ -1322,6 +1325,23 @@ static int qca81xx_phy_eee_config_init(struct phy_device *phydev)
 	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_PCS,
 		QCA81XX_MMD3_DELAY_DATA_MODE,
 		QCA81XX_MMD3_DELAY_DATA_MODE_MASK, QCA81XX_MMD3_DELAY_DATA_MODE_VAL);
+	if (ret < 0)
+		return ret;
+	/* disable the slave frequency offset tracking to improve 10G EEE */
+	/* link performance, the bit only takes effect on the slave and has */
+	/* no effect on the master, so it can be set once here regardless of */
+	/* the master/slave role negotiated later on 10G link-up */
+	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_PCS,
+		QCA81XX_MMD3_10G_EEE_CFG,
+		QCA81XX_MMD3_10G_EEE_SLV_FREQ_DIS,
+		QCA81XX_MMD3_10G_EEE_SLV_FREQ_DIS);
+	if (ret < 0)
+		return ret;
+	/* adjust training method to improve link performance with 10G EEE */
+	ret = phy_modify_mmd_changed(phydev, MDIO_MMD_PCS,
+		QCA81XX_MMD3_MST_CTRL,
+		QCA81XX_MMD3_TRAINING_METHOD_MASK,
+		QCA81XX_MMD3_TRAINING_METHOD_VAL);
 
 	return ret;
 }
