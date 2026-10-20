@@ -31,6 +31,9 @@
 #if IS_ENABLED(CONFIG_MDIO_I2C)
 #include <linux/mdio/mdio-i2c.h>
 #include <linux/i2c.h>
+#include <linux/gpio/consumer.h>
+#include <linux/bitmap.h>
+#include <linux/delay.h>
 #endif
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
@@ -681,8 +684,65 @@ static int nss_phy_fixup(struct phy_device *phydev)
 }
 
 #if IS_ENABLED(CONFIG_MDIO_I2C)
+#define NSS_PHY_SFP_RESET_DELAY_US	100000
+
+/*
+ * nss_phy_mdio_i2c_reset()
+ *	Pulse the optional reset GPIOs of the devices on the mdio-i2c bus.
+ *
+ * The reset is optional, so this never fails the bus registration that
+ * calls it: with no GPIOs described, or with no memory for the values
+ * bitmap, the pulse is simply skipped.
+ */
+static int nss_phy_mdio_i2c_reset(struct mii_bus *bus)
+{
+	/* mdio_i2c_alloc() returns early for MDIO_I2C_QCOM, so priv is the
+	 * struct qcom_mdio_i2c_data of <linux/mdio/mdio-i2c.h> rather than
+	 * the bare i2c_adapter the other protocols store there.  The
+	 * reset_gpios used below is a member of that struct, and
+	 * qcom_mdio_i2c_alloc() sizes the bus with
+	 * devm_mdiobus_alloc_size(sizeof(*priv)), so the field comes with the
+	 * bus allocation instead of being an extension made here.
+	 */
+	struct qcom_mdio_i2c_data *priv = bus->priv;
+	unsigned long *values;
+
+	if (!priv->reset_gpios)
+		return 0;
+
+	values = bitmap_alloc(priv->reset_gpios->ndescs, GFP_KERNEL);
+	if (!values) {
+		/* mdio_i2c_alloc() set bus->parent when it allocated the bus,
+		 * so it is valid here even though this runs from inside
+		 * of_mdiobus_register().
+		 */
+		dev_warn(bus->parent, "mii_bus %s reset bitmap alloc failed, skipping sfp reset\n",
+			bus->id);
+		return 0;
+	}
+
+	/* Assert reset on every descriptor, hold, then deassert.  The bits are
+	 * logical values, so active-low lines are handled by the DT flags.
+	 */
+	bitmap_fill(values, priv->reset_gpios->ndescs);
+	gpiod_set_array_value_cansleep(priv->reset_gpios->ndescs,
+		priv->reset_gpios->desc, priv->reset_gpios->info, values);
+
+	fsleep(NSS_PHY_SFP_RESET_DELAY_US);
+
+	bitmap_zero(values, priv->reset_gpios->ndescs);
+	gpiod_set_array_value_cansleep(priv->reset_gpios->ndescs,
+		priv->reset_gpios->desc, priv->reset_gpios->info, values);
+	bitmap_free(values);
+
+	fsleep(NSS_PHY_SFP_RESET_DELAY_US);
+
+	return 0;
+}
+
 static struct mii_bus *nss_phy_mdio_i2c_bus_register(struct platform_device *pdev)
 {
+	struct qcom_mdio_i2c_data *priv;
 	struct device_node *i2c_node;
 	struct i2c_adapter *i2c_adpt;
 	struct mii_bus *mdio_i2c;
@@ -695,35 +755,126 @@ static struct mii_bus *nss_phy_mdio_i2c_bus_register(struct platform_device *pde
 	}
 
 	i2c_adpt = of_find_i2c_adapter_by_node(i2c_node);
-	of_node_put(i2c_node);
 	if(!i2c_adpt) {
 		dev_err(&pdev->dev, "i2c adpt was not found by i2c_node:%s\n",
 			i2c_node->full_name);
+		of_node_put(i2c_node);
 		return NULL;
 	}
+
+	/* mdio_i2c_alloc() reports failure with an ERR_PTR, and for
+	 * MDIO_I2C_QCOM the bus comes from devm_mdiobus_alloc_size(), so it
+	 * must not be freed explicitly on the error paths below.
+	 */
 	mdio_i2c = mdio_i2c_alloc(&pdev->dev, i2c_adpt, MDIO_I2C_QCOM);
-	if (!mdio_i2c) {
-		dev_err(&pdev->dev, "mdio_i2c bus alloc failed with i2c_adpt:%s\n",
-			i2c_adpt->name);
+	if (IS_ERR(mdio_i2c)) {
+		dev_err(&pdev->dev, "mdio_i2c bus alloc failed with i2c_adpt:%s (%ld)\n",
+			i2c_adpt->name, PTR_ERR(mdio_i2c));
+		of_node_put(i2c_node);
 		put_device(&i2c_adpt->dev);
 		return NULL;
 	}
+
+	/* Optional "sfp-reset-gpios" on the nss-phy node, stored in the
+	 * qcom_mdio_i2c_data that MDIO_I2C_QCOM keeps in mdio_i2c->priv, and
+	 * driven by nss_phy_mdio_i2c_reset() from of_mdiobus_register() below.
+	 * The reset is best effort: boards that do not describe the property
+	 * get a NULL array, and a board that does but whose GPIOs cannot be
+	 * acquired keeps the bus, with the reset skipped.
+	 *
+	 * The pin may be shared with the module's TX_DISABLE, which the board
+	 * declares with "reset-shared-tx-disable": the "default" pinctrl
+	 * state of the nss-phy node then describes its TX_DISABLE configuration,
+	 * and nss_phy_sfp_tx_disable_restore() gives the pin back once the reset
+	 * has shown that there is no SFP PHY to hold in reset.
+	 */
+	priv = mdio_i2c->priv;
+	priv->reset_gpios = devm_gpiod_get_array_optional(&pdev->dev, "sfp-reset",
+		GPIOD_OUT_LOW);
+	if (IS_ERR(priv->reset_gpios)) {
+		dev_warn(&pdev->dev, "mii_bus %s couldn't get reset GPIO (%ld), skipping sfp reset\n",
+			mdio_i2c->id, PTR_ERR(priv->reset_gpios));
+		priv->reset_gpios = NULL;
+	}
+
 	mdio_i2c->name = "SFP I2C Bus";
+	mdio_i2c->reset = nss_phy_mdio_i2c_reset;
 	if (of_mdiobus_register(mdio_i2c, i2c_node) < 0) {
 		dev_err(&pdev->dev, "mdio_i2c bus register failed with bus id %s\n",
 			mdio_i2c->id);
-		mdiobus_free(mdio_i2c);
+		of_node_put(i2c_node);
 		put_device(&i2c_adpt->dev);
 		return NULL;
 	}
+	of_node_put(i2c_node);
 
 	atomic64_inc(&g_nss_phy_manager.debug_stats.mdio_i2c_bus_num);
 	return mdio_i2c;
 }
 
+/*
+ * nss_phy_sfp_tx_disable_restore()
+ *	Hand the shared reset line back to its TX_DISABLE function.
+ *
+ * A board may wire one pin as both the SFP PHY reset and the module's
+ * TX_DISABLE, which it tells the driver with "reset-shared-tx-disable".
+ * The two functions want opposite levels on such a pin: the reset is active
+ * low, so leaving it deasserted holds the pin high, while TX_DISABLE is
+ * asserted high, so that same level keeps the transmitter off.  Only one of
+ * them can have the pin, which is why this runs once the post-reset probe has
+ * shown that there is no SFP PHY to hold in reset: with no PHY to serve, the
+ * pin belongs to TX_DISABLE.
+ *
+ * So drive the pin low, which deasserts TX_DISABLE and lets the module
+ * transmit, then release the descriptors so that nothing drives it as a reset
+ * any more.  Raw values are used because the level wanted here is TX_DISABLE's
+ * and not the active-low reset polarity the descriptors were acquired with:
+ * gpiod_set_value(0) would mean "reset deasserted", put the pin back high and
+ * turn the transmitter off again.
+ *
+ * Releasing the descriptors leaves priv->reset_gpios NULL, which makes a later
+ * nss_phy_mdio_i2c_reset() skip the pulse without saying anything.  That is
+ * deliberate: the pin answers to TX_DISABLE from here on and must not be
+ * driven as a reset again, so there is nothing to warn about.  It does not
+ * arise in practice either, as mii_bus->reset runs only from
+ * __mdiobus_register(), and this driver unregisters the bus on remove without
+ * ever registering it a second time.
+ *
+ * Boards where the two are separate pins do not describe the property and are
+ * left alone: their reset line stays owned by this driver, and their
+ * TX_DISABLE pin is driven by whatever pinctrl state describes it.  The driver
+ * cannot tell the two cases apart on its own, as TX_DISABLE is an output level
+ * in a pinctrl state rather than a GPIO this driver could compare against.
+ *
+ * The pinmux, bias and drive strength come from the "default" pinctrl state
+ * of the nss-phy node and are not disturbed by the GPIO request, so the
+ * output level is all there is to restore.
+ */
+static void nss_phy_sfp_tx_disable_restore(struct platform_device *pdev,
+	struct mii_bus *bus)
+{
+	struct qcom_mdio_i2c_data *priv = bus->priv;
+	unsigned int i;
+
+	if (!priv->reset_gpios)
+		return;
+
+	if (!of_property_read_bool(pdev->dev.of_node, "reset-shared-tx-disable"))
+		return;
+
+	for (i = 0; i < priv->reset_gpios->ndescs; i++)
+		gpiod_set_raw_value_cansleep(priv->reset_gpios->desc[i], 0);
+
+	devm_gpiod_put_array(&pdev->dev, priv->reset_gpios);
+	priv->reset_gpios = NULL;
+
+	dev_info(&pdev->dev, "mii_bus %s has no sfp phy, shared pin handed back to tx-disable, transmitter enabled\n",
+		bus->id);
+}
+
 static u32 nss_sfp_phy_id_get(struct mii_bus *bus)
 {
-	u16 org_id, rev_id;
+	int org_id, rev_id;
 	u32 phy_id;
 
 	if (!bus)
@@ -740,22 +891,41 @@ static u32 nss_sfp_phy_id_get(struct mii_bus *bus)
 	return phy_id;
 }
 
+/*
+ * nss_phy_sfp_device_register()
+ *	Bind the SFP PHY behind an mdio-i2c bus, if this driver drives it.
+ *
+ * Returns 0 once a PHY is bound and -ENODEV when nothing answers on the bus.
+ * Any other negative errno means a PHY is there but did not get bound, either
+ * because this driver does not drive it or because its registration failed.
+ *
+ * The caller has to tell those two apart rather than test for plain failure:
+ * only a bus with no PHY on it at all may have a shared reset pin handed back
+ * to TX_DISABLE, because a PHY that is present still owns that pin.  "No PHY"
+ * therefore gets an errno of its own instead of sharing -EINVAL with the
+ * failures above.
+ */
 static int nss_phy_sfp_device_register(struct mii_bus *bus)
 {
-	struct phy_device *phydev = NULL;
+	struct phy_device *phydev;
 	u32 phy_id = nss_sfp_phy_id_get(bus);
-	int ret = 0;
+	int ret;
 
 	if (phy_id == NSS_INVALID_PHY_ID)
-		return -EINVAL;
+		return -ENODEV;
 
-	if (phy_id_compare(phy_id, QCA8111_PHY, QCA_PHY_EXACT_MASK))
-		phydev = get_phy_device(bus, NSS_SFP_PHY_ADDR, true);
-	else
+	if (!phy_id_compare(phy_id, QCA8111_PHY, QCA_PHY_EXACT_MASK))
 		return -EOPNOTSUPP;
 
-	if (!phydev)
-		return -EINVAL;
+	/* get_phy_device() reports failure with an ERR_PTR, so a NULL test
+	 * would let an error pointer through to phy_device_register() and have
+	 * it dereferenced.  Its -ENODEV reaches the caller as "no PHY", which
+	 * is what it means: the PHY answered nss_sfp_phy_id_get() above but no
+	 * longer answers the ID reads done here.
+	 */
+	phydev = get_phy_device(bus, NSS_SFP_PHY_ADDR, true);
+	if (IS_ERR(phydev))
+		return PTR_ERR(phydev);
 
 	ret = phy_device_register(phydev);
 	if (ret) {
@@ -772,10 +942,27 @@ static int nss_phy_platform_probe(struct platform_device *pdev)
 {
 #if IS_ENABLED(CONFIG_MDIO_I2C)
 	struct mii_bus *bus;
+	int ret;
 
 	bus = nss_phy_mdio_i2c_bus_register(pdev);
 	if (bus) {
-		nss_phy_sfp_device_register(bus);
+		/* of_mdiobus_register() has pulsed the optional reset line by
+		 * now, so the SFP PHY, if any, is ready to answer.  Only when
+		 * nothing answers at all is there no PHY left to own the reset
+		 * line, and only then may a pin shared with TX_DISABLE go back
+		 * to that function.  A PHY that is present but unbound, either
+		 * because this driver does not drive it or because registering
+		 * it failed, keeps the pin: it may still need to be held in
+		 * reset, and releasing it would let an unmanaged module start
+		 * transmitting.
+		 */
+		ret = nss_phy_sfp_device_register(bus);
+		if (ret == -ENODEV)
+			nss_phy_sfp_tx_disable_restore(pdev, bus);
+		else if (ret)
+			dev_warn(&pdev->dev, "mii_bus %s sfp phy present but not bound (%d), reset pin not released\n",
+				bus->id, ret);
+
 		platform_set_drvdata(pdev, bus);
 		dev_info(&pdev->dev, "nss-phy mdio-i2c bus registered successfully\n");
 	}
