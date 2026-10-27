@@ -24,6 +24,7 @@
 #define TLMM_GPIO_OFFSET	0x1000
 #define TO_TLMM_CFG_REG(pin)	(TLMM_BASE + TLMM_GPIO_OFFSET * pin)
 #define TLMM_FUNC_MASK		GENMASK(5, 2)
+#define TLMM_GPIO_OE		BIT(9)
 
 enum {
 	GPIO0_WOL_INT = 0,

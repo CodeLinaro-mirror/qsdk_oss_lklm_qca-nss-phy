@@ -963,6 +963,10 @@ extts_work_out:
 	mutex_unlock(&clock->tsreg_lock);
 }
 
+/* PPS_OUT of several PHYs may be wired together, so a PPS_OUT pin is only
+ * muxed to its PPS function while PEROUT is enabled on that port. Otherwise
+ * it is a normal GPIO with output disabled, so it never drives the shared line.
+ */
 static int qca81xx_ptp_ppsout_pin_config(struct phy_device *phydev, bool en)
 {
 	int pin_id;
@@ -975,17 +979,26 @@ static int qca81xx_ptp_ppsout_pin_config(struct phy_device *phydev, bool en)
 		 */
 		pin_id = QCE1204_GPIO_P0_PPS_OUT + (phydev->mdio.addr & 0x3);
 
+		/* GPIO8/9 may be in LED mode from qce1204_phy_tlmm_init() */
+		if (en)
+			return qce1204_soc_modify(phydev, QCE1204_TO_TLMM_CFG_REG(pin_id),
+						  QCE1204_TLMM_FUNC_MASK | QCE1204_TLMM_LED_MODE,
+						  BIT(2));
+
 		return qce1204_soc_modify(phydev, QCE1204_TO_TLMM_CFG_REG(pin_id),
-					  QCE1204_TLMM_FUNC_MASK,
-					  en ? BIT(2) : 0);
+					  QCE1204_TLMM_FUNC_MASK | QCE1204_TLMM_GPIO_OE,
+					  0);
 	} else if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD],
 				  QCA8111_PHY_ID, 0x00ffffff)) {
 		/* QCA8111: TLMM GPIO10 = PPS_OUT (alt function = BIT(2)) */
 		pin_id = GPIO10_PPS_OUT;
 
+		if (en)
+			return qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
+						  TLMM_FUNC_MASK, BIT(2));
+
 		return qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
-					  TLMM_FUNC_MASK,
-					  en ? BIT(2) : 0);
+					  TLMM_FUNC_MASK | TLMM_GPIO_OE, 0);
 	}
 
 	return 0;
@@ -1030,9 +1043,15 @@ static int qca81xx_ptp_ppsin_pin_config(struct phy_device *phydev, bool en)
 				return 0;  /* was 0 (nothing to disable) or still > 0 (in use) */
 		}
 
-		ret = qce1204_soc_modify(phydev, QCE1204_TO_TLMM_CFG_REG(pin_id),
-					 QCE1204_TLMM_FUNC_MASK,
-					 en ? BIT(2) : 0);
+		/* GPIO7 may be in LED mode from qce1204_phy_tlmm_init() */
+		if (en)
+			ret = qce1204_soc_modify(phydev, QCE1204_TO_TLMM_CFG_REG(pin_id),
+						 QCE1204_TLMM_FUNC_MASK | QCE1204_TLMM_LED_MODE,
+						 BIT(2));
+		else
+			ret = qce1204_soc_modify(phydev, QCE1204_TO_TLMM_CFG_REG(pin_id),
+						 QCE1204_TLMM_FUNC_MASK | QCE1204_TLMM_GPIO_OE,
+						 0);
 		if (ret) {
 			/* Roll back the refcount adjustment above so a retry sees the
 			 * pin's true un-configured/still-configured state instead of
@@ -1049,30 +1068,70 @@ static int qca81xx_ptp_ppsin_pin_config(struct phy_device *phydev, bool en)
 				  QCA8111_PHY_ID, 0x00ffffff)) {
 		pin_id = GPIO5_PPS_IN;
 
+		if (en)
+			return qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
+						  TLMM_FUNC_MASK, BIT(2));
+
 		return qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
-					  TLMM_FUNC_MASK,
-					  en ? BIT(2) : 0);
+					  TLMM_FUNC_MASK | TLMM_GPIO_OE, 0);
 	}
 
 	return 0;
 }
 
+/* GPIO5_PPS_IN and GPIO10_PPS_OUT are left out on purpose: they may be wired
+ * to other PHYs and are only muxed on request by qca81xx_ptp_ppsin_pin_config()
+ * and qca81xx_ptp_ppsout_pin_config().
+ */
 static int qca81xx_ptp_synce_pin_config(struct phy_device *phydev, bool en)
 {
 	int ret, pin_id;
 
-	for (pin_id = GPIO5_PPS_IN; pin_id <= GPIO7_REFCLK_IN; pin_id++) {
+	for (pin_id = GPIO6_TOD_IN; pin_id <= GPIO7_REFCLK_IN; pin_id++) {
 		ret = qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
 					 TLMM_FUNC_MASK, en ? BIT(2) : 0);
 		if (ret)
 			return ret;
 	}
 
-	for (pin_id = GPIO10_PPS_OUT; pin_id <= GPIO12_CLK125_TDI; pin_id++) {
+	for (pin_id = GPIO11_TOD_OUT; pin_id <= GPIO12_CLK125_TDI; pin_id++) {
 		ret = qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(pin_id),
 					 TLMM_FUNC_MASK, en ? BIT(2) : 0);
 		if (ret)
 			return ret;
+	}
+
+	return 0;
+}
+
+/* Start PPS_IN/PPS_OUT as normal GPIO, PTP_CLK_REQ_* enables them on request. */
+static int qca81xx_ptp_pps_pin_init(struct phy_device *phydev)
+{
+	if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD],
+			   QCE1204_PHY_ID, 0x00ffffff)) {
+		/*
+		 * GPIO7 (PPS_IN), GPIO8 (P0_PPS_OUT) and GPIO9 (P1_PPS_OUT) are
+		 * muxed to LED functions by qce1204_phy_tlmm_init(), keep them.
+		 */
+		if ((phydev->mdio.addr & 0x3) < 2)
+			return 0;
+
+		/*
+		 * Port 2/3: GPIO7 (PPS_IN) is also muxed to LED function by
+		 * qce1204_phy_tlmm_init() for all ports, so keep it.
+		 * Only initialize GPIO10/11 (PPS_OUT) as GPIO here.
+		 */
+		return qca81xx_ptp_ppsout_pin_config(phydev, false);
+	} else if (phy_id_compare(phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD],
+				  QCA8111_PHY_ID, 0x00ffffff)) {
+		int ret;
+
+		ret = qca81xx_soc_modify(phydev, TO_TLMM_CFG_REG(GPIO5_PPS_IN),
+					 TLMM_FUNC_MASK | TLMM_GPIO_OE, 0);
+		if (ret)
+			return ret;
+
+		return qca81xx_ptp_ppsout_pin_config(phydev, false);
 	}
 
 	return 0;
@@ -1731,7 +1790,11 @@ int qca808x_ptp_config_init(struct phy_device *phydev)
 		return ret;
 
 	/* Disable SYNCE clock output, only BC/TC need to enable it. */
-	return qca808x_ptp_clock_synce_clock_enable(phydev, false);
+	ret = qca808x_ptp_clock_synce_clock_enable(phydev, false);
+	if (ret)
+		return ret;
+
+	return qca81xx_ptp_pps_pin_init(phydev);
 }
 
 int qca808x_ptp_probe(struct phy_device *phydev)

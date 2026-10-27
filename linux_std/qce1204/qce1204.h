@@ -25,6 +25,7 @@
 #define QCE1204_TLMM_GPIO_PULL			GENMASK(1, 0)
 #define QCE1204_TLMM_FUNC_MASK			GENMASK(5, 2)
 #define QCE1204_TLMM_DRV			GENMASK(8, 6)
+#define QCE1204_TLMM_GPIO_OE			BIT(9)
 #define QCE1204_TLMM_LED_MODE			BIT(11)
 
 /* GPIO_PULL field values (bits 1:0) — complete enumeration for future use */
