@@ -58,6 +58,32 @@ struct nss_phy_device {
 	struct nss_phy_fr_sw_cnt fr_sw_cnt;
 	spinlock_t fr_sw_cnt_lock;
 	/*
+	 * Print-once latch for the FR counter saturation warning in
+	 * nss_phy_c45_common_fr_cnt_get(): saturation is re-checked every
+	 * 1s poll, so without this the warning would repeat every cycle for
+	 * as long as the retrain rate stays above 31/s. Single writer
+	 * (status_poll_work), no lock needed.
+	 *
+	 * The latch is driven only by what a successful register read
+	 * observes: reading a saturated count warns once and sets it,
+	 * reading an unsaturated count clears it so the next saturation
+	 * warns again. Polls that observe nothing deliberately leave it
+	 * untouched - no observation is not the same as "not saturated".
+	 * That covers a failed MMD1.93 read, a link below 2.5G (FR does
+	 * not run, so the register is never read), and FR being disabled
+	 * (status_poll_work skips the FR poll entirely). In all three the
+	 * latch keeps its value until the next successful read, which at
+	 * worst drops one dmesg line if that read is itself already
+	 * saturated; counters and fr_status_get() are unaffected.
+	 *
+	 * A single latch covers both directions: either count hitting the
+	 * max means this read window overflowed, so rx recovering while tx
+	 * saturates stays the same saturation episode and does not warn
+	 * again. Per-direction detail belongs to fr_status_get()'s
+	 * rx_count/tx_count/rx_total/tx_total, not to this warning.
+	 */
+	bool fr_cnt_saturated_warned;
+	/*
 	 * Software-cached autonegotiation failure counter, updated by
 	 * status_poll_work on each link state transition by reading the
 	 * hardware AN failure count register. Read by
